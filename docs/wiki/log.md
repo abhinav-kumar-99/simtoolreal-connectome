@@ -6,6 +6,12 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] complete | Release-matched billion-step policies
+
+Both rollout-accumulated policies completed 2,543 update phases and 999,948,288 environment frames. Adapters-only trained in 12,258.462 seconds and neuron-gains in 12,490.291 seconds; both final checkpoints passed finite `(1, 29)` deployment reload verification. Final raw `rewards/step` values were 80.1783 and 107.6453, while training `success_ratio/frame` values at the 0.075 m curriculum tolerance were 0.000001628 and 0.000008138.
+
+Final actor Adam counters were 20,335 for both policies, nine below the 20,344 scheduled step calls because mixed-precision `GradScaler` suppressed non-finite updates. The central critic does not use that scaler, but its optimizer counter is not serialized. Post-training 0.02 m paper Task Progress, 0.01 m repository `avg_goal_pct`, and final-policy videos remain pending evaluation.
+
 ## [2026-09-13] launch | Release-matched billion-step replacement
 
 Implemented logical-batch-preserving gradient accumulation for the connectome actor and asymmetric critic, including sample-weighted handling of SAPG's enlarged final minibatch. Added rollout accumulation so multiple unchanged-policy horizon batches can be concatenated before normalization, sequence shuffling and optimization. A focused CPU regression verifies accumulated critic parameters and a single optimizer-counter increment against a full update.

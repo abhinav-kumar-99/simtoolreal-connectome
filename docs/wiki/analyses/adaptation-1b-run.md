@@ -15,7 +15,7 @@ The YAML entry point is `configs/connectome/suites/adaptation_1b_release_setting
 | adapters-only | `SimToolRealConnectomeSAPG` | 0 |
 | neuron-gains | `SimToolRealConnectomeGainsSAPG` | 1 |
 
-Each update phase collects two consecutive `12,288 x 16` rollouts with unchanged weights, for the released effective batch of 393,216 fresh transitions. GAE remains horizon 16 and bootstraps at each boundary, while simulator and recurrent state continue between the two collections. The run uses 2,543 update phases, producing 999,948,288 transitions below the strict 1,000,000,000-step cap; another complete phase would exceed it. Each mini-epoch has four logical 98,304-sample minibatches. With two mini-epochs, each actor and critic therefore take eight optimizer steps per phase and 20,344 steps over the run.
+Each update phase collects two consecutive `12,288 x 16` rollouts with unchanged weights, for the released effective batch of 393,216 fresh transitions. GAE remains horizon 16 and bootstraps at each boundary, while simulator and recurrent state continue between the two collections. The run uses 2,543 update phases, producing 999,948,288 transitions below the strict 1,000,000,000-step cap; another complete phase would exceed it. Each mini-epoch has four logical 98,304-sample minibatches. With two mini-epochs, each actor and critic schedule eight optimizer-step calls per phase and 20,344 over the run.
 
 Both jobs use seed 42. Each physical rollout has six 2,048-environment SAPG blocks; the same sampled off-policy block is used across both halves, producing the same six-block sample counts as a 24,576-environment phase. A physical training microbatch contains 24,576 samples. The first three logical minibatches use four chunks each; SAPG's enlarged 163,840-sample final minibatch uses six full chunks plus one 16,384-sample remainder. Sample-weighted loss scaling, gradient clipping and Adam stepping preserve one update per logical minibatch, while the adaptive scheduler remains once per PPO mini-epoch. The contract also matches the released checkpoint's exploration scale 0.005, force scale 2, probability range `[0.001, 0.1]`, decay 0.99, decay interval 0.08, lifted-only forces, and zero-default torque/velocity impulses. Generated artifacts live under `train_dir/connectome/adaptation_1b_release_settings_rollout_accumulation/` and remain ignored.
 
@@ -43,9 +43,20 @@ TensorBoard watches the suite directory:
 
 Port 6007 is used on the development host because port 6006 is occupied. The operational state and final measurements belong in the project log; a launched process is not a completed experiment.
 
-## Live launch
+## Completed run
 
-The rollout-accumulated release-matched jobs launched at approximately 2026-09-13 13:25 EDT in the durable tmux session `connectome-1b`; `connectome-tensorboard` was repointed to their fresh output. Both crossed the prior epoch-24 PhysX failure boundary and used approximately 19.4--20.3 GB on their intended GPUs. Epoch-10 checkpoints for both policies record frame 3,932,160 and exactly 80 actor Adam steps, confirming eight updates per phase in the live jobs. Early steady-state phases took about 3.9--4.3 seconds; phases after the first episode-boundary/reset activity took about 10.1--10.7 seconds, so final elapsed time must be measured rather than extrapolated from startup. This remains launch evidence only; final checkpoint verification and measured total elapsed time are pending.
+Both jobs completed all 2,543 phases and their final deployment reload checks. Adapters-only recorded 999,948,288 frames in 12,258.462 seconds (3:24:18); neuron-gains recorded the same frames in 12,490.291 seconds (3:28:10). End-to-end time including verification was 12,260.070 and 12,490.913 seconds, respectively. `suite_results.json` records both cases as complete.
+
+Each final actor checkpoint has Adam counter 20,335 rather than the 20,344 scheduled calls. Both therefore skipped nine mixed-precision updates through PyTorch `GradScaler`'s non-finite-gradient guard. The central critic does not use `GradScaler`, so its code executes all 20,344 step calls, but its optimizer state is not serialized and cannot be independently counter-verified from the final checkpoint.
+
+Final TensorBoard training telemetry uses the last pre-increment frame coordinate, 999,555,072:
+
+| Policy | Raw `rewards/step` | Shaped reward | `success_ratio/frame` | Peak raw reward |
+| --- | ---: | ---: | ---: | ---: |
+| adapters-only | 80.1783 | 0.801784 | 0.000001628 | 101.5146 |
+| neuron-gains | 107.6453 | 1.076453 | 0.000008138 | 109.6315 |
+
+The training success telemetry uses the curriculum tolerance 0.075 m. It is not paper Task Progress at 0.02 m or repository `avg_goal_pct` at 0.01 m; those require post-training evaluation.
 
 For external progress references and remaining source limitations, see [SimToolReal training references](../sources/summaries/simtoolreal-training-references.md). The active contract matches the release's effective rollout size, horizon, logical minibatches and gradient-update density; accumulation changes physical execution, not the number of weight updates.
 
