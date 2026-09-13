@@ -144,6 +144,15 @@ The lower-level preparation helper is also YAML-only:
 .venv/bin/python scripts/prepare_malecns_connectome.py --config configs/connectome/malecns_4310.yaml
 ```
 
+Evaluate the completed billion-step adapters-only and neuron-gains checkpoints and generate three high-resolution videos per policy:
+
+```bash
+.venv/bin/python scripts/run_connectome_evaluation.py \
+  --config configs/connectome/evaluation/adaptation_1b_final_highres.yaml
+```
+
+The evaluation YAML owns the explicit checkpoint and resolved-policy-config paths, GPU queues, case list, episode count, success tolerances, output directory, and video resolution/frame rate. The parent schedules cases across GPUs 0 and 1, generates an auditable `case.yaml` for every policy/metric/task cell, and invokes `dextoolbench/eval_worker_isaacgym.py`. The worker loads one policy and trajectory, runs Isaac Gym, computes raw/shaped reward and waypoint progress, and writes the requested MP4. Video is enabled only for the paper-metric pass so the stricter metric does not create duplicate movies.
+
 ## Configuration ownership
 
 `configs/connectome/malecns_4310.yaml` owns source URLs and hashes, expected graph dimensions, normalization, deterministic control seeds, and artifact paths. Hydra train profiles under `isaacgymenvs/cfg/train/` own network construction and SAPG settings. `params.network.connectome` owns graph variant, interface partitions, adapters, recurrent dynamics, plasticity, numerical dtype, and validation counts.

@@ -1,6 +1,6 @@
 # Billion-Step Adaptation Run
 
-The active adapters-only and neuron-gains policies reproduce the released checkpoint's effective rollout and logical optimizer schedule with rollout and gradient accumulation. They use the default fused Triton recurrence and run concurrently, with one independent SAPG child on each physical GPU. The original LSTM control remains deferred.
+The completed adapters-only and neuron-gains policies reproduce the released checkpoint's effective rollout and logical optimizer schedule with rollout and gradient accumulation. They use the default fused Triton recurrence and ran concurrently, with one independent SAPG child on each physical GPU. The original LSTM control remains deferred.
 
 Last updated: 2026-09-13
 
@@ -62,6 +62,40 @@ For external progress references and remaining source limitations, see [SimToolR
 
 The earlier 12,288-environment exploratory jobs were stopped by request after logged frames 139,788,288 for adapters-only and 144,113,664 for neuron-gains. Their latest saved checkpoints are epoch/frame 692/136,052,736 and 734/144,310,272, respectively; the high-resolution evaluation below uses checkpoint metadata rather than the later unsaved log position.
 
+## Comparison with the stopped exploratory run
+
+Both contracts schedule eight actor and eight critic optimizer calls per update phase: four logical minibatches repeated for two PPO mini-epochs. Their fresh-data denominators differ. The exploratory contract updates after one `12,288 x 16 = 196,608`-frame rollout, or one scheduled optimizer call per 24,576 frames. The release-matched contract updates after two such rollouts, or one call per 49,152 frames. Had the exploratory contract reached its cap, it would have scheduled 40,688 calls; the release-matched contract scheduled 20,344.
+
+Checkpoint inspection distinguishes scheduled calls from actor Adam steps actually applied:
+
+| Contract and policy | Checkpoint epoch | Checkpoint frames | Scheduled actor calls | Applied actor Adam steps |
+| --- | ---: | ---: | ---: | ---: |
+| exploratory adapters-only | 692 | 136,052,736 | 5,536 | 5,534 |
+| exploratory neuron-gains | 734 | 144,310,272 | 5,872 | 5,870 |
+| release-matched adapters-only | 2,543 | 999,948,288 | 20,344 | 20,335 |
+| release-matched neuron-gains | 2,543 | 999,948,288 | 20,344 | 20,335 |
+
+The two missed exploratory steps and nine missed release-matched steps are mixed-precision actor updates suppressed by `GradScaler`. The central critic schedules the same number of calls as the actor but does not serialize its optimizer state, so only its call count is established.
+
+At the exploratory logs' final frame coordinates, raw `rewards/step` was 61.548 for exploratory versus 57.330 for release-matched adapters-only at frame 140,771,328. It was 74.112 for exploratory neuron-gains at frame 144,113,664 versus 59.417 for release-matched neuron-gains at the nearest stored coordinate, 143,917,056. The release-matched runs later ended at 80.178 and 107.645. These are not isolated actor comparisons: the exploratory jobs use twice the optimizer-update density, exploration scale 0.002, force scale 20, torque scale 2, and no force decay; the final jobs use the released-checkpoint settings documented above.
+
+All scalar series in the four relevant event files use the integer passed as TensorBoard `global_step`. In this SAPG loop it is the environment-frame counter before the current update phase is added. Thus the Step axis is comparable in environment-interaction units, with a one-phase left offset: 196,608 frames for exploratory points and 393,216 for release-matched points. The latter is also sampled half as often. The tags ending in `/step`, `/iter`, and `/time` are aliases written at exactly the same global-step values; their suffixes do not create iteration or elapsed-time axes. TensorBoard's Wall and Relative display modes compare elapsed clock time rather than sample exposure and should only be used for throughput. Checkpoint `frame` is the exact post-phase count.
+
 ## Partial-checkpoint high-resolution evaluation
 
 `configs/connectome/evaluation/adaptation_1b_partial_highres.yaml` generated three additional 800x450 H.264 videos per policy: `sharpie_marker/write_c`, `flat_eraser/wipe_smile`, and `flat_spatula/flip_over`. Videos contain 118--200 frames at 20 FPS; shorter files reflect early episode termination. Both policies reached one of 45 waypoints on the spatula case (2.22% Task Progress) and zero on the other two, yielding 0.741% mean progress. Mean raw rewards were 47.342 for adapters-only and 32.434 for neuron-gains. All six files are nonempty, and sampled frames were visually inspected.
+
+## Final-checkpoint high-resolution evaluation
+
+`configs/connectome/evaluation/adaptation_1b_final_highres.yaml` evaluates the two epoch-2,543 checkpoints on the same three cases. It records video during the paper Task Progress pass at 0.02 m and separately runs the repository `avg_goal_pct` threshold at 0.01 m. Each cell contains one stochastic episode, so reward changes are descriptive rather than a statistically reliable policy ranking.
+
+| Metric | adapters-only | neuron-gains |
+| --- | ---: | ---: |
+| paper Task Progress, mean | 0.741% | 0.741% |
+| paper-pass mean raw reward | 51.512 | 207.312 |
+| repository `avg_goal_pct`, mean | 0.000% | 0.000% |
+| repository-pass mean raw reward | 53.113 | 315.426 |
+
+Both policies again completed one of 45 spatula waypoints and no marker or eraser waypoints at 0.02 m. Relative to the partial checkpoints, the paper-pass raw reward changed from 47.342 to 51.512 for adapters-only and from 32.434 to 207.312 for neuron-gains, while Task Progress did not change. The stricter metric was not run for the partial checkpoints and therefore has no matched earlier value.
+
+The six final MP4s are nonempty H.264 at 800x450 and 20 FPS. Adapters-only produced three 200-frame, 10-second files; neuron-gains produced 145-, 171-, and 185-frame files because those episodes terminated early. First, middle, and final frames from every file were visually inspected and show distinct simulator states with the requested tool present.

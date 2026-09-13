@@ -6,6 +6,12 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] evaluate | Final-policy high-resolution videos and run comparison
+
+Evaluated the completed epoch-2,543 adapters-only and neuron-gains checkpoints on matched marker, eraser, and spatula cases. Generated three 800x450, 20 FPS H.264 videos per policy and verified codec, dimensions, nonempty files, frame counts, and first/middle/final rendered states. Both policies averaged 0.741% paper Task Progress at 0.02 m and 0% repository `avg_goal_pct` at 0.01 m. Paper-pass mean raw reward was 51.512 for adapters-only and 207.312 for neuron-gains; these are single stochastic episodes per case and did not translate into higher waypoint completion.
+
+Compared checkpoint Adam counters and event streams with the stopped exploratory jobs. The old checkpoints applied 5,534 adapters-only and 5,870 neuron-gains actor steps; the completed jobs applied 20,335 each. The exploratory schedule used one optimizer call per 24,576 fresh frames, twice the release-matched run's update density of one per 49,152. TensorBoard Step coordinates are comparable environment-frame counts with a one-update-phase left offset, while the `/step`, `/iter`, and `/time` tag variants all receive the same global-step value.
+
 ## [2026-09-13] complete | Release-matched billion-step policies
 
 Both rollout-accumulated policies completed 2,543 update phases and 999,948,288 environment frames. Adapters-only trained in 12,258.462 seconds and neuron-gains in 12,490.291 seconds; both final checkpoints passed finite `(1, 29)` deployment reload verification. Final raw `rewards/step` values were 80.1783 and 107.6453, while training `success_ratio/frame` values at the 0.075 m curriculum tolerance were 0.000001628 and 0.000008138.
