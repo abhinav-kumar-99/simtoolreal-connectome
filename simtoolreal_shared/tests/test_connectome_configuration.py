@@ -281,6 +281,7 @@ def test_capped_evaluation_contract_owns_metrics_and_videos() -> None:
     assert evaluation["gpu_assignments"] == [0, 1]
     assert evaluation["max_parallel"] == 2
     assert evaluation["episodes_per_case"] == 1
+    assert evaluation["action_selection"] == "mean"
     assert evaluation["metrics"]["paper_task_progress"]["success_tolerance_m"] == 0.02
     assert (
         evaluation["metrics"]["repository_avg_goal_pct"]["success_tolerance_m"]
@@ -299,6 +300,7 @@ def test_partial_high_resolution_evaluation_uses_explicit_checkpoints() -> None:
         ).read_text()
     )
     assert set(evaluation["policy_sources"]) == {"adapters_only", "neuron_gains"}
+    assert evaluation["action_selection"] == "mean"
     assert evaluation["videos"]["camera_resolution_reduction_factor"] == 2
     assert evaluation["videos"]["frame_interval"] == 3
     assert len(evaluation["eval_cases"]) == 3
@@ -313,6 +315,7 @@ def test_final_high_resolution_evaluation_uses_completed_checkpoints() -> None:
         ).read_text()
     )
     assert set(evaluation["policy_sources"]) == {"adapters_only", "neuron_gains"}
+    assert evaluation["action_selection"] == "mean"
     assert all(
         "ep_2543" in source["checkpoint_path"]
         for source in evaluation["policy_sources"].values()

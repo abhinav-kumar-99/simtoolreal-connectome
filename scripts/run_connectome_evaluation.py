@@ -129,6 +129,11 @@ def run(config: dict) -> dict:
     output_directory.mkdir(parents=True, exist_ok=True)
     policies, training_directory, suite_results = _resolve_policies(config)
     requested_policies = config.get("policies", list(policies))
+    action_selection = str(config.get("action_selection", "mean"))
+    if action_selection not in {"mean", "sample"}:
+        raise ValueError("action_selection must be 'mean' or 'sample'")
+    if action_selection != "mean":
+        raise ValueError("Evaluation video capture requires action_selection: mean")
     gpus = [int(gpu) for gpu in config["gpu_assignments"]]
     max_parallel = int(config.get("max_parallel", len(gpus)))
     if not 1 <= max_parallel <= len(gpus):
@@ -172,6 +177,8 @@ def run(config: dict) -> dict:
                     "downsample_factor": int(config["downsample_factor"]),
                     "z_offset": float(config["z_offset"]),
                     "max_steps": int(config["max_steps"]),
+                    "action_selection": action_selection,
+                    "deterministic_actions": action_selection == "mean",
                     "record_video": record_video,
                     "video_fps": int(config["videos"]["fps"]),
                     "video_frame_interval": int(config["videos"]["frame_interval"]),
@@ -260,6 +267,7 @@ def run(config: dict) -> dict:
         "video_counts": video_counts,
         "evaluated_cases": config["eval_cases"],
         "episodes_per_case": int(config["episodes_per_case"]),
+        "action_selection": action_selection,
     }
     (output_directory / "summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n"

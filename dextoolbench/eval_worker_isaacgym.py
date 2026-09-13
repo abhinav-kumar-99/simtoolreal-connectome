@@ -46,6 +46,14 @@ def _capture_frame(env) -> np.ndarray:
 
 def run(config: dict) -> dict:
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    action_selection = str(config["action_selection"])
+    deterministic_actions = bool(config["deterministic_actions"])
+    if deterministic_actions != (action_selection == "mean"):
+        raise ValueError(
+            "deterministic_actions must be true exactly when action_selection is mean"
+        )
+    if bool(config["record_video"]) and not deterministic_actions:
+        raise ValueError("Video capture requires deterministic mean actions")
     config_path = Path(config["policy_config_path"])
     checkpoint_path = Path(config["checkpoint_path"])
     output_path = Path(config["output_path"])
@@ -134,7 +142,10 @@ def run(config: dict) -> dict:
                 config["video_frame_interval"]
             ) == 0:
                 frames.append(_capture_frame(env))
-            action = policy.get_normalized_action(obs, deterministic_actions=True)
+            action = policy.get_normalized_action(
+                obs,
+                deterministic_actions=deterministic_actions,
+            )
             obs_dict, reward, dones, _ = env.step(action)
             obs = obs_dict["obs"]
             episode_reward += float(reward[0].item())
@@ -174,6 +185,7 @@ def run(config: dict) -> dict:
         "object_category": config["object_category"],
         "object_name": config["object_name"],
         "task_name": config["task_name"],
+        "action_selection": config["action_selection"],
         "episodes": episode_results,
         "mean_raw_reward": float(np.mean([x["raw_reward"] for x in episode_results])),
         "mean_shaped_reward": float(

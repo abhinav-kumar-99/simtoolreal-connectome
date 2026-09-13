@@ -17,6 +17,7 @@ policies: [adapters_only, neuron_gains]
 gpu_assignments: [0, 1]
 max_parallel: 2
 episodes_per_case: 1
+action_selection: mean
 downsample_factor: 1
 z_offset: 0.03
 max_steps: 601
