@@ -25,3 +25,24 @@ def test_milestone_checkpoint_name_round_trip() -> None:
         "actual": 99_999_940_608,
         "epoch": 508_626,
     }
+
+
+def test_watcher_writes_waiting_status_before_first_checkpoint(tmp_path: Path) -> None:
+    from scripts.run_connectome_milestone_evaluation import run
+
+    output = tmp_path / "evaluations"
+    result = run(
+        {
+            "schema_version": 1,
+            "training_suite_name": "not_started",
+            "training_suite_directory": str(tmp_path / "training"),
+            "output_directory": str(output),
+            "max_frames": 1_000,
+            "milestone_interval_frames": 250,
+            "watch_until_complete": False,
+            "policies": [{"name": "gains", "seed": 42, "gpu": 0}],
+            "evaluation": {"eval_cases": [{"task_name": "unused"}]},
+        }
+    )
+    assert result["status"] == "running"
+    assert (output / "milestone_status.json").is_file()

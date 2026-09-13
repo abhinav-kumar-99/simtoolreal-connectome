@@ -141,6 +141,7 @@ def run(config: dict) -> dict:
         previous = json.loads(state_path.read_text())
         state["completed"] = previous.get("completed", {})
         state["failures"] = previous.get("failures", {})
+    _write_json(state_path, state)
 
     poll_seconds = float(config.get("poll_interval_seconds", 30))
     watch = bool(config.get("watch_until_complete", True))
