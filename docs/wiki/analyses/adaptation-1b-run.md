@@ -87,7 +87,7 @@ All scalar series in the four relevant event files use the integer passed as Ten
 
 ## Final-checkpoint high-resolution evaluation
 
-`configs/connectome/evaluation/adaptation_1b_final_highres.yaml` evaluates the two epoch-2,543 checkpoints on the same three cases. It records video during the paper Task Progress pass at 0.02 m and separately runs the repository `avg_goal_pct` threshold at 0.01 m. Each cell contains one stochastic episode, so reward changes are descriptive rather than a statistically reliable policy ranking.
+`configs/connectome/evaluation/adaptation_1b_final_highres.yaml` evaluates the two epoch-2,543 checkpoints on the same three cases. It sets `action_selection: mean`; the parent emits `deterministic_actions: true`, and the continuous PPO player therefore executes the Gaussian mean `mu` rather than sampling from its exploration distribution. The worker rejects any attempt to record a video with sampled actions. It records video during the paper Task Progress pass at 0.02 m and separately runs the repository `avg_goal_pct` threshold at 0.01 m. Each cell contains one deterministic-policy episode, although simulator/environment state can still make a one-episode comparison insufficient for statistical policy ranking.
 
 | Metric | adapters-only | neuron-gains |
 | --- | ---: | ---: |
@@ -98,4 +98,4 @@ All scalar series in the four relevant event files use the integer passed as Ten
 
 Both policies again completed one of 45 spatula waypoints and no marker or eraser waypoints at 0.02 m. Relative to the partial checkpoints, the paper-pass raw reward changed from 47.342 to 51.512 for adapters-only and from 32.434 to 207.312 for neuron-gains, while Task Progress did not change. The stricter metric was not run for the partial checkpoints and therefore has no matched earlier value.
 
-The six final MP4s are nonempty H.264 at 800x450 and 20 FPS. Adapters-only produced three 200-frame, 10-second files; neuron-gains produced 145-, 171-, and 185-frame files because those episodes terminated early. First, middle, and final frames from every file were visually inspected and show distinct simulator states with the requested tool present.
+The six final MP4s were regenerated after making mean-action selection explicit in all case and result artifacts. Their metrics and frame counts exactly matched the original deterministic outputs. They are nonempty H.264 at 800x450 and 20 FPS. Adapters-only produced three 200-frame, 10-second files; neuron-gains produced 145-, 171-, and 185-frame files because those episodes terminated early. First, middle, and final frames from every regenerated file were visually inspected and show distinct simulator states with the requested tool present.

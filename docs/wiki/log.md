@@ -6,6 +6,10 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] evaluate | Enforce mean-action video evaluation
+
+Verified that the existing evaluation worker passed `deterministic_actions=True` and that the continuous PPO player maps this path to the predicted Gaussian mean `mu`, not a sampled action. Made `action_selection: mean` explicit in all evaluation YAMLs and generated case/result artifacts, and added parent/worker guards that reject sampled-action video capture or inconsistent flags. Regenerated all six final videos; metrics and frame counts exactly matched the prior deterministic artifacts. All case/result contracts, codecs, resolutions, and sampled visual frames passed reinspection.
+
 ## [2026-09-13] evaluate | Final-policy high-resolution videos and run comparison
 
 Evaluated the completed epoch-2,543 adapters-only and neuron-gains checkpoints on matched marker, eraser, and spatula cases. Generated three 800x450, 20 FPS H.264 videos per policy and verified codec, dimensions, nonempty files, frame counts, and first/middle/final rendered states. Both policies averaged 0.741% paper Task Progress at 0.02 m and 0% repository `avg_goal_pct` at 0.01 m. Paper-pass mean raw reward was 51.512 for adapters-only and 207.312 for neuron-gains; these are single stochastic episodes per case and did not translate into higher waypoint completion.

@@ -151,7 +151,7 @@ Evaluate the completed billion-step adapters-only and neuron-gains checkpoints a
   --config configs/connectome/evaluation/adaptation_1b_final_highres.yaml
 ```
 
-The evaluation YAML owns the explicit checkpoint and resolved-policy-config paths, GPU queues, case list, episode count, success tolerances, output directory, and video resolution/frame rate. The parent schedules cases across GPUs 0 and 1, generates an auditable `case.yaml` for every policy/metric/task cell, and invokes `dextoolbench/eval_worker_isaacgym.py`. The worker loads one policy and trajectory, runs Isaac Gym, computes raw/shaped reward and waypoint progress, and writes the requested MP4. Video is enabled only for the paper-metric pass so the stricter metric does not create duplicate movies.
+The evaluation YAML owns the explicit checkpoint and resolved-policy-config paths, GPU queues, case list, episode count, action selection, success tolerances, output directory, and video resolution/frame rate. `action_selection: mean` maps to `deterministic_actions: true`, which makes the continuous PPO player execute its Gaussian mean `mu`; the evaluator rejects sampled-action video capture. The parent schedules cases across GPUs 0 and 1, generates an auditable `case.yaml` for every policy/metric/task cell, and invokes `dextoolbench/eval_worker_isaacgym.py`. The worker loads one policy and trajectory, runs Isaac Gym, computes raw/shaped reward and waypoint progress, and writes the requested MP4. Video is enabled only for the paper-metric pass so the stricter metric does not create duplicate movies.
 
 ## Configuration ownership
 
