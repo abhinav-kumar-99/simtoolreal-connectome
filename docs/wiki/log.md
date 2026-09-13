@@ -131,3 +131,7 @@ Persisted the complete analysis in `analyses/front-leg-pathway-coverage.md`, lin
 ## [2026-09-13] query | Meaning of omitted cells and connections
 
 Extended the pathway audit's interpretation using its completed edge and cell tables. Partitioned new connections by endpoint membership, identified new 09A-to-proprioceptor connections and actual omitted motor labels, and clarified that the omitted DNg12_a variant has `nt` rather than `fl` subclass. Linked the 23B spatial-touch study while preserving the cross-dataset/subtype evidence boundary. These are anatomical candidates, not proven missing control functions; no code or actor changes were made.
+
+## [2026-09-13] query | Complete-circuit expansion scope
+
+Before implementing an unrestricted completion request, measured incoming closure of the 4,778-cell seed against all traced public MaleCNS neurons and the audit's explicit VNC compartments, using >=1-contact edges and confidence >=0.5. Iterations reached 22,897, 23,960, 23,970 and 23,971 neurons, then stabilized; the induced graph contains 3,864,279 edges. Documented the resulting VNC-wide scope, changed threshold, unknown/nonstandard transmitter labels and need to settle the anatomical boundary before changing the actor. No training, graph replacement or expanded profile was deployed.

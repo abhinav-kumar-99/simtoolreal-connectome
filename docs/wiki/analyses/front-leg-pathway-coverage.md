@@ -79,6 +79,18 @@ The [FeCO study](https://pmc.ncbi.nlm.nih.gov/articles/PMC12048489/) identifies 
 
 The most useful next candidate for anatomical review is the 4,589-cell set, but it is not a fully specified preserved grooming controller. Resolve the exact claw/hook and inhibitory subtypes, examine omitted partners and disconnected candidates, and use axonal target anatomy rather than soma location before choosing a deployable graph. The 4,778-cell touch extension is relevant only with an appropriate tactile interface; the existing 140-feature robot observation does not contain explicit tactile forces/contact sensors.
 
+## Unrestricted upstream completion boundary
+
+A follow-up request to add everything missing was checked before changing the actor. Starting from the 4,778-cell coordination-and-touch candidate, recursively add every presynaptic partner among public `status: Traced` neurons plus the original IDs. Use the same explicit VNC primary-post ROI list and confidence >=0.5 as the audit, retaining all positive connection counts (minimum one synaptic contact, rather than the candidate table's five). This is a structural incoming-closure test, not a functional pathway identification.
+
+Streaming the pinned public partner file yields 3,869,530 connections whose endpoints are both in that allowed universe. Successive upstream expansions contain 22,897, 23,960, 23,970 and 23,971 cells; another iteration adds none. The resulting induced graph has **23,971 neurons and 3,864,279 directed cell-pair connections**. This is about 5.56 times the production state size and 32.5 times its edge count, with the edge comparison also reflecting the lower threshold. These counts are not the five-synapse counts reported above.
+
+The annotated closure contains 13,143 VNC intrinsic neurons, 6,324 VNC sensory neurons, 1,831 ascending neurons, 1,305 descending neurons, 686 VNC motor neurons, and other classes. It therefore extends well beyond the two front legs. A zero omitted-input boundary within this traced-neuron/ROI/confidence universe requires a substantially broader controller than the discussed front-leg candidate; it still excludes brain synapses, untraced fragments, and unobserved physiology.
+
+The public neurotransmitter table (`body-neurotransmitters-male-cns-v1.0.feather`, SHA-256 `95c9289220663abeb3409f3ad9e5a7f8a53f8093f5139d15502cd08da8879621`) matches all but five closure IDs. Consensus labels include 1,253 `unclear`, 50 octopamine, 20 serotonin and six histamine cells, alongside acetylcholine, GABA and glutamate. The original blanket non-cholinergic inhibitory convention would be a consequential modelling assumption at this scale, not a validated representation of all those effects.
+
+No expansion was deployed or active profile changed. The choice between VNC-wide incoming closure and a bounded front-leg circuit requires an explicit scope decision; a complete biological front-leg controller has not been established by these graph operations.
+
 ## Running and outputs
 
 From the repository root:
