@@ -40,6 +40,10 @@ def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
                     == 140
                 )
                 assert config.train.params.network.connectome.expected.neurons == 4310
+                assert (
+                    config.train.params.network.connectome.operator_backend
+                    == "native_csr"
+                )
 
 
 def test_suite_contracts_own_required_execution_settings() -> None:
@@ -62,3 +66,28 @@ def test_suite_contracts_own_required_execution_settings() -> None:
         assert "gpu_assignments" in training
         assert "checkpoint" in training
         assert "wandb" in training
+
+
+def test_backend_profile_is_yaml_owned_and_covers_all_operators() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    suite_directory = repository_root / "configs/connectome/suites"
+    profiling_directory = repository_root / "configs/connectome/profiling"
+    suite = yaml.safe_load((suite_directory / "backend_profiling.yaml").read_text())
+    profile = yaml.safe_load(
+        (profiling_directory / "recurrent_backends.yaml").read_text()
+    )
+    assert suite["stages"] == ["prepare", "profile"]
+    assert suite["profiling"]["config"].endswith("recurrent_backends.yaml")
+    assert {actor["operator_backend"] for actor in profile["actors"]} == {
+        "native_csr",
+        "native_coo",
+        "dense",
+        "torch_sparse",
+    }
+    assert {
+        (shape["num_sequences"], shape["sequence_length"])
+        for shape in profile["shapes"]
+    } == {
+        (384, 1),
+        (384, 16),
+    }

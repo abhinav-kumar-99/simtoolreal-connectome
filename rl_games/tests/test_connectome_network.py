@@ -34,12 +34,17 @@ def artifact_path(tmp_path):
     return path
 
 
-def _network_params(artifact_path, plasticity_mode="neuron_gains"):
+def _network_params(
+    artifact_path,
+    plasticity_mode="neuron_gains",
+    operator_backend="native_csr",
+):
     return {
         "name": "connectome_actor_critic",
         "connectome": {
             "artifact_path": str(artifact_path),
             "graph_variant": "test",
+            "operator_backend": operator_backend,
             "dtype": "float32",
             "expected": {
                 "neurons": 7,
@@ -77,9 +82,20 @@ def _network_params(artifact_path, plasticity_mode="neuron_gains"):
     }
 
 
-def _build(artifact_path, plasticity_mode="neuron_gains", num_seqs=2):
+def _build(
+    artifact_path,
+    plasticity_mode="neuron_gains",
+    num_seqs=2,
+    operator_backend="native_csr",
+):
     builder = ConnectomeBuilder()
-    builder.load(_network_params(artifact_path, plasticity_mode))
+    builder.load(
+        _network_params(
+            artifact_path,
+            plasticity_mode,
+            operator_backend,
+        )
+    )
     return builder.build(
         "connectome",
         actions_num=2,
@@ -127,6 +143,55 @@ def test_sparse_step_matches_dense_reference(artifact_path) -> None:
         + network.recurrent_bias
     )
     torch.testing.assert_close(sparse_result, dense_result, rtol=1e-6, atol=1e-6)
+
+
+@pytest.mark.parametrize("operator_backend", ["native_coo", "dense", "torch_sparse"])
+def test_recurrent_backends_match_native_csr(
+    artifact_path,
+    operator_backend,
+) -> None:
+    if operator_backend == "torch_sparse":
+        pytest.importorskip("torch_sparse")
+    torch.manual_seed(11)
+    reference = _build(artifact_path, operator_backend="native_csr")
+    candidate = _build(artifact_path, operator_backend=operator_backend)
+    candidate.load_state_dict(reference.state_dict())
+    observations = _observations(4)
+    initial_state = (torch.randn(1, 2, 7),)
+    input_dict = {
+        "obs": observations,
+        "rnn_states": initial_state,
+        "seq_length": 2,
+    }
+    reference_outputs = reference(input_dict)
+    candidate_outputs = candidate(input_dict)
+    for expected, actual in zip(reference_outputs[:3], candidate_outputs[:3]):
+        torch.testing.assert_close(expected, actual, rtol=1.0e-5, atol=1.0e-6)
+    torch.testing.assert_close(
+        reference_outputs[3][0],
+        candidate_outputs[3][0],
+        rtol=1.0e-5,
+        atol=1.0e-6,
+    )
+    assert candidate.recurrent_matrix() is candidate.recurrent_matrix()
+
+    reference_loss = sum(output.square().mean() for output in reference_outputs[:3])
+    candidate_loss = sum(output.square().mean() for output in candidate_outputs[:3])
+    reference_loss.backward()
+    candidate_loss.backward()
+    reference_parameters = dict(reference.named_parameters())
+    candidate_parameters = dict(candidate.named_parameters())
+    for name, expected in reference_parameters.items():
+        actual = candidate_parameters[name]
+        if expected.grad is None:
+            assert actual.grad is None
+        else:
+            torch.testing.assert_close(
+                expected.grad,
+                actual.grad,
+                rtol=1.0e-5,
+                atol=1.0e-6,
+            )
 
 
 def test_sequence_matches_steps_and_done_resets(artifact_path) -> None:

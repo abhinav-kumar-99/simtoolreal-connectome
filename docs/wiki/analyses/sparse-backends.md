@@ -1,28 +1,55 @@
-# Sparse Recurrent Backend Options
+# Sparse Recurrent Backend Benchmark
 
-The current PyTorch CSR implementation is the lowest-risk baseline; optimize and benchmark its kernel boundary before considering a JAX rewrite.
+The current PyTorch actor supports four numerically equivalent recurrent operators. `torch_sparse` was the fastest local actor backend, while native CSR remains the dependency-free default.
 
 Last updated: 2026-09-13
 
 Related: [Actor](../concepts/connectome-actor.md), [Workflow](../workflows/connectome-experiments.md)
 
-## Current evidence
+## Matched local results
 
-The fixed recurrent matrix is `4310 x 4310` with 118,920 edges, or 0.640% density. On the local RTX 4090, the actor-only length-16 profile measured 20.20 ms forward, 29.49 ms backward, and 713.8 MB peak allocated memory for the connectome. The LSTM measured 2.18 ms forward, 3.41 ms backward, and 295.1 MB. Sparse training performance, rather than parameter count, is therefore the current bottleneck.
+The fixed recurrent matrix is `4310 x 4310` with 118,920 edges, or 0.640% density. Every backend used the same actor shape, FP32 recurrent arithmetic, batch of 384, and three warmup plus ten measured iterations on one local RTX 4090. The `384 x 16` case represents 6,144 observations and includes forward and backward time.
+
+| Recurrent backend | Rollout forward, ms | Rollout obs/s | Train forward + backward, ms | Train obs/s | Peak train memory, MB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| native CSR | 1.152 | 333,217 | 31.729 | 193,641 | 711.9 |
+| native COO | 1.202 | 319,478 | 34.361 | 178,809 | 715.0 |
+| dense `torch.mm` | 0.862 | 445,646 | 19.835 | 309,748 | 788.7 |
+| `torch_sparse` | **0.780** | **492,418** | **17.327** | **354,601** | 822.2 |
+
+Against native CSR, `torch_sparse` reduced median rollout latency by 32.3% and length-16 forward-plus-backward latency by 45.4%, at the cost of 15.5% more measured peak training memory. Dense execution was second fastest despite the graph's low density. Native COO was slower than CSR.
+
+The separately matched unchanged LSTM profile measured 1.092 ms rollout latency and 4.743 ms length-16 forward-plus-backward latency with 295.1 MB peak training memory. Thus `torch_sparse` makes the connectome faster than the LSTM for one-step actor inference, but connectome backpropagation remains about 3.65 times slower and uses about 2.79 times the peak memory. These synthetic actor measurements do not include Isaac Gym or measure sample efficiency.
+
+Numerical tests load identical parameters into every backend and compare policy means, variances, values, recurrent state, and parameter gradients against native CSR. The recurrent operator is cached after construction and is rebuilt, rather than checkpointed, after a device or dtype move.
+
+## Backend decision
+
+Native CSR remains the production default because it needs no optional compiled package and has already passed the two-epoch Isaac Gym checkpoint/reload smoke gate. `torch_sparse` is the preferred performance candidate, but it should pass the same Isaac Gym smoke suite before becoming a full-training default. The dense control is a reasonable dependency-free performance alternative when the additional resident matrix and training memory fit.
 
 PyTorch officially supports autograd for CSR-times-dense `torch.sparse.mm`. This matches the recurrence: the biological CSR is fixed and gradients are needed only through the dense hidden state and the surrounding gains. NVIDIA cuSPARSE directly supports CSR SpMM, selectable algorithms, and reusable `cusparseSpMM_preprocess` state.
 
 JAX is not presently the preferred migration target. Its official documentation describes `jax.experimental.sparse` as experimental reference code, not recommended for performance-critical applications, and no longer actively developed; BCSR remains under development. A partial JAX actor would also cross the legacy Isaac Gym/PyTorch boundary every rollout step, while a complete migration would require rewriting SAPG and checkpoint/deployment integration.
 
-`torch-sparse` is the most plausible drop-in package to benchmark. It advertises GPU sparse-dense operations with autograd and provides wheels for PyTorch 2.4, but there is no project-specific evidence yet that it beats native CSR on this matrix and batch shape. CuPy exposes CSR operations but is not a drop-in autograd backend. Triton can implement custom GPU kernels but does not provide a general drop-in irregular-CSR recurrent layer.
+`torch-sparse` provides the best measured result here and advertises GPU sparse-dense operations with autograd. CuPy exposes CSR operations but is not a drop-in autograd backend. Triton can implement custom GPU kernels but does not provide a general drop-in irregular-CSR recurrent layer.
 
-## Recommended benchmark order
+## Reproduce
 
-1. Keep the PyTorch implementation and cache the constructed CSR tensor instead of recreating it on every recurrent step.
-2. Benchmark 32-bit CSR indices, native CSR algorithm/layout variations, and a dense `torch.mm` control at the exact rollout and `384 x 16` training shapes. At this matrix size, dense tensor-core execution may be competitive despite the low density and must be measured.
-3. Benchmark `torch-sparse` behind the same actor interface and numerical-equivalence tests.
-4. If native PyTorch remains limiting, implement a fixed-weight custom autograd operator using cuSPARSE: forward uses `W @ H`, backward uses a prebuilt `W^T @ dY`, with descriptors and preprocessing reused across all steps.
-5. Consider Triton only for a fused specialized kernel after profiling shows that SpMM plus gain/leak/activation launches dominate. Consider JAX only as part of an independently justified full training-stack port.
+For the repository's PyTorch 2.4 and CUDA 12.4 environment, install the optional matching binary wheels into the ignored virtual environment:
+
+```bash
+.venv/bin/python -m pip install torch-scatter torch-sparse \
+  -f https://data.pyg.org/whl/torch-2.4.0+cu124.html
+```
+
+Run the YAML-owned preparation and profiling stages:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/backend_profiling.yaml
+```
+
+`configs/connectome/profiling/recurrent_backends.yaml` owns actors, shapes, warmups, measured iterations, AMP, seed, and output path. `configs/connectome/suites/backend_profiling.yaml` owns the preparation stage and GPU assignment. The generated JSON is `profiles/connectome/recurrent_backends.json` and remains ignored.
 
 ## Primary references
 

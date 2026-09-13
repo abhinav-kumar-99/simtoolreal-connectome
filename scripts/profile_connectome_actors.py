@@ -24,7 +24,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     with path.open() as stream:
         result = yaml.safe_load(stream)
     if not isinstance(result, dict):
-        raise ValueError(f"Expected a YAML mapping in {path}")
+        raise TypeError(f"Expected a YAML mapping in {path}")
     return result
 
 
@@ -54,6 +54,8 @@ def _profile_case(
     from rl_games.algos_torch import model_builder
 
     network_params = _compose_network(actor["train_profile"], config["task_profile"])
+    if "operator_backend" in actor:
+        network_params["connectome"]["operator_backend"] = actor["operator_backend"]
     builder = model_builder.NetworkBuilder().load(network_params)
     sequence_count = int(shape["num_sequences"])
     sequence_length = int(shape["sequence_length"])
@@ -140,6 +142,7 @@ def _profile_case(
     return {
         "actor": actor["name"],
         "train_profile": actor["train_profile"],
+        "operator_backend": actor.get("operator_backend"),
         "shape": shape["name"],
         "num_sequences": sequence_count,
         "sequence_length": sequence_length,

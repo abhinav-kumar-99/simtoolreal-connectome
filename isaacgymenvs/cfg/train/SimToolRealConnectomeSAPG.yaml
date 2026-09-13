@@ -8,6 +8,7 @@ params:
     connectome:
       artifact_path: data/connectomes/processed/malecns_4310/biological.npz
       graph_variant: biological
+      operator_backend: native_csr
       dtype: float32
       expected:
         neurons: 4310

@@ -118,6 +118,19 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 "descending_indices", torch.from_numpy(descending_indices)
             )
             self.register_buffer("motor_indices", torch.from_numpy(motor_indices))
+            self.operator_backend = connectome.get("operator_backend", "native_csr")
+            supported_backends = {
+                "native_csr",
+                "native_coo",
+                "dense",
+                "torch_sparse",
+            }
+            if self.operator_backend not in supported_backends:
+                raise ValueError(
+                    f"Unknown operator_backend {self.operator_backend!r}; "
+                    f"expected one of {sorted(supported_backends)}"
+                )
+            self._cached_recurrent_operator: Any = None
 
             observations = connectome["observations"]
             self.sensory_ranges = _as_ranges(
@@ -295,7 +308,13 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
         def leaks(self) -> torch.Tensor:
             return torch.sigmoid(self.leak_raw)
 
-        def recurrent_matrix(self) -> torch.Tensor:
+        def _apply(self, fn, recurse: bool = True):
+            # The cached operator is reconstructed from persistent buffers after
+            # device or dtype moves, and is deliberately absent from checkpoints.
+            self._cached_recurrent_operator = None
+            return super()._apply(fn, recurse)
+
+        def _native_csr_matrix(self) -> torch.Tensor:
             return torch.sparse_csr_tensor(
                 self.crow_indices,
                 self.col_indices,
@@ -304,6 +323,60 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 device=self.recurrent_values.device,
                 dtype=torch.float32,
             )
+
+        def recurrent_matrix(self):
+            if self._cached_recurrent_operator is not None:
+                return self._cached_recurrent_operator
+            if self.operator_backend == "native_csr":
+                operator = self._native_csr_matrix()
+            elif self.operator_backend == "native_coo":
+                row_counts = self.crow_indices[1:] - self.crow_indices[:-1]
+                rows = torch.repeat_interleave(
+                    torch.arange(
+                        self.neuron_count,
+                        device=self.crow_indices.device,
+                        dtype=self.col_indices.dtype,
+                    ),
+                    row_counts,
+                )
+                operator = torch.sparse_coo_tensor(
+                    torch.stack((rows, self.col_indices)),
+                    self.recurrent_values,
+                    size=(self.neuron_count, self.neuron_count),
+                    device=self.recurrent_values.device,
+                    dtype=torch.float32,
+                ).coalesce()
+            elif self.operator_backend == "dense":
+                operator = self._native_csr_matrix().to_dense()
+            else:
+                try:
+                    from torch_sparse import SparseTensor
+                except ImportError as exc:
+                    raise ImportError(
+                        "operator_backend: torch_sparse requires the optional "
+                        "torch-scatter and torch-sparse wheels"
+                    ) from exc
+                operator = SparseTensor(
+                    rowptr=self.crow_indices,
+                    col=self.col_indices,
+                    value=self.recurrent_values,
+                    sparse_sizes=(self.neuron_count, self.neuron_count),
+                    is_sorted=True,
+                    trust_data=True,
+                )
+            self._cached_recurrent_operator = operator
+            return operator
+
+        def _recurrent_multiply(self, hidden: torch.Tensor) -> torch.Tensor:
+            projected = (self.outgoing_gains() * hidden).transpose(0, 1)
+            operator = self.recurrent_matrix()
+            if self.operator_backend == "torch_sparse":
+                recurrent = operator.matmul(projected)
+            elif self.operator_backend == "dense":
+                recurrent = torch.mm(operator, projected)
+            else:
+                recurrent = torch.sparse.mm(operator, projected)
+            return recurrent.transpose(0, 1)
 
         def _coefficient_rows(self, observations: torch.Tensor) -> torch.Tensor:
             coefficient = observations[:, self.coef_id_idx].float().unsqueeze(1)
@@ -341,10 +414,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 drive = hidden.new_zeros(hidden.shape)
                 drive = drive.index_add(1, self.sensory_indices, sensory_drive)
                 drive = drive.index_add(1, self.descending_indices, descending_drive)
-                recurrent = torch.sparse.mm(
-                    self.recurrent_matrix(),
-                    (self.outgoing_gains() * hidden).transpose(0, 1),
-                ).transpose(0, 1)
+                recurrent = self._recurrent_multiply(hidden)
                 preactivation = (
                     self.recurrent_gain * self.incoming_gains() * recurrent
                     + drive

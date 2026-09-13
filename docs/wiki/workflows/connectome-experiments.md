@@ -37,6 +37,17 @@ Run full-shape synthetic GPU profiling of the unchanged LSTM and primary connect
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/profiling.yaml
 ```
 
+Compare native CSR, native COO, dense, and `torch_sparse` recurrence using the same actor and rollout/training shapes. `torch_sparse` is optional and must match the environment's PyTorch and CUDA versions; for the pinned local PyTorch 2.4/CUDA 12.4 stack:
+
+```bash
+.venv/bin/python -m pip install torch-scatter torch-sparse \
+  -f https://data.pyg.org/whl/torch-2.4.0+cu124.html
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/backend_profiling.yaml
+```
+
+The suite file owns the GPU and stages. Its profiling helper config owns the backend list, batch/sequence shapes, warmup and measurement counts, AMP choice, seed, and ignored JSON output path. The actor implementation also accepts `params.network.connectome.operator_backend` with `native_csr`, `native_coo`, `dense`, or `torch_sparse`; production profiles default to `native_csr`.
+
 For a fast plumbing check on CPU, call the profiling helper directly:
 
 ```bash
@@ -81,4 +92,4 @@ The checked smoke gate met all four conditions. Its suite result is generated un
 
 ## Profiling interpretation
 
-On the local RTX 4090, the connectome actor uses 109,796 trainable parameters versus 7,811,468 for the LSTM. At batch 384, median one-step latency was 1.38 ms for the connectome and 1.50 ms for the LSTM. At 384 sequences by 16 steps, connectome forward/backward latencies were 20.20/29.49 ms and peak memory was 713.8 MB; the LSTM measured 2.18/3.41 ms and 295.1 MB. These are local synthetic actor-only measurements, not environment throughput or sample-efficiency results.
+On the local RTX 4090, the connectome actor uses 109,796 trainable parameters versus 7,811,468 for the LSTM. In the latest matched profile, native CSR measured 1.155 ms for one-step rollout and 31.950 ms for length-16 forward plus backward, compared with 1.092 ms and 4.743 ms for the LSTM. The backend suite measured `torch_sparse` at 0.780 ms and 17.327 ms respectively. These are local synthetic actor-only measurements, not environment throughput or sample-efficiency results.
