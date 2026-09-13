@@ -13,6 +13,7 @@ Related: [Overview](overview.md), [Log](log.md)
 ## Sources
 
 - [MaleCNS front-leg circuit](sources/summaries/malecns-front-leg-circuit.md) — Data identity and provenance. Last updated 2026-09-13.
+- [SimToolReal training references](sources/summaries/simtoolreal-training-references.md) — Published curve, upstream numerical study export, and released checkpoint metadata. Last updated 2026-09-13.
 
 ## Concepts
 

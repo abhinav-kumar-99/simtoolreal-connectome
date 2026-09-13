@@ -42,3 +42,5 @@ Port 6007 is used on the development host because port 6006 is occupied. The ope
 ## Live launch
 
 Both jobs were launched at 2026-09-13 12:17 EDT in the durable tmux session `connectome-1b`; TensorBoard was launched in `connectome-tensorboard`. The adapters-only and neuron-gains children both completed multiple epochs, occupied approximately 22.1 GB on GPU 0 and 21.7 GB on GPU 1, respectively, and emitted event files that TensorBoard discovered. Initial epoch times were approximately 1.9--2.1 seconds, projecting about 2.7--3.0 hours to the requested epoch count if throughput remains stable. This is launch evidence only; final checkpoint verification and elapsed timing remain pending.
+
+For external progress references and important configuration mismatches, see [SimToolReal training references](../sources/summaries/simtoolreal-training-references.md). In particular, matching by environment steps does not match optimizer updates: this 12,288-environment run performs twice as many actor updates per transition as the published 24,576-environment shape.

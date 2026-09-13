@@ -6,6 +6,12 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] query | SimToolReal training-progress references
+
+Audited the paper, main repository, released pretrained archive, and upstream transformer-study branch. Paper Figure 8 supplies a five-seed episode-reward curve through 9 billion environment steps but no raw history. The study branch supplies numerical seed-0 `rewards/step` CSV data through 874,217,472 frames on an easier cuboid-only environment. The released checkpoint is a resumed endpoint at frame 86,049,816,576 with `last_mean_rewards` 13,603.997 and no event files.
+
+Recorded that the live connectome series uses a compatible TensorBoard tag and frame axis but is not strictly paper matched: its half-size environment geometry doubles optimizer updates per environment step, and active exploration/perturbation settings differ from paper Table I. No running process or experiment configuration was changed.
+
 ## [2026-09-13] launch | Billion-step adapters and neuron-gains run
 
 Added a YAML-owned comparison that maps adapters-only to physical GPU 0 and neuron-gains to physical GPU 1. Each independent single-GPU SAPG child retains the validated 12,288-environment geometry and default Triton recurrence. The 5,086 complete epochs produce 999,948,288 environment steps and schedule 40,688 actor optimizer updates per policy without crossing the one-billion-step ceiling. Launch and completion are tracked separately.
