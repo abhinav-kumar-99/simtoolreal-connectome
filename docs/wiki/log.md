@@ -147,3 +147,7 @@ Before implementing an unrestricted completion request, measured incoming closur
 ## [2026-09-13] query | Neuron participation versus circuit completeness
 
 Checked actual production NPZ support and actor input/output masks: 4,281 neurons are reachable from robot input populations, 4,162 can reach motor readout, and 4,133 lie on an input-to-motor route; ten production neurons are isolated. Documented zero-state behavior for the 29 input-unreachable nodes under frozen zero biases, and the distinction between action connectivity and the all-state actor-value head. Missing external inputs do not imply inactivity. Kept production counts separate from reference-candidate isolates and structural reachability separate from functional validation.
+
+## [2026-09-13] query | Compact circuit size for fine motion
+
+Measured the union of explicitly selected functional candidate groups without preserving all original cells: 993 neurons without tactile afferents, 1,285 with them. The latter induced graph has 7,377 >=5-contact edges and 114 isolated cells, demonstrating that group selection alone omits connecting partners. Documented approximately 2,000 neurons as an untested engineering target, not an established minimum; distinguished the published 803-cell unilateral rhythm model from the desired bilateral dexterous controller. The user prefers the 4,778 candidate as the broader reference. No profile deployment or compact training was authorized or launched in this query.
