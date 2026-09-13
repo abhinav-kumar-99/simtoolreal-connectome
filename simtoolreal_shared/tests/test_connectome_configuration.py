@@ -204,8 +204,8 @@ def test_release_settings_suite_preserves_original_logical_update_schedule() -> 
     assert training["sapg_block_size"] == 4096
     assert training["minibatch_size"] == 98304
     assert training["central_critic_minibatch_size"] == 98304
-    assert training["actor_microbatch_size"] == 49152
-    assert training["central_critic_microbatch_size"] == 49152
+    assert training["actor_microbatch_size"] == 24576
+    assert training["central_critic_microbatch_size"] == 24576
     assert training["epochs"] == 2543
     assert training["num_envs"] * 16 * training["epochs"] == 999_948_288
     overrides = training["overrides"]
@@ -239,9 +239,9 @@ def test_release_settings_suite_routes_microbatches_without_changing_logical_bat
     assert (
         "train.params.config.central_value_config.minibatch_size=98304" in overrides
     )
-    assert "++train.params.config.microbatch_size=49152" in overrides
+    assert "++train.params.config.microbatch_size=24576" in overrides
     assert (
-        "++train.params.config.central_value_config.microbatch_size=49152"
+        "++train.params.config.central_value_config.microbatch_size=24576"
         in overrides
     )
 
