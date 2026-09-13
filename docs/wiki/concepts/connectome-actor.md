@@ -24,6 +24,37 @@ h_{t+1}=(1-\alpha)\odot h_t+\alpha\odot\tanh\left(0.9e^p\odot\left[W(e^q\odot h_
 
 Policy observations `0:125` and `137:140` form the 128-dimensional sensory input. Observations `125:137` form the 12-dimensional goal input. SAPG's learned 32-dimensional coefficient embedding is concatenated with the goal before the descending-neuron adapter. The 130 motor-neuron states alone feed the 29-dimensional action-mean head. Action log standard deviations remain coefficient-conditioned.
 
+## Robot-to-connectome interface
+
+The connectome is a recurrent wiring prior, not a literal fly sensor-to-muscle controller. Learned dense adapters establish the cross-species interface; PPO trains these adapters and the robot readout from task reward.
+
+The environment concatenates its 140 policy observations in this order:
+
+| Indices | Size | Quantity | Connectome route |
+| --- | ---: | --- | --- |
+| `0:29` | 29 | normalized arm and hand joint positions | sensory adapter |
+| `29:58` | 29 | arm and hand joint velocities | sensory adapter |
+| `58:87` | 29 | previous joint-position targets | sensory adapter |
+| `87:90` | 3 | palm position | sensory adapter |
+| `90:94` | 4 | palm quaternion | sensory adapter |
+| `94:98` | 4 | object quaternion | sensory adapter |
+| `98:113` | 15 | five fingertip positions relative to the palm | sensory adapter |
+| `113:125` | 12 | four object keypoints relative to the palm | sensory adapter |
+| `125:137` | 12 | four object keypoints relative to the goal | descending adapter |
+| `137:140` | 3 | object scale | sensory adapter |
+
+Thus the learned sensory matrix has shape `232 x 128`. It mixes the 128 selected robot features into drives for the 232 biological sensory neurons. The learned descending matrix has shape `1236 x 44`: 12 goal-error features plus SAPG's 32-dimensional exploration embedding drive the 1,236 descending neurons. There is no claimed one-to-one homology between a robot joint and a fly neuron.
+
+After one recurrent update, the runtime gathers only the 130 biological motor-neuron states. A learned `29 x 130` linear readout produces the Gaussian policy mean for seven arm commands and 22 hand commands. The coefficient-conditioned log standard deviation supplies exploration during training; the sampled action is clipped to `[-1, 1]` before entering the environment.
+
+The 29 policy outputs are normalized commands rather than joint angles. With the preserved default controller, the first seven are velocity-like increments from the previous arm target:
+
+\[
+\hat q^{arm}_{t+1}=\operatorname{clip}\left(q^{target}_t+1.5\,\Delta t\,a^{arm}_t, q_{min}, q_{max}\right),
+\]
+
+followed by the configured moving average. The final 22 commands are mapped linearly from `[-1, 1]` to each hand joint's physical limits and then smoothed and clamped. Isaac Gym receives the resulting 29-vector as its DOF position target. Observation and action delay queues remain those of the original SimToolReal environment.
+
 ## Profiles
 
 - `SimToolRealConnectomeSAPG`: biological topology with learned neuron gains, leak, bias, adapters, and heads.
