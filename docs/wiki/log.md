@@ -6,9 +6,11 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
-## [2026-09-13] configure | Billion-step adapters and neuron-gains run
+## [2026-09-13] launch | Billion-step adapters and neuron-gains run
 
 Added a YAML-owned comparison that maps adapters-only to physical GPU 0 and neuron-gains to physical GPU 1. Each independent single-GPU SAPG child retains the validated 12,288-environment geometry and default Triton recurrence. The 5,086 complete epochs produce 999,948,288 environment steps and schedule 40,688 actor optimizer updates per policy without crossing the one-billion-step ceiling. Launch and completion are tracked separately.
+
+Launched both workers in the durable `connectome-1b` tmux session and TensorBoard on port 6007 in `connectome-tensorboard`. Both children completed multiple epochs, held their intended primary 24 GB GPU allocations, and produced event streams visible to TensorBoard. Initial epoch timing projects roughly 2.7--3.0 hours; final artifacts and verification are pending.
 
 ## [2026-09-13] query | Connectome optimization budget
 
