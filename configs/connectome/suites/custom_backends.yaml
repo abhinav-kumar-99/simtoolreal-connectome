@@ -1,0 +1,14 @@
+schema_version: 1
+name: custom_backends
+stages: [prepare, profile]
+output_directory: profiles/connectome/custom_backends_suite
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+preparation:
+  config: configs/connectome/malecns_4310.yaml
+profiling:
+  config: configs/connectome/profiling/custom_backends.yaml
+  gpu: 1

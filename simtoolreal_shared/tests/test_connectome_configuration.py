@@ -16,6 +16,10 @@ def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
         "SimToolRealConnectomeFrozenSAPG": "connectome_actor_critic",
         "SimToolRealConnectomeRewiredSAPG": "connectome_actor_critic",
         "SimToolRealConnectomeRandomSAPG": "connectome_actor_critic",
+        "SimToolRealConnectomeGainsSAPG": "connectome_actor_critic",
+        "SimToolRealConnectomeLowRankSAPG": "connectome_actor_critic",
+        "SimToolRealConnectomeEdgewiseSAPG": "connectome_actor_critic",
+        "SimToolRealConnectomeGainsDynamicsSAPG": "connectome_actor_critic",
     }
     with initialize_config_dir(
         version_base="1.1", config_dir=str(repository_root / "isaacgymenvs/cfg")
@@ -44,6 +48,18 @@ def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
                     config.train.params.network.connectome.operator_backend
                     == "native_csr"
                 )
+                adaptation = config.train.params.network.connectome.adaptation
+                assert "plasticity_mode" not in config.train.params.network.connectome
+                if profile == "SimToolRealConnectomeSAPG":
+                    assert adaptation.weight_mode == "adapters_only"
+                    assert adaptation.learn_dynamics is False
+                if profile in {
+                    "SimToolRealConnectomeRandomSAPG",
+                    "SimToolRealConnectomeRewiredSAPG",
+                    "SimToolRealConnectomeGainsDynamicsSAPG",
+                }:
+                    assert adaptation.weight_mode == "neuron_gains"
+                    assert adaptation.learn_dynamics is True
 
 
 def test_suite_contracts_own_required_execution_settings() -> None:
@@ -91,3 +107,41 @@ def test_backend_profile_is_yaml_owned_and_covers_all_operators() -> None:
         (384, 1),
         (384, 16),
     }
+
+
+def test_custom_smoke_matrix_and_case_override_routing(tmp_path):
+    from scripts.run_connectome_suite import _training_overrides
+
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (repository_root / "configs/connectome/suites/custom_smoke.yaml").read_text()
+    )
+    training = suite["training"]
+    cases = training["train_profiles"]
+    assert len(cases) == len({case["name"] for case in cases}) == 10
+    assert training["epochs"] == 2 and training["num_envs"] == 384
+    for case in cases:
+        merged = dict(
+            training, overrides={**training["overrides"], **case["overrides"]}
+        )
+        overrides = _training_overrides(
+            merged, case["train_profile"], 42, case["name"], tmp_path
+        )
+        assert any(
+            item.startswith("train.params.network.connectome.operator_backend=")
+            for item in overrides
+        )
+
+
+def test_checkpoint_verification_rejects_partial_training(tmp_path):
+    import pytest
+    import torch
+
+    from scripts.run_connectome_suite import _verify_checkpoint
+
+    checkpoint = tmp_path / "partial.pth"
+    torch.save({"epoch": 1, "optimizer": {"state": {0: {"step": 1}}}}, checkpoint)
+    config = tmp_path / "resolved.yaml"
+    config.write_text("train:\n  params:\n    config:\n      max_epochs: 2\n")
+    with pytest.raises(RuntimeError, match="below requested"):
+        _verify_checkpoint(checkpoint, config, "cpu")

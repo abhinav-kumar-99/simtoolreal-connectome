@@ -6,6 +6,40 @@ Last updated: 2026-09-13
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
+## Adaptation and custom-kernel suites
+
+The primary actor now defaults to adapters-only with frozen leaks/biases. See [adaptation controls](../concepts/connectome-adaptation.md) for all modes, parameter counts and legacy compatibility.
+
+Run the matched custom-kernel benchmark from the repository root:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/custom_backends.yaml
+```
+
+Run full-training-shape memory/performance probes, with explicit OOM records:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/custom_capacity.yaml
+```
+
+Run ten short Isaac Gym jobs (four adaptation modes plus the gains/dynamics control, each with cuSPARSE and Triton):
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/custom_smoke.yaml
+```
+
+The new suites use physical GPU 1 sequentially and pin `CC`/`CXX` to system compilers through `runtime_environment`. On this host an inherited conda compiler otherwise fails compiling Triton's Python 3.8 launcher because its sysroot lacks `crypt.h`. Edit these compiler paths on other hosts. No environment package upgrade is required for the checked PyTorch 2.4/CUDA 12.4/Triton 3.0 stack.
+
+The suite entrypoint owns preparation, GPU assignment, child execution and checkpoint verification. `training.train_profiles` accepts either a profile string or `{name, train_profile, overrides}`; named cases get distinct run directories, and case overrides supersede shared overrides. The custom smoke suite uses `on_existing: skip`: existing checkpoints must match the resolved configuration, reach the requested epoch count and pass reload verification. `on_existing: fail` remains available. Choose a new output directory to repeat training rather than reverify it.
+
+The profiling helper `scripts/profile_connectome_actors.py` also accepts only `--config`, using `configs/connectome/profiling/custom_backends.yaml` or `custom_capacity.yaml`. Its YAML owns actor profiles, adaptation/backend overrides, shapes, warmups, repetitions, AMP, seed and output path. Every case resets initialization/input seeds; state hashes verify backend-matched parameters. It reports cold setup, forward/backward, optimizer-inclusive timing, memory and adaptation diagnostics. Results are saved incrementally with `status: running`; only `status: complete` is final. Capacity OOMs remain labeled failures, not smaller substituted batches.
+
+Backend helpers `connectome_ops.py`, `connectome_cusparse.cpp`, and `connectome_triton.py` are imported by the actor, not launched separately. [Their responsibilities and prerequisites](../concepts/connectome-adaptation.md#compute-implementation) explain how to select and build them. `scripts/prepare_malecns_connectome.py` remains the YAML-owned data/provenance helper.
+
+Outputs: `profiles/connectome/custom_backends.json`, `profiles/connectome/custom_capacity.json`, and `train_dir/connectome/custom_smoke/`. The smoke launcher writes progress, resolved configurations, logs and checkpoint reload verifications. These generated files remain ignored.
+
+`configs/connectome/suites/adaptation_full_training.yaml` prepares the matched three-seed learning comparison. It is not launched as part of backend validation. After smoke acceptance and a resource check, run it with the same suite entrypoint. It retains native CSR until a backend is explicitly chosen in its shared overrides; inspect the large environment/minibatch sizes before launching. The older `full_training.yaml` explicitly selects GainsDynamics for its biological trainable-core control so its frozen control stays distinct after the default change.
+
 ## Gates
 
 1. Prepare and validate the pinned graph artifacts.
@@ -90,6 +124,6 @@ Raw downloads, NPZ graphs, profiler JSON, W&B data, and training directories are
 
 The checked smoke gate met all four conditions. Its suite result is generated under `train_dir/connectome/smoke/`; the full actor measurements are generated under `profiles/connectome/`. Both locations remain untracked by design.
 
-## Profiling interpretation
+## Historical profiling interpretation, before the adapters-only default
 
 On the local RTX 4090, the connectome actor uses 109,796 trainable parameters versus 7,811,468 for the LSTM. In the latest matched profile, native CSR measured 1.155 ms for one-step rollout and 31.950 ms for length-16 forward plus backward, compared with 1.092 ms and 4.743 ms for the LSTM. The backend suite measured `torch_sparse` at 0.780 ms and 17.327 ms respectively. These are local synthetic actor-only measurements, not environment throughput or sample-efficiency results.

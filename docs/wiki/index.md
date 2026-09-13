@@ -25,7 +25,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Analyses
 
-- [Sparse recurrent backends](analyses/sparse-backends.md) — Evidence and benchmark order for PyTorch, JAX, torch-sparse, cuSPARSE, and Triton. Last updated 2026-09-13.
+- [Sparse recurrent backends](analyses/sparse-backends.md) — 160 benchmark cases, 32 capacity probes, memory tradeoffs and ten completed Isaac Gym smoke gates. Last updated 2026-09-13.
 
 ## Entities
 

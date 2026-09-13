@@ -25,6 +25,9 @@ dependencies = [
 [tool.setuptools.packages.find]
 include = ["rl_games*"]
 
+[tool.setuptools.package-data]
+"rl_games.algos_torch" = ["connectome_cusparse.cpp"]
+
 [project.optional-dependencies]
 atari = ["ale-py>=0.7", "AutoROM[accept-rom-license]>=0.4.2"]
 brax = ["brax>=0.0.13", "jax>=0.3.13"]

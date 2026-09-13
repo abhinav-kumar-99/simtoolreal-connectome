@@ -23,7 +23,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     with path.open() as stream:
         result = yaml.safe_load(stream)
     if not isinstance(result, dict):
-        raise ValueError(f"Expected a YAML mapping in {path}")
+        raise TypeError(f"Expected a YAML mapping in {path}")
     return result
 
 
@@ -95,6 +95,13 @@ def _verify_checkpoint(
         raise RuntimeError(
             "Checkpoint has no optimizer state; no completed update was recorded"
         )
+    resolved = OmegaConf.load(resolved_config_path)
+    expected_epoch = int(resolved.train.params.config.max_epochs)
+    checkpoint_epoch = int(state.get("epoch", -1))
+    if checkpoint_epoch < expected_epoch:
+        raise RuntimeError(
+            f"Checkpoint epoch {checkpoint_epoch} is below requested {expected_epoch}"
+        )
 
     from deployment.rl_player import RlPlayer
 
@@ -113,6 +120,8 @@ def _verify_checkpoint(
     return {
         "checkpoint": str(checkpoint_path),
         "optimizer_state_entries": len(optimizer_state),
+        "checkpoint_epoch": checkpoint_epoch,
+        "requested_epochs": expected_epoch,
         "deployment_action_shape": list(action.shape),
         "deployment_action_finite": True,
     }
@@ -136,8 +145,10 @@ def _training_overrides(
         f"train.params.config.expl_coef_block_size={int(training['sapg_block_size'])}",
         f"train.params.config.max_epochs={int(training['epochs'])}",
         f"train.params.config.minibatch_size={int(training['minibatch_size'])}",
-        "train.params.config.central_value_config.minibatch_size="
-        f"{int(training['central_critic_minibatch_size'])}",
+        (
+            "train.params.config.central_value_config.minibatch_size="
+            f"{int(training['central_critic_minibatch_size'])}"
+        ),
         f"++train.params.config.train_dir={run_directory / 'rl_runs'}",
         f"train.params.config.save_frequency={int(training['save_frequency'])}",
         f"train.params.config.save_best_after={int(training['save_best_after'])}",
@@ -173,27 +184,65 @@ def _run_training(
     profiles = training["train_profiles"]
     seeds = [int(seed) for seed in training["seeds"]]
     gpus = training["gpu_assignments"]
-    for run_index, (profile, seed) in enumerate(
-        (pair for profile in profiles for pair in [(profile, seed) for seed in seeds])
+    for run_index, (entry, seed) in enumerate(
+        (profile, seed) for profile in profiles for seed in seeds
     ):
+        # A mapping permits a backend/adaptation matrix without duplicating
+        # Hydra train files or colliding with another case's output directory.
+        profile = entry["train_profile"] if isinstance(entry, dict) else entry
+        case_name = entry["name"] if isinstance(entry, dict) else profile
+        case_training = dict(training)
+        case_training["overrides"] = dict(training.get("overrides", {}))
+        if isinstance(entry, dict):
+            case_training["overrides"].update(entry.get("overrides", {}))
         gpu = gpus[run_index % len(gpus)]
         # Legacy SAPG parses the leading numeric token as a fallback coefficient.
-        run_name = f"00_{config['name']}_{profile}_seed{seed}"
+        run_name = f"00_{config['name']}_{case_name}_seed{seed}"
         run_directory = suite_directory / run_name
+        overrides = _training_overrides(
+            case_training, profile, seed, run_name, run_directory.resolve()
+        )
+        resolved = _compose_resolved(overrides)
+        resolved_config_path = run_directory / "resolved_config.yaml"
+        verification_device = f"cuda:{gpu}" if isinstance(gpu, int) else "cuda:0"
         if run_directory.exists() and any(run_directory.iterdir()):
             if training["on_existing"] == "skip":
-                print(f"Skipping existing run {run_directory}")
+                if not resolved_config_path.exists() or OmegaConf.to_container(
+                    OmegaConf.load(resolved_config_path), resolve=True
+                ) != OmegaConf.to_container(resolved, resolve=True):
+                    raise RuntimeError(
+                        f"Cannot resume mismatched configuration: {run_directory}"
+                    )
+                checkpoints = sorted(
+                    (run_directory / "rl_runs" / run_name / "nn").glob("*.pth"),
+                    key=lambda path: path.stat().st_mtime,
+                )
+                if not checkpoints:
+                    raise RuntimeError(
+                        f"Existing run has no checkpoint to verify: {run_directory}"
+                    )
+                verification = _verify_checkpoint(
+                    checkpoints[-1], resolved_config_path, verification_device
+                )
+                (run_directory / "verification.json").write_text(
+                    json.dumps(verification, indent=2, sort_keys=True) + "\n"
+                )
+                results.append(
+                    {
+                        "profile": profile,
+                        "case": case_name,
+                        "seed": seed,
+                        "reverified": True,
+                        **verification,
+                    }
+                )
+                print(f"Verified existing checkpoint in {run_directory}", flush=True)
                 continue
             raise FileExistsError(
                 f"Run directory already exists: {run_directory}. "
                 "Change output_directory or set on_existing: skip."
             )
         run_directory.mkdir(parents=True, exist_ok=True)
-        overrides = _training_overrides(
-            training, profile, seed, run_name, run_directory.resolve()
-        )
-        resolved = _compose_resolved(overrides)
-        resolved_config_path = run_directory / "resolved_config.yaml"
         resolved_config_path.write_text(OmegaConf.to_yaml(resolved, resolve=True))
         command = [sys.executable, "-m", "isaacgymenvs.train", *overrides]
         environment = _environment(gpu)
@@ -215,11 +264,19 @@ def _run_training(
         (run_directory / "verification.json").write_text(
             json.dumps(verification, indent=2, sort_keys=True) + "\n"
         )
-        results.append({"profile": profile, "seed": seed, **verification})
+        results.append(
+            {"profile": profile, "case": case_name, "seed": seed, **verification}
+        )
+        (suite_directory / "training_progress.json").write_text(
+            json.dumps(results, indent=2, sort_keys=True) + "\n"
+        )
     return results
 
 
 def main() -> None:
+    # Parent checkpoint verification needs the same vendored package as children.
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+    sys.path.insert(0, str(REPOSITORY_ROOT / "rl_games"))
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, type=Path)
     args = parser.parse_args()
@@ -227,6 +284,8 @@ def main() -> None:
         args.config if args.config.is_absolute() else REPOSITORY_ROOT / args.config
     )
     config = _load_yaml(config_path)
+    for key, value in config.get("runtime_environment", {}).items():
+        os.environ[key] = str(value)
     if int(config.get("schema_version", 0)) != 1:
         raise ValueError("Unsupported suite schema_version")
 
