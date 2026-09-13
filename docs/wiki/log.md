@@ -8,9 +8,9 @@ Related: [Index](index.md), [Overview](overview.md)
 
 ## [2026-09-13] launch | 100B gains update-timing comparison
 
-Launched `gains_new_update_timing` on physical GPU 0 and `gains_old_update_timing` on physical GPU 1 in the durable `connectome-100b` tmux session. Both resolved to fused Triton, neuron gains, seed 42, released-checkpoint perturbations, and a 100-billion-frame cap. The children reached live update phases at about 20.2/15.9 GB GPU memory with no startup OOM. Initial 4.1--4.5 and 1.9--2.1 second phase times project about 12--13 days, subject to long-run drift.
+Launched `gains_new_update_timing` on physical GPU 0 and `gains_old_update_timing` on physical GPU 1 in the durable `connectome-100b` tmux session. Both resolved to fused Triton, neuron gains, seed 42, released-checkpoint perturbations, and a 100-billion-frame cap. The children reached live update phases at about 20.2/15.9 GB GPU memory with no startup OOM. Phase times increased from initial 4.1--4.5/1.9--2.1 seconds to about 10.8/5.2 seconds after the first environment-reset boundary, so the live ETA remains unsettled; recompute it after the first milestone.
 
-Launched the restartable mean-action milestone watcher in `connectome-100b-eval`; it will evaluate 400 targets per policy and create three 800x450 videos at each. Launched a separate TensorBoard server in `connectome-100b-tensorboard` on port 6008 with a 10,000-scalar reservoir. The first 250-million-frame checkpoints are expected in roughly 45 minutes; no milestone or completion claim has been made yet.
+Launched the restartable mean-action milestone watcher in `connectome-100b-eval`; it will evaluate 400 targets per policy and create three 800x450 videos at each. Launched a separate TensorBoard server in `connectome-100b-tensorboard` on port 6008 with a 10,000-scalar reservoir. No milestone or completion claim has been made yet.
 
 ## [2026-09-13] validate | Prepare 100B gains update-timing comparison
 
