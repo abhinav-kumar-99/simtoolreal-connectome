@@ -36,6 +36,16 @@ The mean raw rollout rewards across the three selected cases at the 2 cm definit
 
 This is not the paper's full evaluation protocol: the paper averages Task Progress over five rollouts and the repository contains 24 object-task combinations. The pilot uses three selected cases and one rollout per case to satisfy the requested video set. Conclusions about adaptation quality require materially longer training and the full matched evaluation cohort.
 
+## Interpreting the optimization budget
+
+The connectome changes the actor parameterization and permitted trainable weights; `a2c_continuous.py` still applies the SAPG/PPO actor objective and Adam. A frozen biological circuit is not a policy pretrained on robot tool use. Fewer trainable parameters alone therefore do not establish that fewer or more passes over each rollout are appropriate.
+
+The pilot collected only five rollout batches, corresponding to 80 control steps per environment slot before accounting for resets. More fresh rollout batches and more optimization passes over an existing batch are distinct interventions. A proposed next experiment is to retain two mini-epochs while increasing the fresh-experience budget, then compare actor mini-epochs 2 versus 4 with the critic schedule held fixed and matched environment-step and wall-time reporting. This is a proposal, not a launched experiment.
+
+Live event-file inspection found final logged `info/kl` values of 0.00123–0.00142 and `info/last_lr` of 0.0038443 across the five policies. The initial configured actor learning rate is 0.0001. `a2c_common.py` calls the adaptive scheduler after every mini-epoch; `schedulers.py` multiplies the learning rate by 1.5 when KL falls below half the 0.016 threshold. Increasing mini-epochs therefore changes scheduler frequency as well as data reuse. The current loop has no KL early-stop condition, and `dataset.update_mu_sigma` refreshes the KL reference between passes, so logged KL is not a fixed rollout-policy trust-region bound. A controlled reuse experiment should account for those details and monitor fixed-reference policy drift and clipping.
+
+Reference: [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347) describes alternating environment sampling with multiple minibatch optimization passes.
+
 ## Artifacts
 
 - Training summary: `train_dir/connectome/adaptation_1m_triton_12k/suite_results.json`
