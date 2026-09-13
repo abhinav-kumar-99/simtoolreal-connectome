@@ -6,6 +6,10 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] query | TensorBoard reward display downsampling
+
+Audited raw reward events and live TensorBoard HTTP responses. Final runs contain 2,543 regularly spaced events per curve, but the server returns only 1,000 under its default scalar sampling limit. Displayed gaps have median 786,432 and maximum 9,437,184 environment frames, versus a raw interval of 393,216. The previous runs have fewer than 1,000 events and raw intervals of 196,608. Corrected the earlier explanation that display spacing was simply doubled; recorded evidence and the optional scalar sampling override in `analyses/adaptation-1b-run.md`. No server or training settings changed.
+
 ## [2026-09-13] evaluate | Enforce mean-action video evaluation
 
 Verified that the existing evaluation worker passed `deterministic_actions=True` and that the continuous PPO player maps this path to the predicted Gaussian mean `mu`, not a sampled action. Made `action_selection: mean` explicit in all evaluation YAMLs and generated case/result artifacts, and added parent/worker guards that reject sampled-action video capture or inconsistent flags. Regenerated all six final videos; metrics and frame counts exactly matched the prior deterministic artifacts. All case/result contracts, codecs, resolutions, and sampled visual frames passed reinspection.
