@@ -48,6 +48,18 @@ Run the capped pilot from the repository root:
 
 The important pilot keys are `train_profiles` (the five adaptation cases), `seeds`, `gpu_assignments`, `max_parallel`, `num_envs`, `sapg_block_size`, `epochs`, `max_frames`, both minibatch sizes, and the task overrides. `max_parallel: 2` creates two GPU-owned queues, so a device never receives overlapping policies. Set it to `1` for fully serial execution. The launcher accepts only `--config`; all experiment settings stay in YAML.
 
+After training, run the configured closed-loop evaluation and video export:
+
+```bash
+.venv/bin/python scripts/run_connectome_evaluation.py --config configs/connectome/evaluation/adaptation_1m.yaml
+```
+
+This entry point reads checkpoints directly from the training suite result, extracts the final TensorBoard reward and success telemetry, and runs the configured evaluation cases in two single-GPU queues. Its important YAML keys are `training_suite_directory`, `policies`, `gpu_assignments`, `metrics`, `episodes_per_case`, `max_steps`, `videos`, and `eval_cases`. The checked pilot intentionally selects three DexToolBench cases and one rollout per case: this satisfies the three-video-per-policy request but is not the paper's full 24-case, five-rollout protocol. Increase `episodes_per_case` and list all repository object/task pairs for a paper-scale evaluation.
+
+The helper `dextoolbench/eval_worker_isaacgym.py` is launched once per policy/metric/object/task case from a generated `case.yaml`. It disables training randomization and delays, loads the demonstrated trajectory, advances goals using the requested tolerance, accumulates raw and reward-shaped returns, and captures the native Isaac Gym camera to MP4. It should normally be invoked through the parent script; a generated case can be reproduced with `.venv/bin/python dextoolbench/eval_worker_isaacgym.py --config <case.yaml>`.
+
+The evaluation contract reports both definitions found in the sources: paper Task Progress uses a 2 cm tolerance, while the repository's existing `eval_isaacgym.py` reports `avg_goal_pct` with a 1 cm tolerance. Both are percentages of demonstrated waypoints reached, but the thresholds make them distinct measurements.
+
 `configs/connectome/suites/adaptation_full_training.yaml` remains the matched three-seed learning comparison and now explicitly selects Triton. It is not launched as part of the capped pilot. The older `full_training.yaml` explicitly selects GainsDynamics for its biological trainable-core control so its frozen control stays distinct after the default change.
 
 ## Gates
@@ -130,7 +142,7 @@ Suite YAML owns the selected train profiles, seeds, GPU assignment, maximum conc
 
 ## Outputs and completion
 
-Raw downloads, NPZ graphs, profiler JSON, W&B data, and training directories are ignored. Each training run writes its resolved configuration, combined log, checkpoints, and `verification.json`. A run is complete only after the child process exits zero, a checkpoint is present, its optimizer state is non-empty, and `deployment.RlPlayer` reloads it to produce a finite `(1, 29)` action.
+Raw downloads, NPZ graphs, profiler JSON, W&B data, training directories, evaluation JSON and videos are ignored. Each training run writes its resolved configuration, combined log, checkpoints, `timing.json`, and `verification.json`. A run is complete only after the child process exits zero, a checkpoint is present, its optimizer state is non-empty, and `deployment.RlPlayer` reloads it to produce a finite `(1, 29)` action. The evaluation parent additionally requires its expected count of nonempty MP4 files before writing a final summary.
 
 The checked smoke gate met all four conditions. Its suite result is generated under `train_dir/connectome/smoke/`; the full actor measurements are generated under `profiles/connectome/`. Both locations remain untracked by design.
 

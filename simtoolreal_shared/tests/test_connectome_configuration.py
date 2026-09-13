@@ -165,3 +165,22 @@ def test_one_million_step_suite_preserves_single_gpu_paper_batches() -> None:
     assert training["num_envs"] * 16 * training["epochs"] <= training["max_frames"]
     assert training["num_envs"] * 16 * (training["epochs"] + 1) > training["max_frames"]
     assert len(training["train_profiles"]) == 5
+
+
+def test_capped_evaluation_contract_owns_metrics_and_videos() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    evaluation = yaml.safe_load(
+        (
+            repository_root / "configs/connectome/evaluation/adaptation_1m.yaml"
+        ).read_text()
+    )
+    assert evaluation["gpu_assignments"] == [0, 1]
+    assert evaluation["max_parallel"] == 2
+    assert evaluation["episodes_per_case"] == 1
+    assert evaluation["metrics"]["paper_task_progress"]["success_tolerance_m"] == 0.02
+    assert (
+        evaluation["metrics"]["repository_avg_goal_pct"]["success_tolerance_m"]
+        == 0.01
+    )
+    assert evaluation["videos"]["metric"] == "paper_task_progress"
+    assert len(evaluation["eval_cases"]) == 3
