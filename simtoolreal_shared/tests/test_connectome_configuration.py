@@ -156,11 +156,11 @@ def test_one_million_step_suite_preserves_single_gpu_paper_batches() -> None:
     assert training["gpu_assignments"] == [0, 1]
     assert training["max_parallel"] == 2
     assert training["seeds"] == [42]
-    assert training["num_envs"] == 24576
-    assert training["sapg_block_size"] == 4096
-    assert training["minibatch_size"] == 98304
-    assert training["central_critic_minibatch_size"] == 98304
-    assert training["epochs"] == 2
+    assert training["num_envs"] == 12288
+    assert training["sapg_block_size"] == 2048
+    assert training["minibatch_size"] == 49152
+    assert training["central_critic_minibatch_size"] == 49152
+    assert training["epochs"] == 5
     assert training["max_frames"] == 1_000_000
     assert training["num_envs"] * 16 * training["epochs"] <= training["max_frames"]
     assert training["num_envs"] * 16 * (training["epochs"] + 1) > training["max_frames"]

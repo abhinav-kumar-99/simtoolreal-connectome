@@ -1,14 +1,15 @@
 # One capped pilot per adaptation profile. Each child exactly preserves the
 # published single-GPU SimToolReal SAPG batch geometry; two children run at once.
 schema_version: 1
-name: adaptation_1m_triton
+name: adaptation_1m_triton_12k
 stages: [prepare, train]
-output_directory: train_dir/connectome/adaptation_1m_triton
+output_directory: train_dir/connectome/adaptation_1m_triton_12k
 runtime_environment:
   CC: /usr/bin/gcc
   CXX: /usr/bin/g++
   OMP_NUM_THREADS: '1'
   MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
 preparation:
   config: configs/connectome/malecns_4310.yaml
 training:
@@ -22,19 +23,21 @@ training:
   seeds: [42]
   gpu_assignments: [0, 1]
   max_parallel: 2
-  num_envs: 24576
-  sapg_block_size: 4096
-  # 24,576 envs x horizon 16 = 393,216 steps/epoch. Two complete epochs
-  # produce 786,432 steps; a third would exceed the 1,000,000-step cap.
-  epochs: 2
+  # The connectome plus asymmetric critic does not fit the paper's 24,576-env
+  # shape in 24 GB. These three sizes are scaled together by two, preserving
+  # six SAPG blocks and four minibatches per epoch.
+  num_envs: 12288
+  sapg_block_size: 2048
+  # 12,288 envs x horizon 16 x 5 complete epochs = 983,040 steps.
+  epochs: 5
   max_frames: 1000000
-  minibatch_size: 98304
-  central_critic_minibatch_size: 98304
+  minibatch_size: 49152
+  central_critic_minibatch_size: 49152
   save_frequency: 3000
   save_best_after: 100
   on_existing: fail
   checkpoint: {mode: none, path: ''}
-  wandb: {enabled: false, project: simtoolreal-connectome, entity: '', group: adaptation_1m_triton, tags: [malecns, adaptation, triton, one-million-cap]}
+  wandb: {enabled: false, project: simtoolreal-connectome, entity: '', group: adaptation_1m_triton_12k, tags: [malecns, adaptation, triton, one-million-cap]}
   overrides:
     ++task.env.useSparseReward: false
     task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
