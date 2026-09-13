@@ -167,6 +167,30 @@ def test_one_million_step_suite_preserves_single_gpu_paper_batches() -> None:
     assert len(training["train_profiles"]) == 5
 
 
+def test_one_billion_step_suite_maps_one_policy_to_each_gpu() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (repository_root / "configs/connectome/suites/adaptation_1b.yaml").read_text()
+    )
+    training = suite["training"]
+    assert [case["name"] for case in training["train_profiles"]] == [
+        "adapters_only",
+        "neuron_gains",
+    ]
+    assert training["gpu_assignments"] == [0, 1]
+    assert training["max_parallel"] == 2
+    assert training["seeds"] == [42]
+    assert training["num_envs"] == 12288
+    assert training["sapg_block_size"] == 2048
+    assert training["minibatch_size"] == 49152
+    assert training["central_critic_minibatch_size"] == 49152
+    assert training["epochs"] == 5086
+    assert training["max_frames"] == 1_000_000_000
+    steps_per_epoch = training["num_envs"] * 16
+    assert steps_per_epoch * training["epochs"] == 999_948_288
+    assert steps_per_epoch * (training["epochs"] + 1) > training["max_frames"]
+
+
 def test_capped_evaluation_contract_owns_metrics_and_videos() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     evaluation = yaml.safe_load(

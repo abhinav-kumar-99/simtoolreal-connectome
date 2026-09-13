@@ -6,6 +6,10 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] configure | Billion-step adapters and neuron-gains run
+
+Added a YAML-owned comparison that maps adapters-only to physical GPU 0 and neuron-gains to physical GPU 1. Each independent single-GPU SAPG child retains the validated 12,288-environment geometry and default Triton recurrence. The 5,086 complete epochs produce 999,948,288 environment steps and schedule 40,688 actor optimizer updates per policy without crossing the one-billion-step ceiling. Launch and completion are tracked separately.
+
 ## [2026-09-13] query | Connectome optimization budget
 
 Validated that actor adaptation still uses SAPG/PPO and distinguished fresh rollout collection from repeated optimization passes. Recorded the pilot's low reported KL, rising adaptive learning rate, per-mini-epoch scheduler calls, and refreshed KL reference in `analyses/adaptation-1m-pilot.md`. Proposed a longer fresh-experience baseline followed by a controlled actor mini-epoch comparison; no training configuration was changed or launched.
