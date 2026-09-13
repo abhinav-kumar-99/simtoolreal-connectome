@@ -6,6 +6,12 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] validate | Prepare 100B gains update-timing comparison
+
+Added two seed-42 neuron-gains contracts that use identical Triton actors, released-checkpoint perturbations, and 99,999,940,608 environment frames while isolating the release-matched versus exploratory optimizer timing. The new timing schedules 2,034,504 actor/critic calls; the old timing schedules 4,069,008. Added atomic 250-million-frame inference snapshots and a restartable watcher that generates three 800x450 mean-action videos per policy/milestone using the paper Task Progress evaluation cases.
+
+An end-to-end two-phase smoke created and reloaded two 1.9 MB actor-plus-normalization snapshots, produced two nonempty 800x450/20 FPS deterministic videos, and left normal full recovery checkpoints intact. The focused actor, accumulation, configuration, and milestone tests pass 91 cases. Launch and completion are recorded separately.
+
 ## [2026-09-13] query | TensorBoard reward display downsampling
 
 Audited raw reward events and live TensorBoard HTTP responses. Final runs contain 2,543 regularly spaced events per curve, but the server returns only 1,000 under its default scalar sampling limit. Displayed gaps have median 786,432 and maximum 9,437,184 environment frames, versus a raw interval of 393,216. The previous runs have fewer than 1,000 events and raw intervals of 196,608. Corrected the earlier explanation that display spacing was simply doubled; recorded evidence and the optional scalar sampling override in `analyses/adaptation-1b-run.md`. No server or training settings changed.

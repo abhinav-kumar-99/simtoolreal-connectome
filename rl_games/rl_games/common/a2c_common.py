@@ -17,6 +17,11 @@ from rl_games.algos_torch import  model_builder
 from rl_games.interfaces.base_algorithm import  BaseAlgorithm
 import numpy as np
 import time
+
+from simtoolreal_shared.milestone_checkpoints import (
+    crossed_milestone_targets,
+    milestone_checkpoint_name,
+)
 import gym
 
 from tensorboardX import SummaryWriter
@@ -157,6 +162,12 @@ class A2CBase(BaseAlgorithm):
 
         self.self_play = config.get('self_play', False)
         self.save_freq = config.get('save_frequency', 0)
+        self.inference_checkpoint_interval_frames = int(
+            config.get('inference_checkpoint_interval_frames', 0)
+        )
+        if self.inference_checkpoint_interval_frames < 0:
+            raise ValueError("inference_checkpoint_interval_frames cannot be negative")
+        self._saved_inference_milestone_targets = set()
         self.save_best_after = config.get('save_best_after', 100)
         self.print_stats = config.get('print_stats', True)
         self.rnn_states = None
@@ -715,6 +726,47 @@ class A2CBase(BaseAlgorithm):
         state['current_lengths'] = self.current_lengths
      
         return state
+
+    def get_inference_state_weights(self):
+        state = self.get_weights()
+        state['epoch'] = self.epoch_num
+        state['frame'] = self.frame
+        return state
+
+    def save_inference_milestone(self, target_frame, actual_frame):
+        if target_frame in self._saved_inference_milestone_targets:
+            return
+        filename = milestone_checkpoint_name(
+            int(target_frame), int(actual_frame), int(self.epoch_num)
+        )
+        final_path = os.path.join(self.nn_dir, filename)
+        temporary_path = final_path + '.tmp'
+        state = {self.global_rank: self.get_inference_state_weights()}
+        print(
+            f"=> saving inference milestone target {target_frame} at "
+            f"actual frame {actual_frame}: '{final_path}'"
+        )
+        torch_ext.safe_save(state, temporary_path)
+        torch_ext.safe_filesystem_op(os.replace, temporary_path, final_path)
+        self._saved_inference_milestone_targets.add(target_frame)
+
+    def save_crossed_inference_milestones(self, previous_frame, current_frame):
+        for target_frame in crossed_milestone_targets(
+            int(previous_frame),
+            int(current_frame),
+            self.inference_checkpoint_interval_frames,
+        ):
+            self.save_inference_milestone(target_frame, current_frame)
+
+    def save_near_cap_inference_milestone(self, current_frame, phase_frames):
+        if (
+            self.inference_checkpoint_interval_frames <= 0
+            or self.max_frames <= 0
+            or current_frame >= self.max_frames
+            or self.max_frames - current_frame >= phase_frames
+        ):
+            return
+        self.save_inference_milestone(self.max_frames, current_frame)
 
     def set_full_state_weights(self, weights, set_epoch=True):
 
@@ -1712,6 +1764,9 @@ class ContinuousA2CBase(A2CBase):
                 else:
                     all_state_dict = None
 
+                current_frame = self.frame // self.num_agents
+                self.save_crossed_inference_milestones(frame, current_frame)
+
                 if self.game_rewards.current_size > 0:
                     mean_rewards = self.game_rewards.get_mean()
                     mean_shaped_rewards = self.game_shaped_rewards.get_mean()
@@ -1784,6 +1839,7 @@ class ContinuousA2CBase(A2CBase):
                         print('WARNING: Max epochs reached before any env terminated at least once')
                         mean_rewards = -np.inf
 
+                    self.save_near_cap_inference_milestone(current_frame, curr_frames)
                     self.save(os.path.join(self.nn_dir, 'last_' + self.config['name'] + '_ep_' + str(epoch_num) \
                         + '_rew_' + str(mean_rewards).replace('[', '_').replace(']', '_')), all_state_dict)
                     print('MAX EPOCHS NUM!')

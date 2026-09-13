@@ -180,6 +180,11 @@ def _training_overrides(
         overrides.append(
             f"train.params.config.max_frames={int(training['max_frames'])}"
         )
+    if "inference_checkpoint_interval_frames" in training:
+        overrides.append(
+            "++train.params.config.inference_checkpoint_interval_frames="
+            f"{int(training['inference_checkpoint_interval_frames'])}"
+        )
     if "rollout_accumulation_steps" in training:
         overrides.append(
             "++train.params.config.rollout_accumulation_steps="
@@ -362,8 +367,10 @@ def _run_training(
         steps_per_epoch *= int(
             resolved.train.params.config.get('rollout_accumulation_steps', 1)
         )
-        requested_steps = steps_per_epoch * int(training["epochs"])
-        max_frames = int(training.get("max_frames", -1))
+        requested_steps = steps_per_epoch * int(
+            resolved.train.params.config.max_epochs
+        )
+        max_frames = int(resolved.train.params.config.get("max_frames", -1))
         if max_frames >= 0 and requested_steps > max_frames:
             raise ValueError(
                 f"{case_name} requests {requested_steps} steps, above cap {max_frames}"
@@ -371,7 +378,7 @@ def _run_training(
         cases.append(
             {
                 "index": run_index,
-                "training": training,
+                "training": case_training,
                 "profile": profile,
                 "case_name": case_name,
                 "seed": seed,

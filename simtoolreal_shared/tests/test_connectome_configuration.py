@@ -333,3 +333,74 @@ def test_final_high_resolution_evaluation_uses_completed_checkpoints() -> None:
     assert evaluation["videos"]["fps"] == 20
     assert evaluation["videos"]["frame_interval"] == 3
     assert len(evaluation["eval_cases"]) == 3
+
+
+def test_hundred_billion_gains_suite_isolated_update_timing() -> None:
+    from scripts.run_connectome_suite import _training_overrides
+
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/suites/adaptation_100b_gains_update_timing.yaml"
+        ).read_text()
+    )
+    training = suite["training"]
+    assert training["max_frames"] == 100_000_000_000
+    assert training["inference_checkpoint_interval_frames"] == 250_000_000
+    assert training["gpu_assignments"] == [0, 1]
+    assert training["max_parallel"] == 2
+    assert training["seeds"] == [42]
+    assert all(
+        case["train_profile"] == "SimToolRealConnectomeGainsSAPG"
+        for case in training["train_profiles"]
+    )
+    expected = {
+        "gains_new_update_timing": (254_313, 2, 98_304),
+        "gains_old_update_timing": (508_626, 1, 49_152),
+    }
+    for case in training["train_profiles"]:
+        merged = dict(
+            training,
+            overrides={**training["overrides"], **case["overrides"]},
+        )
+        overrides = _training_overrides(
+            merged,
+            case["train_profile"],
+            42,
+            case["name"],
+            repository_root / "test-output",
+        )
+        epochs, accumulation, minibatch = expected[case["name"]]
+        resolved = {}
+        for override in overrides:
+            key, value = override.lstrip("+").split("=", 1)
+            resolved[key] = value
+        assert int(resolved["train.params.config.max_epochs"]) == epochs
+        assert (
+            int(resolved.get("train.params.config.rollout_accumulation_steps", 1))
+            == accumulation
+        )
+        assert int(resolved["train.params.config.minibatch_size"]) == minibatch
+        assert (
+            12_288 * 16 * accumulation * epochs == 99_999_940_608
+        )
+
+
+def test_hundred_billion_milestone_evaluation_is_mean_action_high_resolution() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    config = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/evaluation/adaptation_100b_gains_milestones.yaml"
+        ).read_text()
+    )
+    assert config["max_frames"] == 100_000_000_000
+    assert config["milestone_interval_frames"] == 250_000_000
+    assert len(config["policies"]) == 2
+    assert config["evaluation"]["action_selection"] == "mean"
+    assert (
+        config["evaluation"]["videos"]["camera_resolution_reduction_factor"]
+        == 2
+    )
+    assert len(config["evaluation"]["eval_cases"]) == 3

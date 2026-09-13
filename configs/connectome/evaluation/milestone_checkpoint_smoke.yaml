@@ -1,0 +1,36 @@
+# One-case evaluator smoke for every checkpoint created by the smoke suite.
+schema_version: 1
+training_suite_name: milestone_checkpoint_smoke
+training_suite_directory: train_dir/connectome/milestone_checkpoint_smoke
+output_directory: evals/connectome/milestone_checkpoint_smoke
+max_frames: 12288
+milestone_interval_frames: 6144
+poll_interval_seconds: 1
+watch_until_complete: false
+policies:
+  - name: gains
+    seed: 42
+    gpu: 0
+    policy_config_path: train_dir/connectome/milestone_checkpoint_smoke/00_milestone_checkpoint_smoke_gains_seed42/resolved_config.yaml
+evaluation:
+  runtime_environment:
+    CC: /usr/bin/gcc
+    CXX: /usr/bin/g++
+    OMP_NUM_THREADS: '1'
+    MKL_NUM_THREADS: '1'
+  episodes_per_case: 1
+  action_selection: mean
+  downsample_factor: 1
+  z_offset: 0.03
+  max_steps: 2
+  table_urdf: urdf/table_narrow.urdf
+  metrics:
+    paper_task_progress:
+      success_tolerance_m: 0.02
+  videos:
+    metric: paper_task_progress
+    fps: 20
+    frame_interval: 1
+    camera_resolution_reduction_factor: 2
+  eval_cases:
+    - {object_category: marker, object_name: sharpie_marker, task_name: write_c}

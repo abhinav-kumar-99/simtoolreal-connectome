@@ -56,6 +56,22 @@ This contract assigns adapters-only to physical GPU 0 and neuron-gains to physic
 
 The important training keys are `train_profiles`, `seeds`, `gpu_assignments`, `max_parallel`, `num_envs`, `sapg_block_size`, `rollout_accumulation_steps`, `epochs`, `max_frames`, both logical minibatch sizes, optional actor/critic physical microbatch sizes, and task overrides. `max_parallel: 2` creates two GPU-owned queues, so a device never receives overlapping policies. Set it to `1` for fully serial execution. The launcher accepts only `--config`; all experiment settings stay in YAML. `rollout_accumulation_steps` collects multiple unchanged-policy horizon batches before concatenation; it should not be replaced with a longer horizon when GAE comparability matters.
 
+Run the 100-billion-step neuron-gains update-timing comparison with one independent child per GPU:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/adaptation_100b_gains_update_timing.yaml
+```
+
+In a separate process, watch its inference checkpoints and produce three high-resolution mean-action videos every 250 million nominal frames:
+
+```bash
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/adaptation_100b_gains_milestones.yaml
+```
+
+`inference_checkpoint_interval_frames` enables atomic, inference-only snapshots without duplicating optimizer and simulator state. The milestone evaluator is restartable through its status JSON and records both nominal target and actual post-update frame. Its YAML owns watcher cadence, checkpoint discovery, policy-to-GPU mapping, evaluation cases, paper tolerance, action selection, and video settings. `action_selection: mean` is mandatory for video capture. See the [100-billion-step analysis](../analyses/adaptation-100b-update-timing.md) for update counts, milestone alignment, and the validated smoke contracts.
+
 After training, run the configured closed-loop evaluation and video export:
 
 ```bash

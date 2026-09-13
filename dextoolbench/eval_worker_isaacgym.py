@@ -114,7 +114,8 @@ def run(config: dict) -> dict:
         },
     )
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    env.set_env_state(checkpoint[0]["env_state"])
+    checkpoint_state = checkpoint.get(0, checkpoint)
+    env.set_env_state(checkpoint_state.get("env_state"))
     policy = RlPlayer(
         num_observations=140,
         num_actions=29,
