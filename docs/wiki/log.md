@@ -6,6 +6,10 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] evaluate | High-resolution partial-policy videos
+
+Stopped the exploratory adapters-only and neuron-gains jobs by request, preserving their logs and best checkpoints. Added explicit-checkpoint evaluation sources and configurable Isaac Gym camera resolution. Evaluated three new marker, eraser, and spatula cases per policy at 800x450 and 20 FPS. All six MP4s passed codec, resolution, duration, frame-count, and nonempty-file checks; sampled frames showed rendered simulator state. Both policies reached one spatula waypoint and none on the other cases.
+
 ## [2026-09-13] configure | Release perturbations and fair update scheduling
 
 Verified exploration and force settings directly from the released archive. Prepared `adaptation_1b_release_settings.yaml` with exploration scale 0.005, force scale 2, decay 0.99, and disabled torque/velocity impulses; both actor profiles compose and match the archived settings. Documented that previous OOM evidence does not isolate effective minibatch size, that physical perturbations are mass-scaled, and that logical-batch-preserving microbatch accumulation plus a matched LSTM control is the preferred comparison. No replacement run or accumulation implementation was launched.
