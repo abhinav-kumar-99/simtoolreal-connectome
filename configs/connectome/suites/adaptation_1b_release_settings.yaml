@@ -1,0 +1,58 @@
+# Prepared replacement; not launched. Batch scheduling is still the 12k pilot
+# schedule, not a claim of full released-policy training equivalence.
+# Billion-step comparison of the two most constrained adaptation policies.
+# The launcher assigns cases in order, so adapters_only owns physical GPU 0
+# and neuron_gains owns physical GPU 1. Each child remains single-GPU SAPG.
+schema_version: 1
+name: adaptation_1b_release_settings_12k
+stages: [prepare, train]
+output_directory: train_dir/connectome/adaptation_1b_release_settings_12k
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+preparation:
+  config: configs/connectome/malecns_4310.yaml
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - {name: adapters_only, train_profile: SimToolRealConnectomeSAPG}
+    - {name: neuron_gains, train_profile: SimToolRealConnectomeGainsSAPG}
+  seeds: [42]
+  gpu_assignments: [0, 1]
+  max_parallel: 2
+  # This is the largest validated single-GPU geometry that fits each 24 GB GPU.
+  # It preserves six SAPG blocks and four actor/critic minibatches per epoch.
+  num_envs: 12288
+  sapg_block_size: 2048
+  # 12,288 envs x horizon 16 x 5,086 epochs = 999,948,288 steps. A 5,087th
+  # complete epoch would exceed the strict one-billion-step ceiling.
+  epochs: 5086
+  max_frames: 1000000000
+  minibatch_size: 49152
+  central_critic_minibatch_size: 49152
+  save_frequency: 3000
+  save_best_after: 100
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb: {enabled: false, project: simtoolreal-connectome, entity: '', group: adaptation_1b_release_settings_12k, tags: [malecns, adaptation, triton, one-billion-cap]}
+  overrides:
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    # Verified against config.yaml in the authors' pretrained_policy.zip.
+    train.params.config.expl_reward_coef_scale: 0.005
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    # Absent from the release config; explicit zero prevents newer defaults.
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0
