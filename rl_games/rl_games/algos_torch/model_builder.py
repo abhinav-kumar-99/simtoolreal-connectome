@@ -1,6 +1,7 @@
 from rl_games.common import object_factory
 import rl_games.algos_torch
 from rl_games.algos_torch import network_builder
+from rl_games.algos_torch import connectome_network_builder
 from rl_games.algos_torch import models
 
 NETWORK_REGISTRY = {}
@@ -18,6 +19,10 @@ class NetworkBuilder:
         self.network_factory = object_factory.ObjectFactory()
         self.network_factory.set_builders(NETWORK_REGISTRY)
         self.network_factory.register_builder('actor_critic', lambda **kwargs: network_builder.A2CBuilder())
+        self.network_factory.register_builder(
+            'connectome_actor_critic',
+            lambda **kwargs: connectome_network_builder.ConnectomeBuilder(),
+        )
         self.network_factory.register_builder('resnet_actor_critic',
                                               lambda **kwargs: network_builder.A2CResnetBuilder())
         self.network_factory.register_builder('rnd_curiosity', lambda **kwargs: network_builder.RNDCuriosityBuilder())

@@ -1,0 +1,11 @@
+defaults:
+  - SimToolRealConnectomeSAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      plasticity_mode: frozen_core
+
+  config:
+    name: ${resolve_default:SimToolRealConnectomeFrozenSAPG,${....experiment}}

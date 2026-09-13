@@ -1,0 +1,37 @@
+defaults:
+  - SimToolRealLSTMAsymmetricSAPG
+  - _self_
+
+params:
+  network:
+    name: connectome_actor_critic
+    connectome:
+      artifact_path: data/connectomes/processed/malecns_4310/biological.npz
+      graph_variant: biological
+      dtype: float32
+      expected:
+        neurons: 4310
+        edges: 118920
+        sensory_neurons: 232
+        descending_neurons: 1236
+        motor_neurons: 130
+      observations:
+        policy_size: 140
+        sensory_size: 128
+        goal_size: 12
+        sensory_ranges: [[0, 125], [137, 140]]
+        goal_ranges: [[125, 137]]
+      sapg_embedding_size: 32
+      population_adapters:
+        bias: false
+      dynamics:
+        activation: tanh
+        beta: 0.9
+        gain_bounds: [0.25, 4.0]
+        initial_gain: 1.0
+        initial_leak: 0.5
+        initial_bias: 0.0
+      plasticity_mode: neuron_gains
+
+  config:
+    name: ${resolve_default:SimToolRealConnectomeSAPG,${....experiment}}
