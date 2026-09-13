@@ -4871,12 +4871,16 @@ class SimToolReal(VecTask):
 
     def _initialize_camera_sensor(self, cam_pos, cam_target) -> None:
         self.camera_properties = gymapi.CameraProperties()
-        RESOLUTION_REDUCTION_FACTOR_TO_SAVE_SPACE = 4
+        resolution_reduction_factor = int(
+            self.cfg["env"].get("cameraResolutionReductionFactor", 4)
+        )
+        if resolution_reduction_factor < 1:
+            raise ValueError("cameraResolutionReductionFactor must be at least 1")
         self.camera_properties.width = int(
-            self.camera_properties.width / RESOLUTION_REDUCTION_FACTOR_TO_SAVE_SPACE
+            self.camera_properties.width / resolution_reduction_factor
         )
         self.camera_properties.height = int(
-            self.camera_properties.height / RESOLUTION_REDUCTION_FACTOR_TO_SAVE_SPACE
+            self.camera_properties.height / resolution_reduction_factor
         )
         self.camera_handle = self.gym.create_camera_sensor(
             self.envs[self.index_to_view],

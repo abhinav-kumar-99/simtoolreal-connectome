@@ -121,6 +121,8 @@ env:
   # Thus, it records a video every 600-1500s (10-25 minutes) of real time
   capture_video_freq: 6_000
   capture_video_len: 600
+  # Isaac Gym's default camera dimensions are divided by this factor.
+  cameraResolutionReductionFactor: 4
 
   # Camera-free interactive Three.js rollout capture. At 60 Hz, 600 frames is
   # a 10-second trajectory. `capture_viewer_once` is useful for evaluation.

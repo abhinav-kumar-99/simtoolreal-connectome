@@ -191,6 +191,28 @@ def test_one_billion_step_suite_maps_one_policy_to_each_gpu() -> None:
     assert steps_per_epoch * (training["epochs"] + 1) > training["max_frames"]
 
 
+def test_release_settings_suite_preserves_original_logical_update_schedule() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/suites/adaptation_1b_release_settings.yaml"
+        ).read_text()
+    )
+    training = suite["training"]
+    assert training["num_envs"] == 24576
+    assert training["sapg_block_size"] == 4096
+    assert training["minibatch_size"] == 98304
+    assert training["central_critic_minibatch_size"] == 98304
+    assert training["epochs"] == 2543
+    assert training["num_envs"] * 16 * training["epochs"] == 999_948_288
+    overrides = training["overrides"]
+    assert overrides["train.params.config.expl_reward_coef_scale"] == 0.005
+    assert overrides["task.env.forceScale"] == 2.0
+    assert overrides["task.env.forceDecay"] == 0.99
+    assert overrides["task.env.torqueScale"] == 0.0
+
+
 def test_capped_evaluation_contract_owns_metrics_and_videos() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     evaluation = yaml.safe_load(
@@ -207,4 +229,18 @@ def test_capped_evaluation_contract_owns_metrics_and_videos() -> None:
         == 0.01
     )
     assert evaluation["videos"]["metric"] == "paper_task_progress"
+    assert len(evaluation["eval_cases"]) == 3
+
+
+def test_partial_high_resolution_evaluation_uses_explicit_checkpoints() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    evaluation = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/evaluation/adaptation_1b_partial_highres.yaml"
+        ).read_text()
+    )
+    assert set(evaluation["policy_sources"]) == {"adapters_only", "neuron_gains"}
+    assert evaluation["videos"]["camera_resolution_reduction_factor"] == 2
+    assert evaluation["videos"]["frame_interval"] == 3
     assert len(evaluation["eval_cases"]) == 3

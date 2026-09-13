@@ -72,6 +72,9 @@ def run(config: dict) -> dict:
             "task.env.numEnvs": 1,
             "task.env.envSpacing": 0.4,
             "task.env.capture_video": False,
+            "task.env.cameraResolutionReductionFactor": int(
+                config.get("camera_resolution_reduction_factor", 4)
+            ),
             "task.env.useFixedGoalStates": True,
             "task.env.fixedGoalStates": trajectory["goals"],
             "task.env.useActionDelay": False,

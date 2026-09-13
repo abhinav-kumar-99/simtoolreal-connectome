@@ -1,0 +1,36 @@
+# Evaluate the last saved checkpoints from the stopped 12k exploratory runs.
+schema_version: 1
+output_directory: evals/connectome/adaptation_1b_partial_highres_epoch692_734
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+policy_sources:
+  adapters_only:
+    checkpoint_path: train_dir/connectome/adaptation_1b_triton_12k/00_adaptation_1b_triton_12k_adapters_only_seed42/rl_runs/00_adaptation_1b_triton_12k_adapters_only_seed42/nn/00_adaptation_1b_triton_12k_adapters_only_seed42.pth
+    policy_config_path: train_dir/connectome/adaptation_1b_triton_12k/00_adaptation_1b_triton_12k_adapters_only_seed42/resolved_config.yaml
+  neuron_gains:
+    checkpoint_path: train_dir/connectome/adaptation_1b_triton_12k/00_adaptation_1b_triton_12k_neuron_gains_seed42/rl_runs/00_adaptation_1b_triton_12k_neuron_gains_seed42/nn/00_adaptation_1b_triton_12k_neuron_gains_seed42.pth
+    policy_config_path: train_dir/connectome/adaptation_1b_triton_12k/00_adaptation_1b_triton_12k_neuron_gains_seed42/resolved_config.yaml
+policies: [adapters_only, neuron_gains]
+gpu_assignments: [0, 1]
+max_parallel: 2
+episodes_per_case: 1
+downsample_factor: 1
+z_offset: 0.03
+max_steps: 601
+table_urdf: urdf/table_narrow.urdf
+metrics:
+  paper_task_progress:
+    success_tolerance_m: 0.02
+videos:
+  metric: paper_task_progress
+  fps: 20
+  frame_interval: 3
+  # Factor 2 yields 800x450 frames; the prior factor 4 yielded 400x225.
+  camera_resolution_reduction_factor: 2
+eval_cases:
+  - {object_category: marker, object_name: sharpie_marker, task_name: write_c}
+  - {object_category: eraser, object_name: flat_eraser, task_name: wipe_smile}
+  - {object_category: spatula, object_name: flat_spatula, task_name: flip_over}

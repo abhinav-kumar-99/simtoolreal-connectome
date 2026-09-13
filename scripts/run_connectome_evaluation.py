@@ -56,6 +56,37 @@ def _training_metrics(suite_directory: Path, suite_results: dict) -> dict:
     return metrics
 
 
+def _repository_path(value: str) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else REPOSITORY_ROOT / path
+
+
+def _resolve_policies(config: dict) -> tuple[dict, Path | None, dict | None]:
+    explicit_sources = config.get("policy_sources")
+    if explicit_sources is not None:
+        policies = {}
+        for name, source in explicit_sources.items():
+            checkpoint = _repository_path(source["checkpoint_path"])
+            policy_config = _repository_path(source["policy_config_path"])
+            if not checkpoint.is_file():
+                raise FileNotFoundError(f"Missing checkpoint for {name}: {checkpoint}")
+            if not policy_config.is_file():
+                raise FileNotFoundError(
+                    f"Missing policy config for {name}: {policy_config}"
+                )
+            policies[name] = {
+                "case": name,
+                "checkpoint": str(checkpoint),
+                "policy_config_path": str(policy_config),
+            }
+        return policies, None, None
+
+    training_directory = _repository_path(config["training_suite_directory"])
+    suite_results = json.loads((training_directory / "suite_results.json").read_text())
+    policies = {entry["case"]: entry for entry in suite_results["stages"]["train"]}
+    return policies, training_directory, suite_results
+
+
 def _run_case(case: dict, gpu: int, environment: dict[str, str]) -> dict:
     case_path = Path(case["case_config_path"])
     log_path = Path(case["log_path"])
@@ -96,9 +127,7 @@ def _run_case(case: dict, gpu: int, environment: dict[str, str]) -> dict:
 def run(config: dict) -> dict:
     output_directory = REPOSITORY_ROOT / config["output_directory"]
     output_directory.mkdir(parents=True, exist_ok=True)
-    training_directory = REPOSITORY_ROOT / config["training_suite_directory"]
-    suite_results = json.loads((training_directory / "suite_results.json").read_text())
-    policies = {entry["case"]: entry for entry in suite_results["stages"]["train"]}
+    policies, training_directory, suite_results = _resolve_policies(config)
     requested_policies = config.get("policies", list(policies))
     gpus = [int(gpu) for gpu in config["gpu_assignments"]]
     max_parallel = int(config.get("max_parallel", len(gpus)))
@@ -109,7 +138,9 @@ def run(config: dict) -> dict:
     for policy_name in requested_policies:
         policy = policies[policy_name]
         checkpoint = Path(policy["checkpoint"])
-        policy_config = checkpoint.parents[3] / "resolved_config.yaml"
+        policy_config = Path(
+            policy.get("policy_config_path", checkpoint.parents[3] / "resolved_config.yaml")
+        )
         for metric_name, metric in config["metrics"].items():
             for task in config["eval_cases"]:
                 case_directory = (
@@ -144,6 +175,9 @@ def run(config: dict) -> dict:
                     "record_video": record_video,
                     "video_fps": int(config["videos"]["fps"]),
                     "video_frame_interval": int(config["videos"]["frame_interval"]),
+                    "camera_resolution_reduction_factor": int(
+                        config["videos"].get("camera_resolution_reduction_factor", 4)
+                    ),
                     "video_path": str(case_directory / "rollout.mp4"),
                     "output_path": str(case_directory / "eval.json"),
                 }
@@ -217,7 +251,11 @@ def run(config: dict) -> dict:
         video_counts[policy_name] = len(videos)
 
     summary = {
-        "training": _training_metrics(training_directory, suite_results),
+        "training": (
+            _training_metrics(training_directory, suite_results)
+            if training_directory is not None and suite_results is not None
+            else {}
+        ),
         "evaluation": aggregate,
         "video_counts": video_counts,
         "evaluated_cases": config["eval_cases"],
