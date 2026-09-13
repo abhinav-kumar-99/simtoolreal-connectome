@@ -5,9 +5,9 @@
 # The launcher assigns cases in order, so adapters_only owns physical GPU 0
 # and neuron_gains owns physical GPU 1. Each child remains single-GPU SAPG.
 schema_version: 1
-name: adaptation_1b_release_settings_microbatch_24k
+name: adaptation_1b_release_settings_microbatch_12k
 stages: [prepare, train]
-output_directory: train_dir/connectome/adaptation_1b_release_settings_microbatch_24k
+output_directory: train_dir/connectome/adaptation_1b_release_settings_microbatch_12k
 runtime_environment:
   CC: /usr/bin/gcc
   CXX: /usr/bin/g++
@@ -33,15 +33,15 @@ training:
   max_frames: 1000000000
   minibatch_size: 98304
   central_critic_minibatch_size: 98304
-  # Four equal physical chunks per logical actor/critic optimizer step. A
-  # two-way 49,152-sample split also OOMed before its first optimizer step.
-  actor_microbatch_size: 24576
-  central_critic_microbatch_size: 24576
+  # Eight equal physical chunks per logical actor/critic optimizer step. Both
+  # 49,152- and 24,576-sample physical chunks OOMed before their first step.
+  actor_microbatch_size: 12288
+  central_critic_microbatch_size: 12288
   save_frequency: 3000
   save_best_after: 100
   on_existing: fail
   checkpoint: {mode: none, path: ''}
-  wandb: {enabled: false, project: simtoolreal-connectome, entity: '', group: adaptation_1b_release_settings_microbatch_24k, tags: [malecns, adaptation, triton, one-billion-cap, released-settings, gradient-accumulation]}
+  wandb: {enabled: false, project: simtoolreal-connectome, entity: '', group: adaptation_1b_release_settings_microbatch_12k, tags: [malecns, adaptation, triton, one-billion-cap, released-settings, gradient-accumulation]}
   overrides:
     ++task.env.useSparseReward: false
     task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
