@@ -32,7 +32,11 @@ params:
         initial_gain: 1.0
         initial_leak: 0.5
         initial_bias: 0.0
-      plasticity_mode: neuron_gains
+      adaptation:
+        weight_mode: adapters_only
+        learn_dynamics: false
+        rank: 4
+        edge_scale_bounds: [0.0625, 16.0]
 
   config:
     name: ${resolve_default:SimToolRealConnectomeSAPG,${....experiment}}

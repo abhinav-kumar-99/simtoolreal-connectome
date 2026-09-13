@@ -62,6 +62,50 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             kwargs.pop("normalize_value", None)
 
             connectome = params["connectome"]
+            if "adaptation" in connectome and "plasticity_mode" in connectome:
+                raise ValueError(
+                    "Specify adaptation or legacy plasticity_mode, not both"
+                )
+            legacy = connectome.get("plasticity_mode")
+            if legacy is not None and legacy not in {"frozen_core", "neuron_gains"}:
+                raise ValueError(f"Unknown plasticity_mode: {legacy}")
+            adaptation = connectome.get("adaptation", {})
+            self.weight_mode = adaptation.get(
+                "weight_mode",
+                "neuron_gains" if legacy == "neuron_gains" else "adapters_only",
+            )
+            if self.weight_mode not in {
+                "adapters_only",
+                "neuron_gains",
+                "low_rank",
+                "edgewise",
+            }:
+                raise ValueError(f"Unknown adaptation weight_mode: {self.weight_mode}")
+            self.learn_dynamics = adaptation.get(
+                "learn_dynamics", legacy == "neuron_gains"
+            )
+            if not isinstance(self.learn_dynamics, bool):
+                raise TypeError("learn_dynamics must be a YAML boolean")
+            self.adaptation_rank = adaptation.get("rank", 4)
+            if isinstance(self.adaptation_rank, bool) or not isinstance(
+                self.adaptation_rank, int
+            ):
+                raise TypeError("adaptation rank must be an integer")
+            if self.adaptation_rank < 1:
+                raise ValueError("adaptation rank must be positive")
+            bounds = tuple(
+                float(x) for x in adaptation.get("edge_scale_bounds", [0.0625, 16.0])
+            )
+            if (
+                len(bounds) != 2
+                or not (0 < bounds[0] < 1 < bounds[1])
+                or not all(math.isfinite(x) for x in bounds)
+            ):
+                raise ValueError(
+                    "edge_scale_bounds must be finite positive bounds straddling one"
+                )
+            self.edge_log_min, self.edge_log_max = map(math.log, bounds)
+            self.backend_options = connectome.get("backend_options", {})
             if connectome.get("dtype", "float32") != "float32":
                 raise ValueError(
                     "Connectome sparse recurrence currently requires dtype: float32"
@@ -124,6 +168,8 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 "native_coo",
                 "dense",
                 "torch_sparse",
+                "cusparse",
+                "triton_fused",
             }
             if self.operator_backend not in supported_backends:
                 raise ValueError(
@@ -131,6 +177,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     f"expected one of {sorted(supported_backends)}"
                 )
             self._cached_recurrent_operator: Any = None
+            self._backend_graph = None
 
             observations = connectome["observations"]
             self.sensory_ranges = _as_ranges(
@@ -215,6 +262,8 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 raise ValueError("Connectome recurrent activation must be tanh")
             self.recurrent_gain = float(dynamics["beta"])
             gain_min, gain_max = (float(value) for value in dynamics["gain_bounds"])
+            if legacy is None:
+                gain_min, gain_max = math.sqrt(bounds[0]), math.sqrt(bounds[1])
             initial_gain = float(dynamics["initial_gain"])
             if not 0.0 < gain_min < initial_gain < gain_max:
                 raise ValueError(
@@ -272,18 +321,51 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 raise ValueError("Connectome actor supports fixed or coef_cond sigma")
 
             self._initialize_linear_layers()
-            if connectome["plasticity_mode"] == "frozen_core":
-                for parameter in (
-                    self.incoming_gain_raw,
-                    self.outgoing_gain_raw,
-                    self.leak_raw,
-                    self.recurrent_bias,
-                ):
-                    parameter.requires_grad_(False)
-            elif connectome["plasticity_mode"] != "neuron_gains":
-                raise ValueError(
-                    f"Unknown plasticity_mode: {connectome['plasticity_mode']}"
+            for parameter in (self.incoming_gain_raw, self.outgoing_gain_raw):
+                parameter.requires_grad_(self.weight_mode == "neuron_gains")
+            for parameter in (self.leak_raw, self.recurrent_bias):
+                parameter.requires_grad_(self.learn_dynamics)
+            if self.weight_mode == "low_rank":
+                self.edge_u = nn.Parameter(
+                    torch.empty(self.neuron_count, self.adaptation_rank)
                 )
+                self.edge_v = nn.Parameter(
+                    torch.zeros(self.neuron_count, self.adaptation_rank)
+                )
+                nn.init.normal_(self.edge_u, std=0.1)
+            elif self.weight_mode == "edgewise":
+                self.edge_raw = nn.Parameter(torch.zeros(self.edge_count))
+
+        def backend_graph(self):
+            if self._backend_graph is None:
+                from rl_games.algos_torch.connectome_ops import Graph
+
+                self._backend_graph = Graph(self.crow_indices, self.col_indices)
+            return self._backend_graph
+
+        def effective_values(self):
+            if self.weight_mode == "low_rank":
+                graph = self.backend_graph()
+                score = (self.edge_u[graph.rows] * self.edge_v[self.col_indices]).sum(
+                    -1
+                )
+                score = score / math.sqrt(self.adaptation_rank)
+            elif self.weight_mode == "edgewise":
+                score = self.edge_raw
+            else:
+                return self.recurrent_values
+            # Shift the logistic so zero scores are exactly the identity even
+            # for asymmetric bounds. Evaluate only the E existing connections.
+            span = self.edge_log_max - self.edge_log_min
+            fraction = -self.edge_log_min / span
+            offset = math.log(fraction / (1 - fraction))
+            delta = self.edge_log_min + span * torch.sigmoid(score + offset)
+            return self.recurrent_values * delta.exp()
+
+        def _load_from_state_dict(self, *args, **kwargs):
+            self._cached_recurrent_operator = None
+            self._backend_graph = None
+            return super()._load_from_state_dict(*args, **kwargs)
 
         def _initialize_linear_layers(self) -> None:
             for module in (self.sensory_adapter, self.descending_adapter, self.value):
@@ -312,23 +394,27 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             # The cached operator is reconstructed from persistent buffers after
             # device or dtype moves, and is deliberately absent from checkpoints.
             self._cached_recurrent_operator = None
+            self._backend_graph = None
             return super()._apply(fn, recurse)
 
-        def _native_csr_matrix(self) -> torch.Tensor:
+        def _native_csr_matrix(self, values=None) -> torch.Tensor:
             return torch.sparse_csr_tensor(
                 self.crow_indices,
                 self.col_indices,
-                self.recurrent_values,
+                self.recurrent_values if values is None else values,
                 size=(self.neuron_count, self.neuron_count),
                 device=self.recurrent_values.device,
                 dtype=torch.float32,
             )
 
-        def recurrent_matrix(self):
-            if self._cached_recurrent_operator is not None:
+        def recurrent_matrix(self, values=None):
+            dynamic = self.weight_mode in {"low_rank", "edgewise"}
+            if values is None:
+                values = self.effective_values()
+            if not dynamic and self._cached_recurrent_operator is not None:
                 return self._cached_recurrent_operator
             if self.operator_backend == "native_csr":
-                operator = self._native_csr_matrix()
+                operator = self._native_csr_matrix(values)
             elif self.operator_backend == "native_coo":
                 row_counts = self.crow_indices[1:] - self.crow_indices[:-1]
                 rows = torch.repeat_interleave(
@@ -341,13 +427,15 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 )
                 operator = torch.sparse_coo_tensor(
                     torch.stack((rows, self.col_indices)),
-                    self.recurrent_values,
+                    values,
                     size=(self.neuron_count, self.neuron_count),
                     device=self.recurrent_values.device,
                     dtype=torch.float32,
                 ).coalesce()
             elif self.operator_backend == "dense":
-                operator = self._native_csr_matrix().to_dense()
+                operator = self._native_csr_matrix(values).to_dense()
+            elif self.operator_backend in {"cusparse", "triton_fused"}:
+                return self.backend_graph()
             else:
                 try:
                     from torch_sparse import SparseTensor
@@ -359,18 +447,30 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 operator = SparseTensor(
                     rowptr=self.crow_indices,
                     col=self.col_indices,
-                    value=self.recurrent_values,
+                    value=values,
                     sparse_sizes=(self.neuron_count, self.neuron_count),
                     is_sorted=True,
                     trust_data=True,
                 )
-            self._cached_recurrent_operator = operator
+            if not dynamic:
+                self._cached_recurrent_operator = operator
             return operator
 
-        def _recurrent_multiply(self, hidden: torch.Tensor) -> torch.Tensor:
+        def _recurrent_multiply(
+            self, hidden: torch.Tensor, operator=None, values=None
+        ) -> torch.Tensor:
             projected = (self.outgoing_gains() * hidden).transpose(0, 1)
-            operator = self.recurrent_matrix()
-            if self.operator_backend == "torch_sparse":
+            operator = self.recurrent_matrix(values) if operator is None else operator
+            if self.operator_backend == "cusparse":
+                from rl_games.algos_torch.connectome_ops import cusparse_mm
+
+                recurrent = cusparse_mm(
+                    operator,
+                    self.effective_values() if values is None else values,
+                    projected,
+                    self.backend_options,
+                )
+            elif self.operator_backend == "torch_sparse":
                 recurrent = operator.matmul(projected)
             elif self.operator_backend == "dense":
                 recurrent = torch.mm(operator, projected)
@@ -386,6 +486,8 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self,
             observations: torch.Tensor,
             hidden: torch.Tensor,
+            operator=None,
+            values=None,
         ) -> torch.Tensor:
             if hidden.device.type == "cuda":
                 if hasattr(torch, "amp") and hasattr(torch.amp, "autocast"):
@@ -411,10 +513,27 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     )
                 sensory_drive = self.sensory_adapter(sensory)
                 descending_drive = self.descending_adapter(goal)
+                if self.operator_backend == "triton_fused":
+                    from rl_games.algos_torch.connectome_triton import fused_step
+
+                    return fused_step(
+                        self.backend_graph(),
+                        self.effective_values() if values is None else values,
+                        hidden,
+                        self.incoming_gains(),
+                        self.outgoing_gains(),
+                        self.leaks(),
+                        self.recurrent_bias,
+                        sensory_drive,
+                        descending_drive,
+                        self.sensory_indices,
+                        self.descending_indices,
+                        self.recurrent_gain,
+                    )
                 drive = hidden.new_zeros(hidden.shape)
                 drive = drive.index_add(1, self.sensory_indices, sensory_drive)
                 drive = drive.index_add(1, self.descending_indices, descending_drive)
-                recurrent = self._recurrent_multiply(hidden)
+                recurrent = self._recurrent_multiply(hidden, operator, values)
                 preactivation = (
                     self.recurrent_gain * self.incoming_gains() * recurrent
                     + drive
@@ -462,10 +581,12 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 )
 
             outputs = []
+            values = self.effective_values()
+            operator = self.recurrent_matrix(values)
             for step, step_observations in enumerate(sequence):
                 if dones is not None:
                     hidden = hidden * (1.0 - dones[step].float())
-                hidden = self._step(step_observations, hidden)
+                hidden = self._step(step_observations, hidden, operator, values)
                 outputs.append(hidden)
             output = (
                 torch.stack(outputs).transpose(0, 1).reshape(observations.shape[0], -1)

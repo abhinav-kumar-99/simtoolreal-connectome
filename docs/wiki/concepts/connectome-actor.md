@@ -8,7 +8,7 @@ Related: [Overview](../overview.md), [Source](../sources/summaries/malecns-front
 
 ## Contract
 
-System observations enter sensory neurons, goal and SAPG exploration conditioning enter descending neurons, and only motor-neuron state is decoded into 29 robot actions. The biological CSR values are fixed; neuron-level incoming/outgoing gains, leak, bias, adapters, and heads provide constrained plasticity.
+System observations enter sensory neurons, goal and SAPG exploration conditioning enter descending neurons, and only motor-neuron state is decoded into 29 robot actions. The default now learns adapters and heads only. Optional weight adaptation and learned leaks/biases are independent; see [adaptation controls](connectome-adaptation.md). The dynamics and parameter accounting below describe the preserved gains-plus-dynamics control.
 
 The privileged asymmetric critic remains the standard SimToolReal MLP and never consumes connectome state.
 
@@ -24,7 +24,7 @@ h_{t+1}=(1-\alpha)\odot h_t+\alpha\odot\tanh\left(0.9e^p\odot\left[W(e^q\odot h_
 
 ## Trainable parameters
 
-The primary SAPG actor has 109,796 trainable scalars in 12 parameter tensors:
+The gains-plus-dynamics SAPG control (previous primary actor) has 109,796 trainable scalars in 12 parameter tensors:
 
 | Group | Shape | Count |
 | --- | --- | ---: |
@@ -99,7 +99,9 @@ followed by the configured moving average. The final 22 commands are mapped line
 
 ## Profiles
 
-- `SimToolRealConnectomeSAPG`: biological topology with learned neuron gains, leak, bias, adapters, and heads.
+- `SimToolRealConnectomeSAPG`: biological topology with learned adapters and heads, frozen core.
+- `SimToolRealConnectomeGainsDynamicsSAPG`: previous primary behavior with learned gains, leak, and bias.
+- `SimToolRealConnectomeGainsSAPG`, `SimToolRealConnectomeLowRankSAPG`, `SimToolRealConnectomeEdgewiseSAPG`: alternative weight adaptations with frozen dynamics.
 - `SimToolRealConnectomeFrozenSAPG`: biological topology with gains, leak, and recurrent bias frozen; adapters and heads remain learned.
 - `SimToolRealConnectomeRewiredSAPG`: degree-preserving topology control with primary plasticity.
 - `SimToolRealConnectomeRandomSAPG`: random sparse topology control with primary plasticity.

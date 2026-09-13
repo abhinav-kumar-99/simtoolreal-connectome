@@ -87,15 +87,18 @@ def _build(
     plasticity_mode="neuron_gains",
     num_seqs=2,
     operator_backend="native_csr",
+    adaptation=None,
 ):
     builder = ConnectomeBuilder()
-    builder.load(
-        _network_params(
-            artifact_path,
-            plasticity_mode,
-            operator_backend,
-        )
+    params = _network_params(
+        artifact_path,
+        plasticity_mode,
+        operator_backend,
     )
+    if adaptation is not None:
+        params["connectome"].pop("plasticity_mode")
+        params["connectome"]["adaptation"] = adaptation
+    builder.load(params)
     return builder.build(
         "connectome",
         actions_num=2,
@@ -192,6 +195,224 @@ def test_recurrent_backends_match_native_csr(
                 rtol=1.0e-5,
                 atol=1.0e-6,
             )
+
+
+@pytest.mark.parametrize(
+    "mode", ["adapters_only", "neuron_gains", "low_rank", "edgewise"]
+)
+@pytest.mark.parametrize("dynamics", [False, True])
+@pytest.mark.parametrize(
+    "backend", ["native_csr", "native_coo", "torch_sparse", "cusparse", "triton_fused"]
+)
+def test_adaptation_backends_training(artifact_path, mode, dynamics, backend):
+    if backend == "torch_sparse":
+        pytest.importorskip("torch_sparse")
+    if backend in {"cusparse", "triton_fused"} and not torch.cuda.is_available():
+        pytest.skip("CUDA required")
+    device = "cuda" if backend in {"cusparse", "triton_fused"} else "cpu"
+    adaptation = {"weight_mode": mode, "learn_dynamics": dynamics, "rank": 4}
+    torch.manual_seed(23)
+    reference = _build(
+        artifact_path, operator_backend="dense", adaptation=adaptation
+    ).to(device)
+    # Exercise derivatives away from identity, including both low-rank factors.
+    with torch.no_grad():
+        for p in reference.parameters():
+            if p.requires_grad:
+                p.add_(torch.randn_like(p) * 0.05)
+    candidate = _build(
+        artifact_path, operator_backend=backend, adaptation=adaptation
+    ).to(device)
+    candidate.load_state_dict(reference.state_dict())
+    optimizers = [
+        torch.optim.Adam(m.parameters(), lr=1e-3) for m in (reference, candidate)
+    ]
+    for update in range(2):
+        obs = _observations(6).to(device)
+        h = torch.randn(1, 2, 7, device=device)
+        results = []
+        gradients = []
+        for model, optimizer in zip((reference, candidate), optimizers):
+            optimizer.zero_grad(set_to_none=True)
+            x = obs.clone().requires_grad_()
+            state = h.clone().requires_grad_()
+            result = model(
+                {
+                    "obs": x,
+                    "rnn_states": (state,),
+                    "seq_length": 3,
+                    "dones": torch.tensor(
+                        [[0], [0], [1], [0], [1], [0]], device=device
+                    ),
+                }
+            )
+            loss = (
+                sum(t.square().sum() for t in result[:3]) + result[3][0].square().sum()
+            )
+            loss.backward()
+            results.append((*result[:3], result[3][0]))
+            gradients.append((x.grad, state.grad))
+        for a, b in zip(results[0] + gradients[0], results[1] + gradients[1]):
+            torch.testing.assert_close(a, b, atol=3e-6, rtol=2e-4)
+        for (name, a), (_, b) in zip(
+            reference.named_parameters(), candidate.named_parameters()
+        ):
+            if a.grad is None:
+                assert b.grad is None, name
+            else:
+                torch.testing.assert_close(
+                    a.grad, b.grad, atol=5e-6, rtol=3e-4, msg=name
+                )
+        for optimizer in optimizers:
+            optimizer.step()
+    base = candidate.recurrent_values
+    effective = candidate.effective_values()
+    if mode == "neuron_gains":
+        graph = candidate.backend_graph()
+        effective = (
+            effective
+            * candidate.incoming_gains()[graph.rows]
+            * candidate.outgoing_gains()[graph.col]
+        )
+    assert torch.equal(base.sign(), effective.sign())
+    assert torch.all(effective / base >= 0.0625)
+    assert torch.all(effective / base <= 16.0)
+
+
+def test_adapters_default_and_low_rank_initial_gradient(artifact_path):
+    frozen = _build(artifact_path, adaptation={})
+    assert frozen.weight_mode == "adapters_only" and not frozen.learn_dynamics
+    before = {
+        n: p.detach().clone()
+        for n, p in frozen.named_parameters()
+        if not p.requires_grad
+    }
+    result = frozen({"obs": _observations(6), "seq_length": 3})
+    (result[0].square().sum() + result[2].square().sum()).backward()
+    assert frozen.sensory_adapter.weight.grad.abs().sum() > 0
+    torch.optim.Adam(frozen.parameters()).step()
+    for name, expected in before.items():
+        torch.testing.assert_close(
+            dict(frozen.named_parameters())[name], expected, rtol=0, atol=0
+        )
+    model = _build(artifact_path, adaptation={"weight_mode": "low_rank"})
+    torch.testing.assert_close(model.effective_values(), model.recurrent_values)
+    model.effective_values().sum().backward()
+    assert model.edge_v.grad.abs().sum() > 0
+
+
+@pytest.mark.parametrize("backend", ["cusparse", "triton_fused"])
+@pytest.mark.parametrize("batch", [1, 37])
+def test_cuda_shapes_amp_reload_and_stream(artifact_path, backend, batch):
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA required")
+    opts = {"weight_mode": "edgewise", "learn_dynamics": True}
+    a = _build(
+        artifact_path, num_seqs=batch, operator_backend="dense", adaptation=opts
+    ).cuda()
+    b = _build(
+        artifact_path, num_seqs=batch, operator_backend=backend, adaptation=opts
+    ).cuda()
+    b.load_state_dict(a.state_dict())
+    obs = _observations(batch * 2).cuda()
+    original_stream = torch.cuda.current_stream()
+    stream = torch.cuda.Stream()
+    stream.wait_stream(original_stream)
+    with torch.cuda.stream(stream):
+        for model in (a, b):
+            with torch.autocast("cuda"):
+                result = model({"obs": obs, "seq_length": 2})
+            (result[0].float().sum() + result[2].float().sum()).backward()
+        torch.testing.assert_close(
+            a.mu.weight.grad, b.mu.weight.grad, atol=2e-4, rtol=3e-3
+        )
+    original_stream.wait_stream(stream)
+    with torch.no_grad():
+        a.recurrent_values.mul_(0.3)
+    b.load_state_dict(a.state_dict())  # invalidate already-used plans/operators
+    for aa, bb in zip(a({"obs": obs})[:3], b({"obs": obs})[:3]):
+        torch.testing.assert_close(aa, bb, atol=3e-6, rtol=2e-4)
+    assert not any("plan" in key or "cache" in key for key in b.state_dict())
+
+
+@pytest.mark.parametrize(
+    "algorithm,layout", [("alg1", "column"), ("alg2", "row"), ("alg3", "row")]
+)
+def test_cusparse_algorithms(artifact_path, algorithm, layout):
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA required")
+    model = _build(artifact_path, operator_backend="cusparse").cuda()
+    model.backend_options = {"cusparse_algorithm": algorithm, "cusparse_layout": layout}
+    hidden = torch.randn(37, 7, device="cuda", requires_grad=True)
+    actual = model._recurrent_multiply(hidden)
+    expected = (model._native_csr_matrix().to_dense() @ hidden.t()).t()
+    torch.testing.assert_close(actual, expected, atol=2e-6, rtol=1e-5)
+    actual.square().sum().backward()
+    assert torch.isfinite(hidden.grad).all()
+
+
+def test_conflicting_adaptation_configuration(artifact_path):
+    params = _network_params(artifact_path)
+    params["connectome"]["adaptation"] = {}
+    builder = ConnectomeBuilder()
+    builder.load(params)
+    with pytest.raises(ValueError, match="not both"):
+        builder.build("bad", actions_num=2, input_shape=(5,))
+
+
+@pytest.mark.parametrize("backend", ["cusparse", "triton_fused"])
+@pytest.mark.parametrize(
+    "mode", ["adapters_only", "neuron_gains", "low_rank", "edgewise"]
+)
+def test_real_graph_custom_gradients(backend, mode):
+    from pathlib import Path
+
+    from scripts.profile_connectome_actors import _compose_network
+
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA required")
+    root = Path(__file__).resolve().parents[2]
+    if not (root / "data/connectomes/processed/malecns_4310/biological.npz").exists():
+        pytest.skip("Prepared biological graph required")
+    params = _compose_network("SimToolRealConnectomeSAPG", "SimToolRealLSTMAsymmetric")
+    params["connectome"]["adaptation"].update(weight_mode=mode, learn_dynamics=True)
+    models = []
+    for implementation in ("dense", backend):
+        params["connectome"]["operator_backend"] = implementation
+        builder = ConnectomeBuilder()
+        builder.load(deepcopy(params))
+        models.append(
+            builder.build(
+                "real",
+                actions_num=29,
+                input_shape=(141,),
+                num_seqs=37,
+                type="extra_param",
+                coef_ids=torch.tensor([50.0, 0.0]),
+                coef_id_idx=140,
+            ).cuda()
+        )
+    with torch.no_grad():
+        if mode == "low_rank":
+            models[0].edge_v.normal_(std=0.05)
+        elif mode == "edgewise":
+            models[0].edge_raw.normal_(std=0.05)
+    models[1].load_state_dict(models[0].state_dict())
+    observations = torch.randn(111, 141, device="cuda")
+    observations[:, 140] = 50
+    initial = torch.randn(1, 37, 4310, device="cuda") * 0.1
+    results = []
+    for model in models:
+        result = model({"obs": observations, "rnn_states": (initial,), "seq_length": 3})
+        sum(t.square().mean() for t in result[:3]).backward()
+        results.append((*result[:3], result[3][0]))
+    for expected, actual in zip(*results):
+        torch.testing.assert_close(expected, actual, atol=3e-6, rtol=3e-4)
+    for (name, a), (_, b) in zip(
+        models[0].named_parameters(), models[1].named_parameters()
+    ):
+        if a.grad is not None:
+            torch.testing.assert_close(a.grad, b.grad, atol=3e-6, rtol=3e-4, msg=name)
 
 
 def test_sequence_matches_steps_and_done_resets(artifact_path) -> None:

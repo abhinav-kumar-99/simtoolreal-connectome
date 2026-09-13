@@ -6,8 +6,8 @@ params:
   network:
     connectome:
       adaptation:
-        weight_mode: adapters_only
+        weight_mode: edgewise
         learn_dynamics: false
-
   config:
-    name: ${resolve_default:SimToolRealConnectomeFrozenSAPG,${....experiment}}
+    name: ${resolve_default:SimToolRealConnectomeEdgewiseSAPG,${....experiment}}
+

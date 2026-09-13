@@ -7,6 +7,9 @@ params:
     connectome:
       artifact_path: data/connectomes/processed/malecns_4310/random.npz
       graph_variant: random
+      adaptation:
+        weight_mode: neuron_gains
+        learn_dynamics: true
 
   config:
     name: ${resolve_default:SimToolRealConnectomeRandomSAPG,${....experiment}}

@@ -17,6 +17,7 @@ Related: [Overview](overview.md), [Log](log.md)
 ## Concepts
 
 - [Connectome actor](concepts/connectome-actor.md) — Actor dynamics and robot interfaces. Last updated 2026-09-13.
+- [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent controls, adapters-only default, and GPU implementation. Last updated 2026-09-13.
 
 ## Workflows
 
