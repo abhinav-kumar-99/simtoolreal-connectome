@@ -48,3 +48,9 @@ Run the persistent evaluator in a separate process:
 The training YAML owns both profiles, GPU assignment, update geometry, 100B cap, checkpoint interval, released perturbations, seed, and output roots. The evaluation YAML owns policy-to-GPU mapping, watcher cadence, the three fixed eval cases, mean-action selection, paper tolerance, resolution, frame sampling, and output root. The helper module `simtoolreal_shared/milestone_checkpoints.py` centralizes target scheduling and filename parsing; it is imported by training and evaluation rather than launched directly.
 
 Generated training artifacts live under `train_dir/connectome/adaptation_100b_gains_update_timing/`. Evaluations live under `evals/connectome/adaptation_100b_gains_update_timing_milestones/`. Completion requires both training children to exit successfully, final recovery checkpoints to pass deployment reload, and all 400 milestones per policy to appear in the evaluator status manifest with three videos each.
+
+## Live launch
+
+The two training children were launched at approximately 2026-09-13 22:31 UTC in tmux session `connectome-100b`. The persistent video watcher runs in `connectome-100b-eval`, and TensorBoard runs in `connectome-100b-tensorboard` on port 6008 with a 10,000-scalar display reservoir. Raw TensorBoard Step values remain comparable environment-frame coordinates; the UI will still downsample the complete 254,313/508,626-point histories.
+
+Both resolved configurations report `operator_backend: triton_fused`, `weight_mode: neuron_gains`, and the intended update geometries. Initial steady epochs were approximately 4.1--4.5 seconds for new timing and 1.9--2.1 seconds for old timing, projecting roughly 12--13 days if throughput remains stable. At that rate the first 250-million-frame snapshots and videos should arrive after roughly 45 minutes. These are launch estimates, not completion evidence.
