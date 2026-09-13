@@ -6,6 +6,10 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] query | Interpret learned neuron gains
+
+Clarified the exact gain placement in the recurrent equation. `g_out[j]` attenuates or amplifies source `j` along all recurrent outputs, while `g_in[i]` scales the recurrent sum entering destination `i`; each edge uses their product. Gains are bounded to `[0.25, 4]` and cannot switch a neuron off. Direct drive, leak-carried state, the motor action readout, and the all-neuron actor value head prevent gain magnitude from being a standalone node-importance or causal-ablation measure.
+
 ## [2026-09-13] query | TensorBoard success-metric semantics
 
 Traced every live success-related TensorBoard tag through the environment and observer. Documented that `success_ratio` and `mean_success_ratio` are duplicate all-environment means divided by 50, while `successes` and its median/maximum are filtered to the zero-intrinsic-reward exploration block; per-block tags expose all six 2,048-environment populations. All `/frame`, `/iter`, and `/time` variants are same-step aliases. Also corrected the reporting boundary: `success_tolerance` is a base value multiplied by `keypointScale: 1.5` in the actual maximum-keypoint distance test, including during deterministic trajectory evaluation.
