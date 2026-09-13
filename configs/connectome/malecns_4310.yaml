@@ -16,6 +16,7 @@ source:
 paths:
   raw_directory: data/connectomes/raw/malecns_4310
   output_directory: data/connectomes/processed/malecns_4310
+  provenance_manifest: configs/connectome/provenance/malecns_4310.json
 
 expected:
   neurons: 4310
@@ -34,4 +35,3 @@ controls:
   seed: 20260210
   rewiring_swaps_per_edge: 10
   maximum_attempts_per_swap: 50
-

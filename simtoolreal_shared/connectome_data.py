@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 import math
 import urllib.request
+import zipfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -87,14 +89,12 @@ def _read_adjacency(path: Path, expected_body_ids: np.ndarray) -> tuple[np.ndarr
 
 
 def _validate_signs(sources: np.ndarray, values: np.ndarray, transmitters: list[str]) -> None:
-    positive = {"acetylcholine"}
-    negative = {"gaba", "glutamate"}
     for source, value in zip(sources, values):
         transmitter = transmitters[int(source)]
-        if transmitter in positive and value <= 0:
+        if transmitter == "acetylcholine" and value <= 0:
             raise ValueError(f"Non-positive cholinergic edge from neuron index {source}")
-        if transmitter in negative and value >= 0:
-            raise ValueError(f"Non-negative inhibitory edge from neuron index {source}")
+        if transmitter != "acetylcholine" and value >= 0:
+            raise ValueError(f"Non-negative non-cholinergic edge from neuron index {source}")
 
 
 def _spectral_normalize(
@@ -109,15 +109,20 @@ def _spectral_normalize(
         (raw_values.astype(np.float64), (destinations, sources)),
         shape=(neuron_count, neuron_count),
     ).tocsr()
-    eigenvalue = eigs(
+    eigenvalues = eigs(
         matrix,
-        k=1,
+        k=8,
         which="LM",
         v0=np.ones(neuron_count, dtype=np.float64),
         return_eigenvectors=False,
-        maxiter=max(10000, neuron_count * 10),
-    )[0]
-    radius = float(abs(eigenvalue))
+        maxiter=max(100000, neuron_count * 20),
+        ncv=50,
+        tol=1.0e-10,
+    )
+    # ARPACK can return a subdominant member of a near-degenerate complex
+    # spectrum for k=1. Taking the maximum of a fixed candidate set is stable;
+    # rounding removes backend-level last-bit differences before FP32 scaling.
+    radius = float(round(float(np.max(np.abs(eigenvalues))), 8))
     if not math.isfinite(radius) or radius <= 0:
         raise ValueError(f"Invalid spectral radius: {radius}")
     scale = float(target) / radius
@@ -195,9 +200,7 @@ def _raw_values_for_random(
     magnitudes = np.abs(original_values).copy()
     rng.shuffle(magnitudes)
     signs = np.ones(len(sources), dtype=np.float32)
-    inhibitory = np.asarray(
-        [transmitters[int(source)] in {"gaba", "glutamate"} for source in sources]
-    )
+    inhibitory = np.asarray([transmitters[int(source)] != "acetylcholine" for source in sources])
     signs[inhibitory] = -1.0
     return magnitudes * signs
 
@@ -210,18 +213,35 @@ def _save_artifact(
     population_indices: dict[str, np.ndarray],
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        path,
-        schema_version=np.asarray([ARTIFACT_SCHEMA_VERSION], dtype=np.int64),
-        crow_indices=matrix.indptr.astype(np.int64),
-        col_indices=matrix.indices.astype(np.int64),
-        values=matrix.data.astype(np.float32),
-        raw_values=np.asarray(raw_values, dtype=np.float32),
-        body_ids=body_ids,
-        sensory_indices=population_indices["sensory"],
-        descending_indices=population_indices["descending"],
-        motor_indices=population_indices["motor"],
-    )
+    arrays = {
+        "schema_version": np.asarray([ARTIFACT_SCHEMA_VERSION], dtype=np.int64),
+        "crow_indices": matrix.indptr.astype(np.int64),
+        "col_indices": matrix.indices.astype(np.int64),
+        "values": matrix.data.astype(np.float32),
+        "raw_values": np.asarray(raw_values, dtype=np.float32),
+        "body_ids": body_ids,
+        "sensory_indices": population_indices["sensory"],
+        "descending_indices": population_indices["descending"],
+        "motor_indices": population_indices["motor"],
+    }
+    temporary = path.with_suffix(path.suffix + ".part")
+    with zipfile.ZipFile(
+        temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+    ) as archive:
+        for name in sorted(arrays):
+            buffer = io.BytesIO()
+            np.lib.format.write_array(
+                buffer,
+                np.ascontiguousarray(arrays[name]),
+                version=(1, 0),
+                allow_pickle=False,
+            )
+            member = zipfile.ZipInfo(f"{name}.npy", date_time=(1980, 1, 1, 0, 0, 0))
+            member.compress_type = zipfile.ZIP_DEFLATED
+            member.create_system = 3
+            member.external_attr = 0o600 << 16
+            archive.writestr(member, buffer.getvalue(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+    temporary.replace(path)
 
 
 def prepare_connectome(config_path: Path, repository_root: Path) -> dict[str, Any]:
@@ -317,8 +337,8 @@ def prepare_connectome(config_path: Path, repository_root: Path) -> dict[str, An
             "normalization_scale": scale,
             "nnz": int(matrix.nnz),
         }
-    output_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = output_dir / "manifest.json"
+    manifest_path = repository_root / config["paths"]["provenance_manifest"]
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return manifest
 
@@ -330,4 +350,3 @@ def load_artifact(path: Path) -> dict[str, np.ndarray]:
     if schema != ARTIFACT_SCHEMA_VERSION:
         raise ValueError(f"Unsupported connectome artifact schema {schema}")
     return result
-

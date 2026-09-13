@@ -1,0 +1,84 @@
+{
+  "artifacts": {
+    "biological": {
+      "nnz": 118920,
+      "normalization_scale": 0.0013450593604779377,
+      "path": "data/connectomes/processed/malecns_4310/biological.npz",
+      "raw_spectral_radius": 743.46161172,
+      "sha256": "11b2ca4a44b0735cdb24e52cf94a15f0b66617e35fec54df35a44c11cc8b16c2"
+    },
+    "degree_preserving_rewired": {
+      "nnz": 118920,
+      "normalization_scale": 0.003460285397038346,
+      "path": "data/connectomes/processed/malecns_4310/degree_preserving_rewired.npz",
+      "raw_spectral_radius": 288.9935035,
+      "sha256": "83ef97505e135e59e35f08193dd0a5705dcb1a394552e6ffe16d4bf0f8349010"
+    },
+    "random": {
+      "nnz": 118920,
+      "normalization_scale": 0.0059314518534671285,
+      "path": "data/connectomes/processed/malecns_4310/random.npz",
+      "raw_spectral_radius": 168.59278718,
+      "sha256": "410033ff0676ec5ca8dce64afd9d26609d3081cedaedba8c8dfff2c724b8b741"
+    }
+  },
+  "class_counts": {
+    "ascending neuron": 328,
+    "descending neuron": 1236,
+    "efferent ascending": 2,
+    "intrinsic neuron": 2378,
+    "motor neuron": 130,
+    "sensory ascending": 1,
+    "sensory descending": 3,
+    "sensory neuron": 232
+  },
+  "controls": {
+    "maximum_attempts_per_swap": 50,
+    "rewiring_swaps_per_edge": 10,
+    "seed": 20260210,
+    "variants": [
+      "biological",
+      "degree_preserving_rewired",
+      "random"
+    ]
+  },
+  "normalization": {
+    "method": "spectral_radius",
+    "target": 1.0,
+    "tolerance": 0.0001
+  },
+  "observed": {
+    "descending_neurons": 1236,
+    "edges": 118920,
+    "motor_neurons": 130,
+    "neurons": 4310,
+    "sensory_neurons": 232
+  },
+  "orientation": "CSR rows are postsynaptic destinations; columns are presynaptic sources",
+  "schema_version": 1,
+  "source": {
+    "commit": "faee4b06869855ae0164cbf217fb6ec28ef3521b",
+    "files": {
+      "adjacency": {
+        "filename": "W_20260210_vncRoisOnly.csv",
+        "sha256": "255236baca7a24ead7360636a4ee98fd54d5423026c6ec864bbd717b8d58d3b4",
+        "url": "https://raw.githubusercontent.com/smpuglie/Pugliese_2026/faee4b06869855ae0164cbf217fb6ec28ef3521b/data/imac%20t1%20connectome%20data/W_20260210_vncRoisOnly.csv"
+      },
+      "neurons": {
+        "filename": "wTable_20260210_vncRoisOnly.csv",
+        "sha256": "593a75c53f1c69600cac747364b8b623655699b1b83e16b41eeef6fe93dd5b2d",
+        "url": "https://raw.githubusercontent.com/smpuglie/Pugliese_2026/faee4b06869855ae0164cbf217fb6ec28ef3521b/data/imac%20t1%20connectome%20data/wTable_20260210_vncRoisOnly.csv"
+      }
+    },
+    "repository": "https://github.com/smpuglie/Pugliese_2026"
+  },
+  "transmitter_counts": {
+    "": 1,
+    "acetylcholine": 2493,
+    "gaba": 1011,
+    "glutamate": 606,
+    "histamine": 4,
+    "serotonin": 2,
+    "unclear": 193
+  }
+}
