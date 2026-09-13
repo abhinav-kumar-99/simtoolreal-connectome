@@ -204,6 +204,8 @@ def test_release_settings_suite_preserves_original_logical_update_schedule() -> 
     assert training["sapg_block_size"] == 4096
     assert training["minibatch_size"] == 98304
     assert training["central_critic_minibatch_size"] == 98304
+    assert training["actor_microbatch_size"] == 49152
+    assert training["central_critic_microbatch_size"] == 49152
     assert training["epochs"] == 2543
     assert training["num_envs"] * 16 * training["epochs"] == 999_948_288
     overrides = training["overrides"]
@@ -211,6 +213,37 @@ def test_release_settings_suite_preserves_original_logical_update_schedule() -> 
     assert overrides["task.env.forceScale"] == 2.0
     assert overrides["task.env.forceDecay"] == 0.99
     assert overrides["task.env.torqueScale"] == 0.0
+
+
+def test_release_settings_suite_routes_microbatches_without_changing_logical_batch(
+    tmp_path,
+) -> None:
+    from scripts.run_connectome_suite import _training_overrides
+
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/suites/adaptation_1b_release_settings.yaml"
+        ).read_text()
+    )
+    training = suite["training"]
+    overrides = _training_overrides(
+        training,
+        training["train_profiles"][0]["train_profile"],
+        42,
+        "adapters_only",
+        tmp_path,
+    )
+    assert "train.params.config.minibatch_size=98304" in overrides
+    assert (
+        "train.params.config.central_value_config.minibatch_size=98304" in overrides
+    )
+    assert "++train.params.config.microbatch_size=49152" in overrides
+    assert (
+        "++train.params.config.central_value_config.microbatch_size=49152"
+        in overrides
+    )
 
 
 def test_capped_evaluation_contract_owns_metrics_and_videos() -> None:

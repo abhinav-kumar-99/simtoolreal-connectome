@@ -180,6 +180,16 @@ def _training_overrides(
         overrides.append(
             f"train.params.config.max_frames={int(training['max_frames'])}"
         )
+    if "actor_microbatch_size" in training:
+        overrides.append(
+            "++train.params.config.microbatch_size="
+            f"{int(training['actor_microbatch_size'])}"
+        )
+    if "central_critic_microbatch_size" in training:
+        overrides.append(
+            "++train.params.config.central_value_config.microbatch_size="
+            f"{int(training['central_critic_microbatch_size'])}"
+        )
     for key, value in training.get("overrides", {}).items():
         overrides.append(f"{key}={_hydra_value(value)}")
     checkpoint = training["checkpoint"]

@@ -1416,7 +1416,15 @@ class ContinuousA2CBase(A2CBase):
         for mini_ep in range(0, self.mini_epochs_num):
             ep_kls = []
             for i in range(len(self.dataset)):
-                a_loss, c_loss, entropy, kl, last_lr, lr_mul, cmu, csigma, b_loss, extras = self.train_actor_critic(self.dataset[i])
+                accumulation_index = i % self.microbatches_per_minibatch
+                a_loss, c_loss, entropy, kl, last_lr, lr_mul, cmu, csigma, b_loss, extras = self.train_actor_critic(
+                    self.dataset[i],
+                    zero_grad=accumulation_index == 0,
+                    optimizer_step=(
+                        accumulation_index == self.microbatches_per_minibatch - 1
+                    ),
+                    loss_scale=1.0 / self.microbatches_per_minibatch,
+                )
                 extra_infos['on_policy_contrib'].append(extras['on_policy_contrib'])
                 extra_infos['on_policy_grads'].append(extras['on_policy_grads'])
                 extra_infos['off_policy_contrib'].append(extras['off_policy_contrib'])
