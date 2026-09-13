@@ -49,12 +49,12 @@ Run the capped pilot from the repository root:
 Run the two-policy billion-step comparison from the repository root:
 
 ```bash
-.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/adaptation_1b.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/adaptation_1b_release_settings.yaml
 ```
 
-This contract assigns adapters-only to physical GPU 0 and neuron-gains to physical GPU 1, with two concurrent single-GPU children. It uses 5,086 complete 196,608-step epochs, yielding 999,948,288 environment steps per policy below the strict billion-step cap. The main controls are the ordered `train_profiles`, `gpu_assignments`, `epochs`, `max_frames`, and the validated 12,288-environment batch geometry. See the [billion-step run page](../analyses/adaptation-1b-run.md) for the TensorBoard command and optimizer-update count.
+This contract assigns adapters-only to physical GPU 0 and neuron-gains to physical GPU 1, with two concurrent single-GPU children; it does not train the original LSTM. It uses 2,543 complete 393,216-transition update phases, yielding 999,948,288 environment steps per policy below the strict billion-step cap. Each phase collects two 12,288-environment, horizon-16 rollouts before optimization; this preserves the release's effective rollout size and update density without the unstable 24,576-environment PhysX scene. `minibatch_size` and `central_critic_minibatch_size` remain the released logical size 98,304. The actor/critic physical microbatch is 24,576, including sample-weighted handling of SAPG's enlarged final minibatch. Each actor and critic still take 20,344 updates. See the [billion-step run page](../analyses/adaptation-1b-run.md) for the TensorBoard command and live evidence.
 
-The important pilot keys are `train_profiles` (the five adaptation cases), `seeds`, `gpu_assignments`, `max_parallel`, `num_envs`, `sapg_block_size`, `epochs`, `max_frames`, both minibatch sizes, and the task overrides. `max_parallel: 2` creates two GPU-owned queues, so a device never receives overlapping policies. Set it to `1` for fully serial execution. The launcher accepts only `--config`; all experiment settings stay in YAML.
+The important training keys are `train_profiles`, `seeds`, `gpu_assignments`, `max_parallel`, `num_envs`, `sapg_block_size`, `rollout_accumulation_steps`, `epochs`, `max_frames`, both logical minibatch sizes, optional actor/critic physical microbatch sizes, and task overrides. `max_parallel: 2` creates two GPU-owned queues, so a device never receives overlapping policies. Set it to `1` for fully serial execution. The launcher accepts only `--config`; all experiment settings stay in YAML. `rollout_accumulation_steps` collects multiple unchanged-policy horizon batches before concatenation; it should not be replaced with a longer horizon when GAE comparability matters.
 
 After training, run the configured closed-loop evaluation and video export:
 

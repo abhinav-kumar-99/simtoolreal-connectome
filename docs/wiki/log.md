@@ -6,6 +6,14 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] launch | Release-matched billion-step replacement
+
+Implemented logical-batch-preserving gradient accumulation for the connectome actor and asymmetric critic, including sample-weighted handling of SAPG's enlarged final minibatch. Added rollout accumulation so multiple unchanged-policy horizon batches can be concatenated before normalization, sequence shuffling and optimization. A focused CPU regression verifies accumulated critic parameters and a single optimizer-counter increment against a full update.
+
+At 24,576 simultaneous environments, the full physical batch and 49,152- and 24,576-sample fallbacks OOMed before an optimizer step; smaller training chunks repeatedly exposed a GPU PhysX contact-preparation fault near epoch 24. Replaced the oversized scene with two accumulated 12,288-environment, horizon-16 rollouts per update phase. The two-phase smoke completed, reloaded for deployment, and recorded the expected 24,576 frames and 16 actor Adam steps.
+
+Restarted adapters-only on GPU 0 and neuron-gains on GPU 1 with released-checkpoint exploration and force settings, 999,948,288 capped steps, and 20,344 scheduled actor/critic updates each. Both crossed the prior failure boundary at approximately 19.4--20.3 GB. Their epoch-10 checkpoints recorded frame 3,932,160 and 80 actor Adam steps. TensorBoard follows the fresh directory on port 6007. The LSTM control remains deferred; completion and final timing are pending.
+
 ## [2026-09-13] evaluate | High-resolution partial-policy videos
 
 Stopped the exploratory adapters-only and neuron-gains jobs by request, preserving their logs and best checkpoints. Added explicit-checkpoint evaluation sources and configurable Isaac Gym camera resolution. Evaluated three new marker, eraser, and spatula cases per policy at 800x450 and 20 FPS. All six MP4s passed codec, resolution, duration, frame-count, and nonempty-file checks; sampled frames showed rendered simulator state. Both policies reached one spatula waypoint and none on the other cases.
