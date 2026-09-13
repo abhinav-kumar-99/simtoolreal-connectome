@@ -6,6 +6,10 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] query | Biological meaning of gain
+
+Distinguished biological gain—the slope or sensitivity of a neural input-output response—from cell importance. Documented that the actor's outgoing and incoming gains are coarse cell-wide proxies for presynaptic efficacy and postsynaptic recurrent sensitivity, respectively; they are fixed learned RL parameters rather than measurements of MaleCNS physiology or online neuromodulatory state.
+
 ## [2026-09-13] query | Interpret learned neuron gains
 
 Clarified the exact gain placement in the recurrent equation. `g_out[j]` attenuates or amplifies source `j` along all recurrent outputs, while `g_in[i]` scales the recurrent sum entering destination `i`; each edge uses their product. Gains are bounded to `[0.25, 4]` and cannot switch a neuron off. Direct drive, leak-carried state, the motor action readout, and the all-neuron actor value head prevent gain magnitude from being a standalone node-importance or causal-ablation measure.
