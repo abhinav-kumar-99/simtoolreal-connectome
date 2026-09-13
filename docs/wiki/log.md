@@ -151,3 +151,7 @@ Checked actual production NPZ support and actor input/output masks: 4,281 neuron
 ## [2026-09-13] query | Compact circuit size for fine motion
 
 Measured the union of explicitly selected functional candidate groups without preserving all original cells: 993 neurons without tactile afferents, 1,285 with them. The latter induced graph has 7,377 >=5-contact edges and 114 isolated cells, demonstrating that group selection alone omits connecting partners. Documented approximately 2,000 neurons as an untested engineering target, not an established minimum; distinguished the published 803-cell unilateral rhythm model from the desired bilateral dexterous controller. The user prefers the 4,778 candidate as the broader reference. No profile deployment or compact training was authorized or launched in this query.
+
+## [2026-09-13] query | Origin and meaning of five-synapse cutoff
+
+Verified the cutoff in Pugliese's extraction methods and the production NPZ: minimum raw magnitude 5; 17,791 edges exactly at 5; none below 5. Documented anatomical cell-pair contact count versus firing/weight thresholds, explicit reuse in the audit YAML, and the paper's absence of this cutoff for FANC/BANC. Highlighted that same-node threshold changes must be distinguished from unrestricted node expansion. No runtime setting was changed.
