@@ -1,0 +1,38 @@
+# Evaluate the completed billion-step adapters-only and neuron-gains policies.
+schema_version: 1
+output_directory: evals/connectome/adaptation_1b_final_highres_epoch2543
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+policy_sources:
+  adapters_only:
+    checkpoint_path: train_dir/connectome/adaptation_1b_release_settings_rollout_accumulation/00_adaptation_1b_release_settings_rollout_accumulation_adapters_only_seed42/rl_runs/00_adaptation_1b_release_settings_rollout_accumulation_adapters_only_seed42/nn/last_00_adaptation_1b_release_settings_rollout_accumulation_adapters_only_seed42_ep_2543_rew__80.18_.pth
+    policy_config_path: train_dir/connectome/adaptation_1b_release_settings_rollout_accumulation/00_adaptation_1b_release_settings_rollout_accumulation_adapters_only_seed42/resolved_config.yaml
+  neuron_gains:
+    checkpoint_path: train_dir/connectome/adaptation_1b_release_settings_rollout_accumulation/00_adaptation_1b_release_settings_rollout_accumulation_neuron_gains_seed42/rl_runs/00_adaptation_1b_release_settings_rollout_accumulation_neuron_gains_seed42/nn/last_00_adaptation_1b_release_settings_rollout_accumulation_neuron_gains_seed42_ep_2543_rew__107.65_.pth
+    policy_config_path: train_dir/connectome/adaptation_1b_release_settings_rollout_accumulation/00_adaptation_1b_release_settings_rollout_accumulation_neuron_gains_seed42/resolved_config.yaml
+policies: [adapters_only, neuron_gains]
+gpu_assignments: [0, 1]
+max_parallel: 2
+episodes_per_case: 1
+downsample_factor: 1
+z_offset: 0.03
+max_steps: 601
+table_urdf: urdf/table_narrow.urdf
+metrics:
+  paper_task_progress:
+    success_tolerance_m: 0.02
+  repository_avg_goal_pct:
+    success_tolerance_m: 0.01
+videos:
+  metric: paper_task_progress
+  fps: 20
+  frame_interval: 3
+  # The worker's native 1600x900 camera renders at 800x450 with this factor.
+  camera_resolution_reduction_factor: 2
+eval_cases:
+  - {object_category: marker, object_name: sharpie_marker, task_name: write_c}
+  - {object_category: eraser, object_name: flat_eraser, task_name: wipe_smile}
+  - {object_category: spatula, object_name: flat_spatula, task_name: flip_over}

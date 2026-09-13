@@ -302,3 +302,31 @@ def test_partial_high_resolution_evaluation_uses_explicit_checkpoints() -> None:
     assert evaluation["videos"]["camera_resolution_reduction_factor"] == 2
     assert evaluation["videos"]["frame_interval"] == 3
     assert len(evaluation["eval_cases"]) == 3
+
+
+def test_final_high_resolution_evaluation_uses_completed_checkpoints() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    evaluation = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/evaluation/adaptation_1b_final_highres.yaml"
+        ).read_text()
+    )
+    assert set(evaluation["policy_sources"]) == {"adapters_only", "neuron_gains"}
+    assert all(
+        "ep_2543" in source["checkpoint_path"]
+        for source in evaluation["policy_sources"].values()
+    )
+    assert set(evaluation["metrics"]) == {
+        "paper_task_progress",
+        "repository_avg_goal_pct",
+    }
+    assert evaluation["metrics"]["paper_task_progress"]["success_tolerance_m"] == 0.02
+    assert (
+        evaluation["metrics"]["repository_avg_goal_pct"]["success_tolerance_m"]
+        == 0.01
+    )
+    assert evaluation["videos"]["camera_resolution_reduction_factor"] == 2
+    assert evaluation["videos"]["fps"] == 20
+    assert evaluation["videos"]["frame_interval"] == 3
+    assert len(evaluation["eval_cases"]) == 3
