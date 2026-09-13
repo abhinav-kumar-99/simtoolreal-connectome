@@ -1,0 +1,37 @@
+schema_version: 1
+
+source:
+  repository: https://github.com/smpuglie/Pugliese_2026
+  commit: faee4b06869855ae0164cbf217fb6ec28ef3521b
+  files:
+    adjacency:
+      url: https://raw.githubusercontent.com/smpuglie/Pugliese_2026/faee4b06869855ae0164cbf217fb6ec28ef3521b/data/imac%20t1%20connectome%20data/W_20260210_vncRoisOnly.csv
+      sha256: 255236baca7a24ead7360636a4ee98fd54d5423026c6ec864bbd717b8d58d3b4
+      filename: W_20260210_vncRoisOnly.csv
+    neurons:
+      url: https://raw.githubusercontent.com/smpuglie/Pugliese_2026/faee4b06869855ae0164cbf217fb6ec28ef3521b/data/imac%20t1%20connectome%20data/wTable_20260210_vncRoisOnly.csv
+      sha256: 593a75c53f1c69600cac747364b8b623655699b1b83e16b41eeef6fe93dd5b2d
+      filename: wTable_20260210_vncRoisOnly.csv
+
+paths:
+  raw_directory: data/connectomes/raw/malecns_4310
+  output_directory: data/connectomes/processed/malecns_4310
+
+expected:
+  neurons: 4310
+  edges: 118920
+  sensory_neurons: 232
+  descending_neurons: 1236
+  motor_neurons: 130
+
+normalization:
+  method: spectral_radius
+  target: 1.0
+  tolerance: 1.0e-4
+
+controls:
+  variants: [biological, degree_preserving_rewired, random]
+  seed: 20260210
+  rewiring_swaps_per_edge: 10
+  maximum_attempts_per_swap: 50
+

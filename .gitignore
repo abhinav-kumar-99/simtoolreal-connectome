@@ -217,6 +217,10 @@ train_dir/
 runs/
 wandb/
 
+# Generated connectome data and profiling output
+data/connectomes/
+profiles/connectome/
+
 # FoundationPose (separate repo)
 FoundationPose/
 # Claude Code session files
