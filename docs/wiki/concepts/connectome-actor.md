@@ -4,7 +4,7 @@ The actor is a sparse rate RNN whose recurrent support and base weights come fro
 
 Last updated: 2026-09-13
 
-Related: [Overview](../overview.md), [Source](../sources/summaries/malecns-front-leg-circuit.md), [Workflow](../workflows/connectome-experiments.md)
+Related: [Overview](../overview.md), [Source](../sources/summaries/malecns-front-leg-circuit.md), [Workflow](../workflows/connectome-experiments.md), [Sparse backends](../analyses/sparse-backends.md)
 
 ## Contract
 
@@ -21,6 +21,28 @@ h_{t+1}=(1-\alpha)\odot h_t+\alpha\odot\tanh\left(0.9e^p\odot\left[W(e^q\odot h_
 \]
 
 `W` is the fixed destination-by-source CSR operator normalized to spectral radius one. Incoming and outgoing gains use a bounded log-space parameterization in `[0.25, 4]` and initialize at one. Leak is sigmoid-parameterized and initializes at `0.5`; recurrent bias initializes at zero. Sparse recurrence is always FP32, including under mixed-precision PPO.
+
+## Trainable parameters
+
+The primary SAPG actor has 109,796 trainable scalars in 12 parameter tensors:
+
+| Group | Shape | Count |
+| --- | --- | ---: |
+| sensory adapter | `232 x 128` | 29,696 |
+| descending adapter | `1236 x 44` | 54,384 |
+| incoming neuron gains | `4310` | 4,310 |
+| outgoing neuron gains | `4310` | 4,310 |
+| neuron leaks | `4310` | 4,310 |
+| recurrent biases | `4310` | 4,310 |
+| motor action readout weight and bias | `29 x 130`, `29` | 3,799 |
+| actor value-head weight and bias | `1 x 4310`, `1` | 4,311 |
+| six SAPG embeddings | `6 x 32` | 192 |
+| six coefficient-conditioned log standard deviations | `6 x 29` | 174 |
+| **Total** | | **109,796** |
+
+The 118,920 biological weights, CSR row/column indices, and population masks are fixed checkpoint buffers, not optimizer parameters. In the frozen-core ablation the gain, leak, and recurrent-bias vectors are also frozen, leaving 92,556 trainable actor scalars. Biological, rewired, and random neuron-gain actors have the same parameter count.
+
+The unchanged asymmetric central critic is separate. It has 2,037,769 trainable scalars: a 194-dimensional input (162 privileged state values plus a 32-dimensional SAPG embedding), the `1024, 1024, 512, 512` MLP, its scalar value output, and six learned SAPG embeddings. The actor-side value head is still optimized because this repository defaults `use_experimental_cv` to true while also training the central critic.
 
 Policy observations `0:125` and `137:140` form the 128-dimensional sensory input. Observations `125:137` form the 12-dimensional goal input. SAPG's learned 32-dimensional coefficient embedding is concatenated with the goal before the descending-neuron adapter. The 130 motor-neuron states alone feed the 29-dimensional action-mean head. Action log standard deviations remain coefficient-conditioned.
 

@@ -24,9 +24,8 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Analyses
 
-- None yet.
+- [Sparse recurrent backends](analyses/sparse-backends.md) — Evidence and benchmark order for PyTorch, JAX, torch-sparse, cuSPARSE, and Triton. Last updated 2026-09-13.
 
 ## Entities
 
 - None yet.
-
