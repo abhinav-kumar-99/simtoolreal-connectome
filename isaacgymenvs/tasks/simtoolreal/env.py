@@ -49,11 +49,18 @@ from torch import Tensor
 
 import json
 
-from pytorch3d.transforms import (
-    axis_angle_to_matrix,
-    matrix_to_quaternion,
-    quaternion_to_matrix,
-)
+try:
+    from pytorch3d.transforms import (
+        axis_angle_to_matrix,
+        matrix_to_quaternion,
+        quaternion_to_matrix,
+    )
+except ImportError:
+    from simtoolreal_shared.rotation_transforms import (
+        axis_angle_to_matrix,
+        matrix_to_quaternion,
+        quaternion_to_matrix,
+    )
 
 from dextoolbench.objects import NAME_TO_OBJECT
 from isaacgymenvs.tasks.base.vec_task import VecTask
