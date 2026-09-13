@@ -15,11 +15,12 @@ def main() -> None:
     parser.add_argument("--config", type=Path, required=True)
     args = parser.parse_args()
     repository_root = Path(__file__).resolve().parents[1]
-    config_path = args.config if args.config.is_absolute() else repository_root / args.config
+    config_path = (
+        args.config if args.config.is_absolute() else repository_root / args.config
+    )
     manifest = prepare_connectome(config_path, repository_root)
     print(json.dumps(manifest, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":
     main()
-

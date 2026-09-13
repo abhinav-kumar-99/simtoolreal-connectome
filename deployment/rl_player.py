@@ -1,4 +1,3 @@
-import os
 from typing import Optional
 
 import numpy as np
@@ -67,7 +66,6 @@ class RlPlayer:
         runner = Runner()
         runner.load(config)
 
-        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         player = runner.create_player()
         player.init_rnn()
         player.has_batch_dimension = True

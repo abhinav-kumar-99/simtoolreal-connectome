@@ -25,14 +25,18 @@ def _resolve_artifact(path: str) -> Path:
     return candidate.resolve()
 
 
-def _as_ranges(values: Iterable[Iterable[int]], name: str) -> tuple[tuple[int, int], ...]:
+def _as_ranges(
+    values: Iterable[Iterable[int]], name: str
+) -> tuple[tuple[int, int], ...]:
     ranges = tuple((int(start), int(stop)) for start, stop in values)
     if not ranges or any(start < 0 or stop <= start for start, stop in ranges):
         raise ValueError(f"Invalid {name}: {ranges}")
     return ranges
 
 
-def _select_ranges(observations: torch.Tensor, ranges: tuple[tuple[int, int], ...]) -> torch.Tensor:
+def _select_ranges(
+    observations: torch.Tensor, ranges: tuple[tuple[int, int], ...]
+) -> torch.Tensor:
     return torch.cat([observations[:, start:stop] for start, stop in ranges], dim=-1)
 
 
@@ -59,7 +63,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
 
             connectome = params["connectome"]
             if connectome.get("dtype", "float32") != "float32":
-                raise ValueError("Connectome sparse recurrence currently requires dtype: float32")
+                raise ValueError(
+                    "Connectome sparse recurrence currently requires dtype: float32"
+                )
             artifact_path = _resolve_artifact(connectome["artifact_path"])
             if not artifact_path.exists():
                 raise FileNotFoundError(
@@ -86,8 +92,13 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 "motor_neurons": len(motor_indices),
             }
             if observed != {key: int(value) for key, value in expected.items()}:
-                raise ValueError(f"Connectome artifact counts differ: {observed} != {expected}")
-            if len(crow_indices) != self.neuron_count + 1 or int(crow_indices[-1]) != self.edge_count:
+                raise ValueError(
+                    f"Connectome artifact counts differ: {observed} != {expected}"
+                )
+            if (
+                len(crow_indices) != self.neuron_count + 1
+                or int(crow_indices[-1]) != self.edge_count
+            ):
                 raise ValueError("Invalid CSR row pointer")
             if len(np.unique(body_ids)) != self.neuron_count:
                 raise ValueError("Neuron body IDs must be unique")
@@ -103,11 +114,15 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self.register_buffer("col_indices", torch.from_numpy(col_indices))
             self.register_buffer("recurrent_values", torch.from_numpy(values))
             self.register_buffer("sensory_indices", torch.from_numpy(sensory_indices))
-            self.register_buffer("descending_indices", torch.from_numpy(descending_indices))
+            self.register_buffer(
+                "descending_indices", torch.from_numpy(descending_indices)
+            )
             self.register_buffer("motor_indices", torch.from_numpy(motor_indices))
 
             observations = connectome["observations"]
-            self.sensory_ranges = _as_ranges(observations["sensory_ranges"], "sensory_ranges")
+            self.sensory_ranges = _as_ranges(
+                observations["sensory_ranges"], "sensory_ranges"
+            )
             self.goal_ranges = _as_ranges(observations["goal_ranges"], "goal_ranges")
             self.policy_observation_size = int(observations["policy_size"])
             sensory_size = sum(stop - start for start, stop in self.sensory_ranges)
@@ -116,15 +131,21 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 raise ValueError("Sensory observation ranges do not match sensory_size")
             if goal_size != int(observations["goal_size"]):
                 raise ValueError("Goal observation ranges do not match goal_size")
-            if max(stop for _, stop in self.sensory_ranges + self.goal_ranges) > self.policy_observation_size:
-                raise ValueError("Observation range exceeds the policy observation size")
+            if (
+                max(stop for _, stop in self.sensory_ranges + self.goal_ranges)
+                > self.policy_observation_size
+            ):
+                raise ValueError(
+                    "Observation range exceeds the policy observation size"
+                )
 
             self.coef_embedding_size = 0
             if self.net_type == "extra_param":
                 expected_input_shape = (self.policy_observation_size + 1,)
                 if tuple(input_shape) != expected_input_shape:
                     raise ValueError(
-                        f"Expected SAPG input_shape {expected_input_shape}, got {input_shape}"
+                        "Expected SAPG input_shape "
+                        f"{expected_input_shape}, got {input_shape}"
                     )
                 self.coef_id_idx = int(kwargs.pop("coef_id_idx"))
                 if self.coef_id_idx != self.policy_observation_size:
@@ -132,7 +153,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                         f"SAPG coefficient index {self.coef_id_idx} != policy size "
                         f"{self.policy_observation_size}"
                     )
-                coef_ids = torch.as_tensor(kwargs.pop("coef_ids"), dtype=torch.float32).flatten()
+                coef_ids = torch.as_tensor(
+                    kwargs.pop("coef_ids"), dtype=torch.float32
+                ).flatten()
                 self.register_buffer("coef_ids", coef_ids.detach().clone())
                 self.coef_embedding_size = int(connectome["sapg_embedding_size"])
                 requested_embedding_size = int(
@@ -144,7 +167,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                         f"size {self.coef_embedding_size}"
                     )
                 self.extra_params = nn.Parameter(
-                    torch.empty(len(coef_ids), self.coef_embedding_size, dtype=torch.float32)
+                    torch.empty(
+                        len(coef_ids), self.coef_embedding_size, dtype=torch.float32
+                    )
                 )
                 nn.init.normal_(self.extra_params)
             else:
@@ -152,14 +177,19 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 self.register_buffer("coef_ids", torch.empty(0, dtype=torch.float32))
                 if tuple(input_shape) != (self.policy_observation_size,):
                     raise ValueError(
-                        f"Expected input_shape {(self.policy_observation_size,)}, got {input_shape}"
+                        "Expected input_shape "
+                        f"{(self.policy_observation_size,)}, got {input_shape}"
                     )
             if kwargs:
-                raise TypeError(f"Unsupported connectome build options: {sorted(kwargs)}")
+                raise TypeError(
+                    f"Unsupported connectome build options: {sorted(kwargs)}"
+                )
 
             adapter = connectome["population_adapters"]
             self.sensory_adapter = nn.Linear(
-                sensory_size, len(sensory_indices), bias=bool(adapter.get("bias", False))
+                sensory_size,
+                len(sensory_indices),
+                bias=bool(adapter.get("bias", False)),
             )
             self.descending_adapter = nn.Linear(
                 goal_size + self.coef_embedding_size,
@@ -174,10 +204,14 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             gain_min, gain_max = (float(value) for value in dynamics["gain_bounds"])
             initial_gain = float(dynamics["initial_gain"])
             if not 0.0 < gain_min < initial_gain < gain_max:
-                raise ValueError("initial_gain must lie strictly inside positive gain_bounds")
+                raise ValueError(
+                    "initial_gain must lie strictly inside positive gain_bounds"
+                )
             self.log_gain_min = math.log(gain_min)
             self.log_gain_span = math.log(gain_max) - self.log_gain_min
-            initial_fraction = (math.log(initial_gain) - self.log_gain_min) / self.log_gain_span
+            initial_fraction = (
+                math.log(initial_gain) - self.log_gain_min
+            ) / self.log_gain_span
             initial_gain_raw = math.log(initial_fraction / (1.0 - initial_fraction))
             self.incoming_gain_raw = nn.Parameter(
                 torch.full((self.neuron_count,), initial_gain_raw, dtype=torch.float32)
@@ -207,12 +241,18 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self.value = nn.Linear(self.neuron_count, self.value_size)
             continuous = params["space"]["continuous"]
             self.mu_act = self.activations_factory.create(continuous["mu_activation"])
-            self.sigma_act = self.activations_factory.create(continuous["sigma_activation"])
+            self.sigma_act = self.activations_factory.create(
+                continuous["sigma_activation"]
+            )
             self.fixed_sigma = continuous["fixed_sigma"]
             if self.fixed_sigma == "coef_cond":
                 if self.net_type != "extra_param":
-                    raise ValueError("coef_cond sigma requires SAPG extra_param construction")
-                self.sigma = nn.Parameter(torch.zeros(len(self.coef_ids), self.actions_num))
+                    raise ValueError(
+                        "coef_cond sigma requires SAPG extra_param construction"
+                    )
+                self.sigma = nn.Parameter(
+                    torch.zeros(len(self.coef_ids), self.actions_num)
+                )
             elif self.fixed_sigma == "fixed":
                 self.sigma = nn.Parameter(torch.zeros(self.actions_num))
             else:
@@ -228,7 +268,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 ):
                     parameter.requires_grad_(False)
             elif connectome["plasticity_mode"] != "neuron_gains":
-                raise ValueError(f"Unknown plasticity_mode: {connectome['plasticity_mode']}")
+                raise ValueError(
+                    f"Unknown plasticity_mode: {connectome['plasticity_mode']}"
+                )
 
         def _initialize_linear_layers(self) -> None:
             for module in (self.sensory_adapter, self.descending_adapter, self.value):
@@ -290,9 +332,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     goal = torch.cat(
                         (
                             goal,
-                            self.extra_params[
-                                self._coefficient_rows(observations)
-                            ],
+                            self.extra_params[self._coefficient_rows(observations)],
                         ),
                         dim=-1,
                     )
@@ -300,9 +340,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 descending_drive = self.descending_adapter(goal)
                 drive = hidden.new_zeros(hidden.shape)
                 drive = drive.index_add(1, self.sensory_indices, sensory_drive)
-                drive = drive.index_add(
-                    1, self.descending_indices, descending_drive
-                )
+                drive = drive.index_add(1, self.descending_indices, descending_drive)
                 recurrent = torch.sparse.mm(
                     self.recurrent_matrix(),
                     (self.outgoing_gains() * hidden).transpose(0, 1),
@@ -318,7 +356,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
         def forward(self, obs_dict: dict[str, Any]):
             observations = obs_dict["obs"]
             if observations.ndim != 2:
-                raise ValueError(f"Expected rank-2 observations, got {observations.shape}")
+                raise ValueError(
+                    f"Expected rank-2 observations, got {observations.shape}"
+                )
             minimum_features = self.policy_observation_size + int(
                 self.net_type == "extra_param"
             )
@@ -331,7 +371,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             if observations.shape[0] % sequence_length:
                 raise ValueError("Batch size must be divisible by seq_length")
             sequence_count = observations.shape[0] // sequence_length
-            sequence = observations.reshape(sequence_count, sequence_length, -1).transpose(0, 1)
+            sequence = observations.reshape(
+                sequence_count, sequence_length, -1
+            ).transpose(0, 1)
 
             states = obs_dict.get("rnn_states")
             if states is None:
@@ -345,7 +387,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 hidden = hidden.float()
             dones = obs_dict.get("dones")
             if dones is not None:
-                dones = dones.reshape(sequence_count, sequence_length, -1).transpose(0, 1)
+                dones = dones.reshape(sequence_count, sequence_length, -1).transpose(
+                    0, 1
+                )
 
             outputs = []
             for step, step_observations in enumerate(sequence):
@@ -353,7 +397,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     hidden = hidden * (1.0 - dones[step].float())
                 hidden = self._step(step_observations, hidden)
                 outputs.append(hidden)
-            output = torch.stack(outputs).transpose(0, 1).reshape(observations.shape[0], -1)
+            output = (
+                torch.stack(outputs).transpose(0, 1).reshape(observations.shape[0], -1)
+            )
 
             mu = self.mu_act(self.mu(output[:, self.motor_indices]))
             value = self.value(output)
@@ -367,7 +413,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             return True
 
         def get_default_rnn_state(self):
-            return (torch.zeros((1, self.num_seqs, self.neuron_count), dtype=torch.float32),)
+            return (
+                torch.zeros((1, self.num_seqs, self.neuron_count), dtype=torch.float32),
+            )
 
         def get_value_layer(self):
             return self.value

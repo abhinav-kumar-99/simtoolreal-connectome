@@ -25,4 +25,6 @@ def test_zero_axis_angle_is_identity() -> None:
     matrices = axis_angle_to_matrix(torch.zeros(4, 3))
     torch.testing.assert_close(matrices, torch.eye(3).expand(4, 3, 3))
     quaternions = matrix_to_quaternion(matrices)
-    torch.testing.assert_close(quaternions, torch.tensor([[1.0, 0.0, 0.0, 0.0]]).expand(4, 4))
+    torch.testing.assert_close(
+        quaternions, torch.tensor([[1.0, 0.0, 0.0, 0.0]]).expand(4, 4)
+    )

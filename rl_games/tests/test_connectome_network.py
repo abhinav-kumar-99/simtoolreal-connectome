@@ -6,10 +6,9 @@ import numpy as np
 import pytest
 import torch
 import yaml
-from scipy import sparse
-
 from rl_games.algos_torch import model_builder
 from rl_games.algos_torch.connectome_network_builder import ConnectomeBuilder
+from scipy import sparse
 
 
 @pytest.fixture()
@@ -108,7 +107,10 @@ def test_sparse_step_matches_dense_reference(artifact_path) -> None:
 
     sensory = network.sensory_adapter(observations[:, :2])
     goal = torch.cat(
-        (observations[:, 2:5], network.extra_params[network._coefficient_rows(observations)]),
+        (
+            observations[:, 2:5],
+            network.extra_params[network._coefficient_rows(observations)],
+        ),
         dim=-1,
     )
     descending = network.descending_adapter(goal)
@@ -116,8 +118,7 @@ def test_sparse_step_matches_dense_reference(artifact_path) -> None:
     drive[:, network.sensory_indices] += sensory
     drive[:, network.descending_indices] += descending
     recurrent = (
-        network.recurrent_matrix().to_dense()
-        @ (network.outgoing_gains() * hidden).T
+        network.recurrent_matrix().to_dense() @ (network.outgoing_gains() * hidden).T
     ).T
     leak = network.leaks()
     dense_result = (1.0 - leak) * hidden + leak * torch.tanh(
@@ -148,7 +149,9 @@ def test_sequence_matches_steps_and_done_resets(artifact_path) -> None:
         hidden = network._step(step_observations, hidden)
         outputs.append(hidden)
     output = torch.stack(outputs).transpose(0, 1).reshape(6, 7)
-    torch.testing.assert_close(sequence_result[0], network.mu(output[:, network.motor_indices]))
+    torch.testing.assert_close(
+        sequence_result[0], network.mu(output[:, network.motor_indices])
+    )
     torch.testing.assert_close(sequence_result[2], network.value(output))
     torch.testing.assert_close(sequence_result[3][0], hidden.unsqueeze(0))
 
@@ -210,9 +213,16 @@ def test_sapg_embedding_sigma_and_gradients(artifact_path) -> None:
     assert torch.allclose(network.leaks(), torch.full((7,), 0.5))
 
 
-def test_frozen_core_and_global_builder_checkpoint_round_trip(artifact_path, tmp_path) -> None:
+def test_frozen_core_and_global_builder_checkpoint_round_trip(
+    artifact_path, tmp_path
+) -> None:
     frozen = _build(artifact_path, plasticity_mode="frozen_core")
-    for name in ("incoming_gain_raw", "outgoing_gain_raw", "leak_raw", "recurrent_bias"):
+    for name in (
+        "incoming_gain_raw",
+        "outgoing_gain_raw",
+        "leak_raw",
+        "recurrent_bias",
+    ):
         assert not dict(frozen.named_parameters())[name].requires_grad
     assert frozen.sensory_adapter.weight.requires_grad
     assert frozen.mu.weight.requires_grad
@@ -264,7 +274,9 @@ def test_frozen_core_and_global_builder_checkpoint_round_trip(artifact_path, tmp
         torch.testing.assert_close(first_tensor, second_tensor)
 
 
-def test_deployment_rl_player_loads_connectome_checkpoint(artifact_path, tmp_path) -> None:
+def test_deployment_rl_player_loads_connectome_checkpoint(
+    artifact_path, tmp_path
+) -> None:
     pytest.importorskip("gym")
     from deployment.rl_player import RlPlayer
 
@@ -288,7 +300,9 @@ def test_deployment_rl_player_loads_connectome_checkpoint(artifact_path, tmp_pat
         },
     }
     factory = model_builder.ModelBuilder()
-    model = factory.load(deepcopy({"model": params["model"], "network": network_params})).build(
+    model = factory.load(
+        deepcopy({"model": params["model"], "network": network_params})
+    ).build(
         {
             "actions_num": 2,
             "input_shape": (6,),

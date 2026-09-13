@@ -26,11 +26,19 @@ def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
                 overrides=["task=SimToolRealLSTMAsymmetric", f"train={profile}"],
             )
             assert config.train.params.network.name == expected_network
-            assert config.train.params.network.space.continuous.fixed_sigma == "coef_cond"
+            assert (
+                config.train.params.network.space.continuous.fixed_sigma == "coef_cond"
+            )
             assert config.train.params.config.expl_type == "mixed_expl_learn_param"
-            assert config.train.params.config.central_value_config.network.name == "actor_critic"
+            assert (
+                config.train.params.config.central_value_config.network.name
+                == "actor_critic"
+            )
             if expected_network == "connectome_actor_critic":
-                assert config.train.params.network.connectome.observations.policy_size == 140
+                assert (
+                    config.train.params.network.connectome.observations.policy_size
+                    == 140
+                )
                 assert config.train.params.network.connectome.expected.neurons == 4310
 
 

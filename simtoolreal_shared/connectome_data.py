@@ -18,7 +18,6 @@ import yaml
 from scipy import sparse
 from scipy.sparse.linalg import eigs
 
-
 ARTIFACT_SCHEMA_VERSION = 1
 
 
@@ -63,7 +62,9 @@ def _read_neuron_table(path: Path) -> tuple[np.ndarray, list[str], list[str]]:
     return body_ids, classes, transmitters
 
 
-def _read_adjacency(path: Path, expected_body_ids: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _read_adjacency(
+    path: Path, expected_body_ids: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     with path.open(newline="") as stream:
         reader = csv.reader(stream)
         header = next(reader)
@@ -88,13 +89,19 @@ def _read_adjacency(path: Path, expected_body_ids: np.ndarray) -> tuple[np.ndarr
     return np.concatenate(sources), np.concatenate(destinations), np.concatenate(values)
 
 
-def _validate_signs(sources: np.ndarray, values: np.ndarray, transmitters: list[str]) -> None:
+def _validate_signs(
+    sources: np.ndarray, values: np.ndarray, transmitters: list[str]
+) -> None:
     for source, value in zip(sources, values):
         transmitter = transmitters[int(source)]
         if transmitter == "acetylcholine" and value <= 0:
-            raise ValueError(f"Non-positive cholinergic edge from neuron index {source}")
+            raise ValueError(
+                f"Non-positive cholinergic edge from neuron index {source}"
+            )
         if transmitter != "acetylcholine" and value >= 0:
-            raise ValueError(f"Non-negative non-cholinergic edge from neuron index {source}")
+            raise ValueError(
+                f"Non-negative non-cholinergic edge from neuron index {source}"
+            )
 
 
 def _spectral_normalize(
@@ -173,7 +180,9 @@ def _rewire_degree_preserving(
     return rewired
 
 
-def _random_edges(neuron_count: int, edge_count: int, seed: int) -> tuple[np.ndarray, np.ndarray]:
+def _random_edges(
+    neuron_count: int, edge_count: int, seed: int
+) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
     chosen: set[int] = set()
     maximum = neuron_count * neuron_count
@@ -200,7 +209,9 @@ def _raw_values_for_random(
     magnitudes = np.abs(original_values).copy()
     rng.shuffle(magnitudes)
     signs = np.ones(len(sources), dtype=np.float32)
-    inhibitory = np.asarray([transmitters[int(source)] != "acetylcholine" for source in sources])
+    inhibitory = np.asarray(
+        [transmitters[int(source)] != "acetylcholine" for source in sources]
+    )
     signs[inhibitory] = -1.0
     return magnitudes * signs
 
@@ -240,7 +251,12 @@ def _save_artifact(
             member.compress_type = zipfile.ZIP_DEFLATED
             member.create_system = 3
             member.external_attr = 0o600 << 16
-            archive.writestr(member, buffer.getvalue(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+            archive.writestr(
+                member,
+                buffer.getvalue(),
+                compress_type=zipfile.ZIP_DEFLATED,
+                compresslevel=9,
+            )
     temporary.replace(path)
 
 
@@ -260,8 +276,12 @@ def prepare_connectome(config_path: Path, repository_root: Path) -> dict[str, An
     )
     expected = config["expected"]
     population_indices = {
-        "sensory": np.flatnonzero(np.asarray(classes) == "sensory neuron").astype(np.int64),
-        "descending": np.flatnonzero(np.asarray(classes) == "descending neuron").astype(np.int64),
+        "sensory": np.flatnonzero(np.asarray(classes) == "sensory neuron").astype(
+            np.int64
+        ),
+        "descending": np.flatnonzero(np.asarray(classes) == "descending neuron").astype(
+            np.int64
+        ),
         "motor": np.flatnonzero(np.asarray(classes) == "motor neuron").astype(np.int64),
     }
     observed = {
@@ -272,7 +292,9 @@ def prepare_connectome(config_path: Path, repository_root: Path) -> dict[str, An
         "motor_neurons": int(len(population_indices["motor"])),
     }
     if observed != expected:
-        raise ValueError(f"MaleCNS count mismatch: expected {expected}, observed {observed}")
+        raise ValueError(
+            f"MaleCNS count mismatch: expected {expected}, observed {observed}"
+        )
     _validate_signs(sources, raw_values, transmitters)
 
     target = float(config["normalization"]["target"])
@@ -309,12 +331,19 @@ def prepare_connectome(config_path: Path, repository_root: Path) -> dict[str, An
         "observed": observed,
         "class_counts": dict(sorted(Counter(classes).items())),
         "transmitter_counts": dict(sorted(Counter(transmitters).items())),
-        "orientation": "CSR rows are postsynaptic destinations; columns are presynaptic sources",
+        "orientation": (
+            "CSR rows are postsynaptic destinations; "
+            "columns are presynaptic sources"
+        ),
         "normalization": config["normalization"],
         "controls": config["controls"],
         "artifacts": {},
     }
-    for variant, (variant_sources, variant_destinations, variant_raw_values) in variants.items():
+    for variant, (
+        variant_sources,
+        variant_destinations,
+        variant_raw_values,
+    ) in variants.items():
         matrix, radius, scale = _spectral_normalize(
             variant_sources,
             variant_destinations,
@@ -329,7 +358,9 @@ def prepare_connectome(config_path: Path, repository_root: Path) -> dict[str, An
             shape=matrix.shape,
         ).tocsr()
         raw_csr.sort_indices()
-        _save_artifact(artifact_path, matrix, raw_csr.data, body_ids, population_indices)
+        _save_artifact(
+            artifact_path, matrix, raw_csr.data, body_ids, population_indices
+        )
         manifest["artifacts"][variant] = {
             "path": str(artifact_path.relative_to(repository_root)),
             "sha256": sha256_file(artifact_path),

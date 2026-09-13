@@ -1,0 +1,9 @@
+schema_version: 1
+name: malecns_actor_profiling
+stages: [prepare, profile]
+output_directory: profiles/connectome/profiling_suite
+preparation:
+  config: configs/connectome/malecns_4310.yaml
+profiling:
+  config: configs/connectome/profiling/actors.yaml
+  gpu: 0

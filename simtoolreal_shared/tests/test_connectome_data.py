@@ -11,9 +11,9 @@ from scipy.sparse.linalg import eigs
 
 from simtoolreal_shared.connectome_data import (
     _random_edges,
+    _raw_values_for_random,
     _read_adjacency,
     _read_neuron_table,
-    _raw_values_for_random,
     _rewire_degree_preserving,
     _validate_signs,
     load_artifact,
@@ -37,8 +37,12 @@ def test_degree_preserving_rewire_retains_degrees_and_source_weights() -> None:
     repeated = _rewire_degree_preserving(sources, destinations, 7, 2, 100)
     assert np.array_equal(rewired, repeated)
     assert np.any(rewired != destinations)
-    assert np.array_equal(_degrees(sources, rewired, 4)[0], _degrees(sources, destinations, 4)[0])
-    assert np.array_equal(_degrees(sources, rewired, 4)[1], _degrees(sources, destinations, 4)[1])
+    assert np.array_equal(
+        _degrees(sources, rewired, 4)[0], _degrees(sources, destinations, 4)[0]
+    )
+    assert np.array_equal(
+        _degrees(sources, rewired, 4)[1], _degrees(sources, destinations, 4)[1]
+    )
     assert len(set(zip(sources.tolist(), rewired.tolist()))) == len(sources)
     # Rewiring only permutes destinations, so every edge retains both its source
     # neuron and signed weight. This is the source-specific weight-multiset invariant.
@@ -57,7 +61,8 @@ def test_random_graph_is_deterministic_unique_and_preserves_magnitudes() -> None
     randomized = _raw_values_for_random(first[0], values, transmitters, 13)
     assert np.array_equal(np.sort(np.abs(randomized)), values)
     assert np.all(
-        randomized[np.asarray([transmitters[i] != "acetylcholine" for i in first[0]])] < 0
+        randomized[np.asarray([transmitters[i] != "acetylcholine" for i in first[0]])]
+        < 0
     )
 
 
@@ -80,7 +85,9 @@ def test_prepared_pinned_artifacts_and_controls() -> None:
     raw_directory = repository_root / config["paths"]["raw_directory"]
     artifact_directory = repository_root / config["paths"]["output_directory"]
     if not artifact_directory.exists():
-        pytest.skip("Run the MaleCNS preparation YAML before artifact integration tests")
+        pytest.skip(
+            "Run the MaleCNS preparation YAML before artifact integration tests"
+        )
 
     for source in config["source"]["files"].values():
         assert sha256_file(raw_directory / source["filename"]) == source["sha256"]
@@ -106,7 +113,10 @@ def test_prepared_pinned_artifacts_and_controls() -> None:
         assert len(artifact["sensory_indices"]) == expected["sensory_neurons"]
         assert len(artifact["descending_indices"]) == expected["descending_neurons"]
         assert len(artifact["motor_indices"]) == expected["motor_neurons"]
-        assert sha256_file(artifact_directory / f"{name}.npz") == manifest["artifacts"][name]["sha256"]
+        assert (
+            sha256_file(artifact_directory / f"{name}.npz")
+            == manifest["artifacts"][name]["sha256"]
+        )
         matrix = sparse.csr_matrix(
             (artifact["values"], artifact["col_indices"], artifact["crow_indices"]),
             shape=(expected["neurons"], expected["neurons"]),
@@ -129,10 +139,13 @@ def test_prepared_pinned_artifacts_and_controls() -> None:
         _validate_signs(variant_sources, artifact["raw_values"], transmitters)
         for population in ("sensory", "descending", "motor"):
             assert np.array_equal(
-                artifact[f"{population}_indices"], artifacts["biological"][f"{population}_indices"]
+                artifact[f"{population}_indices"],
+                artifacts["biological"][f"{population}_indices"],
             )
 
-    biological_sources, biological_destinations = _artifact_edges(artifacts["biological"])
+    biological_sources, biological_destinations = _artifact_edges(
+        artifacts["biological"]
+    )
     source_matrix = sparse.coo_matrix(
         (source_values, (source_columns, source_rows)),
         shape=(expected["neurons"], expected["neurons"]),
@@ -142,7 +155,9 @@ def test_prepared_pinned_artifacts_and_controls() -> None:
     assert np.array_equal(source_matrix.indptr, artifacts["biological"]["crow_indices"])
     assert np.array_equal(source_matrix.data, artifacts["biological"]["raw_values"])
 
-    rewired_sources, rewired_destinations = _artifact_edges(artifacts["degree_preserving_rewired"])
+    rewired_sources, rewired_destinations = _artifact_edges(
+        artifacts["degree_preserving_rewired"]
+    )
     assert np.array_equal(
         _degrees(biological_sources, biological_destinations, expected["neurons"])[0],
         _degrees(rewired_sources, rewired_destinations, expected["neurons"])[0],
@@ -152,8 +167,12 @@ def test_prepared_pinned_artifacts_and_controls() -> None:
         _degrees(rewired_sources, rewired_destinations, expected["neurons"])[1],
     )
     assert np.array_equal(
-        _sorted_source_weights(biological_sources, artifacts["biological"]["raw_values"]),
-        _sorted_source_weights(rewired_sources, artifacts["degree_preserving_rewired"]["raw_values"]),
+        _sorted_source_weights(
+            biological_sources, artifacts["biological"]["raw_values"]
+        ),
+        _sorted_source_weights(
+            rewired_sources, artifacts["degree_preserving_rewired"]["raw_values"]
+        ),
     )
     assert np.array_equal(
         np.sort(np.abs(artifacts["biological"]["raw_values"])),
