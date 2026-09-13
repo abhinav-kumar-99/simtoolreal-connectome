@@ -135,3 +135,7 @@ Extended the pathway audit's interpretation using its completed edge and cell ta
 ## [2026-09-13] query | Complete-circuit expansion scope
 
 Before implementing an unrestricted completion request, measured incoming closure of the 4,778-cell seed against all traced public MaleCNS neurons and the audit's explicit VNC compartments, using >=1-contact edges and confidence >=0.5. Iterations reached 22,897, 23,960, 23,970 and 23,971 neurons, then stabilized; the induced graph contains 3,864,279 edges. Documented the resulting VNC-wide scope, changed threshold, unknown/nonstandard transmitter labels and need to settle the anatomical boundary before changing the actor. No training, graph replacement or expanded profile was deployed.
+
+## [2026-09-13] query | Neuron participation versus circuit completeness
+
+Checked actual production NPZ support and actor input/output masks: 4,281 neurons are reachable from robot input populations, 4,162 can reach motor readout, and 4,133 lie on an input-to-motor route; ten production neurons are isolated. Documented zero-state behavior for the 29 input-unreachable nodes under frozen zero biases, and the distinction between action connectivity and the all-state actor-value head. Missing external inputs do not imply inactivity. Kept production counts separate from reference-candidate isolates and structural reachability separate from functional validation.
