@@ -4,7 +4,7 @@ The primary graph is a pinned published extraction of front-leg circuitry from M
 
 Last updated: 2026-09-13
 
-Related: [Overview](../../overview.md), [Actor](../../concepts/connectome-actor.md)
+Related: [Overview](../../overview.md), [Actor](../../concepts/connectome-actor.md), [Pathway coverage audit](../../analyses/front-leg-pathway-coverage.md)
 
 ## Source
 
