@@ -16,7 +16,7 @@ adaptation:
   learn_dynamics: false
   rank: 4
   edge_scale_bounds: [0.0625, 16.0]
-operator_backend: native_csr
+operator_backend: triton_fused
 ```
 
 All modes train input adapters, motor action and actor-value heads, SAPG embeddings and action log standard deviations. The central critic is unchanged. `learn_dynamics` independently enables neuron leaks and recurrent biases (8,620 additional parameters); the default holds leaks at 0.5 and biases at zero.

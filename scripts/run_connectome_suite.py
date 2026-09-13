@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import os
 import subprocess
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -38,9 +41,13 @@ def _hydra_value(value: Any) -> str:
 
 
 def _run_streaming(
-    command: list[str], environment: dict[str, str], log_path: Path
+    command: list[str],
+    environment: dict[str, str],
+    log_path: Path,
+    label: str | None = None,
 ) -> None:
-    print("Running:", " ".join(command), flush=True)
+    prefix = f"[{label}] " if label else ""
+    print(f"{prefix}Running: {' '.join(command)}", flush=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w") as log:
         process = subprocess.Popen(
@@ -54,7 +61,7 @@ def _run_streaming(
         )
         assert process.stdout is not None
         for line in process.stdout:
-            print(line, end="", flush=True)
+            print(f"{prefix}{line}", end="", flush=True)
             log.write(line)
         return_code = process.wait()
     if return_code:
@@ -97,10 +104,16 @@ def _verify_checkpoint(
         )
     resolved = OmegaConf.load(resolved_config_path)
     expected_epoch = int(resolved.train.params.config.max_epochs)
+    requested_max_frames = int(resolved.train.params.config.get("max_frames", -1))
     checkpoint_epoch = int(state.get("epoch", -1))
+    checkpoint_frame = int(state.get("frame", -1))
     if checkpoint_epoch < expected_epoch:
         raise RuntimeError(
             f"Checkpoint epoch {checkpoint_epoch} is below requested {expected_epoch}"
+        )
+    if requested_max_frames >= 0 and checkpoint_frame > requested_max_frames:
+        raise RuntimeError(
+            f"Checkpoint frame {checkpoint_frame} exceeds cap {requested_max_frames}"
         )
 
     from deployment.rl_player import RlPlayer
@@ -121,7 +134,9 @@ def _verify_checkpoint(
         "checkpoint": str(checkpoint_path),
         "optimizer_state_entries": len(optimizer_state),
         "checkpoint_epoch": checkpoint_epoch,
+        "checkpoint_frame": checkpoint_frame,
         "requested_epochs": expected_epoch,
+        "requested_max_frames": requested_max_frames,
         "deployment_action_shape": list(action.shape),
         "deployment_action_finite": True,
     }
@@ -161,6 +176,10 @@ def _training_overrides(
         f"wandb_group={training['wandb']['group']}",
         f"wandb_tags={_hydra_value(training['wandb']['tags'])}",
     ]
+    if "max_frames" in training:
+        overrides.append(
+            f"train.params.config.max_frames={int(training['max_frames'])}"
+        )
     for key, value in training.get("overrides", {}).items():
         overrides.append(f"{key}={_hydra_value(value)}")
     checkpoint = training["checkpoint"]
@@ -172,6 +191,124 @@ def _training_overrides(
     return overrides
 
 
+def _run_training_case(case: dict[str, Any]) -> dict[str, Any]:
+    training = case["training"]
+    profile = case["profile"]
+    case_name = case["case_name"]
+    seed = case["seed"]
+    gpu = case["gpu"]
+    run_name = case["run_name"]
+    run_directory = case["run_directory"]
+    overrides = case["overrides"]
+    resolved = case["resolved"]
+    resolved_config_path = run_directory / "resolved_config.yaml"
+    verification_device = f"cuda:{gpu}" if gpu is not None else "cpu"
+
+    if run_directory.exists() and any(run_directory.iterdir()):
+        if training["on_existing"] != "skip":
+            raise FileExistsError(
+                f"Run directory already exists: {run_directory}. "
+                "Change output_directory or set on_existing: skip."
+            )
+        if not resolved_config_path.exists() or OmegaConf.to_container(
+            OmegaConf.load(resolved_config_path), resolve=True
+        ) != OmegaConf.to_container(resolved, resolve=True):
+            raise RuntimeError(
+                f"Cannot resume mismatched configuration: {run_directory}"
+            )
+        checkpoints = sorted(
+            (run_directory / "rl_runs" / run_name / "nn").glob("*.pth"),
+            key=lambda path: path.stat().st_mtime,
+        )
+        if not checkpoints:
+            raise RuntimeError(
+                f"Existing run has no checkpoint to verify: {run_directory}"
+            )
+        verification = _verify_checkpoint(
+            checkpoints[-1], resolved_config_path, verification_device
+        )
+        return {
+            "profile": profile,
+            "case": case_name,
+            "seed": seed,
+            "gpu": gpu,
+            "reverified": True,
+            **verification,
+        }
+
+    run_directory.mkdir(parents=True, exist_ok=True)
+    resolved_config_path.write_text(OmegaConf.to_yaml(resolved, resolve=True))
+    command = [sys.executable, "-m", "isaacgymenvs.train", *overrides]
+    environment = _environment(gpu)
+    started_at = datetime.now(timezone.utc).isoformat()
+    started = time.monotonic()
+    try:
+        _run_streaming(
+            command,
+            environment,
+            run_directory / "train.log",
+            label=f"gpu{gpu}:{case_name}",
+        )
+    except Exception as error:
+        failed_timing = {
+            "status": "failed",
+            "started_at_utc": started_at,
+            "finished_at_utc": datetime.now(timezone.utc).isoformat(),
+            "training_elapsed_seconds": time.monotonic() - started,
+            "error": f"{type(error).__name__}: {error}",
+        }
+        (run_directory / "timing.json").write_text(
+            json.dumps(failed_timing, indent=2, sort_keys=True) + "\n"
+        )
+        raise
+    training_elapsed_seconds = time.monotonic() - started
+    training_timing = {
+        "status": "training_complete",
+        "started_at_utc": started_at,
+        "training_finished_at_utc": datetime.now(timezone.utc).isoformat(),
+        "training_elapsed_seconds": training_elapsed_seconds,
+    }
+    (run_directory / "timing.json").write_text(
+        json.dumps(training_timing, indent=2, sort_keys=True) + "\n"
+    )
+
+    checkpoint_directory = run_directory / "rl_runs" / run_name / "nn"
+    checkpoints = sorted(
+        checkpoint_directory.glob("*.pth"), key=lambda path: path.stat().st_mtime
+    )
+    if not checkpoints:
+        raise RuntimeError(
+            f"Training exited without a checkpoint in {checkpoint_directory}"
+        )
+    verification_started = time.monotonic()
+    verification = _verify_checkpoint(
+        checkpoints[-1], resolved_config_path, verification_device
+    )
+    verification_elapsed_seconds = time.monotonic() - verification_started
+    timing = {
+        "status": "complete",
+        "started_at_utc": started_at,
+        "finished_at_utc": datetime.now(timezone.utc).isoformat(),
+        "training_elapsed_seconds": training_elapsed_seconds,
+        "verification_elapsed_seconds": verification_elapsed_seconds,
+        "total_elapsed_seconds": time.monotonic() - started,
+    }
+    (run_directory / "verification.json").write_text(
+        json.dumps(verification, indent=2, sort_keys=True) + "\n"
+    )
+    (run_directory / "timing.json").write_text(
+        json.dumps(timing, indent=2, sort_keys=True) + "\n"
+    )
+    return {
+        "profile": profile,
+        "case": case_name,
+        "seed": seed,
+        "gpu": gpu,
+        **timing,
+        **verification,
+    }
+
+
 def _run_training(
     config: dict[str, Any], suite_directory: Path
 ) -> list[dict[str, Any]]:
@@ -180,15 +317,17 @@ def _run_training(
         raise ValueError(
             "The legacy SAPG player requires exactly six exploration blocks"
         )
-    results = []
     profiles = training["train_profiles"]
     seeds = [int(seed) for seed in training["seeds"]]
     gpus = training["gpu_assignments"]
+    max_parallel = int(training.get("max_parallel", 1))
+    if not 1 <= max_parallel <= len(gpus):
+        raise ValueError("training.max_parallel must be between 1 and GPU count")
+
+    cases = []
     for run_index, (entry, seed) in enumerate(
         (profile, seed) for profile in profiles for seed in seeds
     ):
-        # A mapping permits a backend/adaptation matrix without duplicating
-        # Hydra train files or colliding with another case's output directory.
         profile = entry["train_profile"] if isinstance(entry, dict) else entry
         case_name = entry["name"] if isinstance(entry, dict) else profile
         case_training = dict(training)
@@ -196,81 +335,69 @@ def _run_training(
         if isinstance(entry, dict):
             case_training["overrides"].update(entry.get("overrides", {}))
         gpu = gpus[run_index % len(gpus)]
-        # Legacy SAPG parses the leading numeric token as a fallback coefficient.
         run_name = f"00_{config['name']}_{case_name}_seed{seed}"
         run_directory = suite_directory / run_name
         overrides = _training_overrides(
             case_training, profile, seed, run_name, run_directory.resolve()
         )
         resolved = _compose_resolved(overrides)
-        resolved_config_path = run_directory / "resolved_config.yaml"
-        verification_device = f"cuda:{gpu}" if isinstance(gpu, int) else "cuda:0"
-        if run_directory.exists() and any(run_directory.iterdir()):
-            if training["on_existing"] == "skip":
-                if not resolved_config_path.exists() or OmegaConf.to_container(
-                    OmegaConf.load(resolved_config_path), resolve=True
-                ) != OmegaConf.to_container(resolved, resolve=True):
-                    raise RuntimeError(
-                        f"Cannot resume mismatched configuration: {run_directory}"
-                    )
-                checkpoints = sorted(
-                    (run_directory / "rl_runs" / run_name / "nn").glob("*.pth"),
-                    key=lambda path: path.stat().st_mtime,
-                )
-                if not checkpoints:
-                    raise RuntimeError(
-                        f"Existing run has no checkpoint to verify: {run_directory}"
-                    )
-                verification = _verify_checkpoint(
-                    checkpoints[-1], resolved_config_path, verification_device
-                )
-                (run_directory / "verification.json").write_text(
-                    json.dumps(verification, indent=2, sort_keys=True) + "\n"
-                )
-                results.append(
-                    {
-                        "profile": profile,
-                        "case": case_name,
-                        "seed": seed,
-                        "reverified": True,
-                        **verification,
-                    }
-                )
-                print(f"Verified existing checkpoint in {run_directory}", flush=True)
-                continue
-            raise FileExistsError(
-                f"Run directory already exists: {run_directory}. "
-                "Change output_directory or set on_existing: skip."
+        steps_per_epoch = int(resolved.train.params.config.num_actors) * int(
+            resolved.train.params.config.horizon_length
+        )
+        requested_steps = steps_per_epoch * int(training["epochs"])
+        max_frames = int(training.get("max_frames", -1))
+        if max_frames >= 0 and requested_steps > max_frames:
+            raise ValueError(
+                f"{case_name} requests {requested_steps} steps, above cap {max_frames}"
             )
-        run_directory.mkdir(parents=True, exist_ok=True)
-        resolved_config_path.write_text(OmegaConf.to_yaml(resolved, resolve=True))
-        command = [sys.executable, "-m", "isaacgymenvs.train", *overrides]
-        environment = _environment(gpu)
-        _run_streaming(command, environment, run_directory / "train.log")
+        cases.append(
+            {
+                "index": run_index,
+                "training": training,
+                "profile": profile,
+                "case_name": case_name,
+                "seed": seed,
+                "gpu": gpu,
+                "run_name": run_name,
+                "run_directory": run_directory,
+                "overrides": overrides,
+                "resolved": resolved,
+            }
+        )
 
-        checkpoint_directory = run_directory / "rl_runs" / run_name / "nn"
-        checkpoints = sorted(
-            checkpoint_directory.glob("*.pth"),
-            key=lambda path: path.stat().st_mtime,
-        )
-        if not checkpoints:
-            raise RuntimeError(
-                f"Training exited without a checkpoint in {checkpoint_directory}"
+    # One worker owns each GPU for its entire queue. This prevents a fast job on
+    # one device from causing the executor to start a second job on a busy GPU.
+    gpu_queues = {gpu: [] for gpu in gpus[:max_parallel]}
+    available_gpus = list(gpu_queues)
+    for index, case in enumerate(cases):
+        assigned_gpu = available_gpus[index % len(available_gpus)]
+        case["gpu"] = assigned_gpu
+        gpu_queues[assigned_gpu].append(case)
+
+    def run_gpu_queue(queue: list[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
+        completed = []
+        for queued_case in queue:
+            completed.append((queued_case["index"], _run_training_case(queued_case)))
+        return completed
+
+    results_by_index = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_parallel) as executor:
+        futures = [executor.submit(run_gpu_queue, queue) for queue in gpu_queues.values()]
+        for future in concurrent.futures.as_completed(futures):
+            for index, result in future.result():
+                results_by_index[index] = result
+                print(
+                    f"Completed {result['case']} on GPU {result['gpu']} in "
+                    f"{result.get('training_elapsed_seconds', 0.0):.2f}s",
+                    flush=True,
+                )
+            ordered_results = [
+                results_by_index[index] for index in sorted(results_by_index)
+            ]
+            (suite_directory / "training_progress.json").write_text(
+                json.dumps(ordered_results, indent=2, sort_keys=True) + "\n"
             )
-        verification_device = f"cuda:{gpu}" if isinstance(gpu, int) else "cuda:0"
-        verification = _verify_checkpoint(
-            checkpoints[-1], resolved_config_path, verification_device
-        )
-        (run_directory / "verification.json").write_text(
-            json.dumps(verification, indent=2, sort_keys=True) + "\n"
-        )
-        results.append(
-            {"profile": profile, "case": case_name, "seed": seed, **verification}
-        )
-        (suite_directory / "training_progress.json").write_text(
-            json.dumps(results, indent=2, sort_keys=True) + "\n"
-        )
-    return results
+    return [results_by_index[index] for index in sorted(results_by_index)]
 
 
 def main() -> None:

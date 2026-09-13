@@ -1,6 +1,6 @@
 # Sparse Recurrent Backend Benchmark
 
-The actor supports six recurrent backends. Fused Triton is the fastest measured custom candidate at the smoke-training shape; native CSR remains the dependency-free default.
+The actor supports six recurrent backends. Fused Triton is the fastest measured custom candidate at both tested training shapes and is now the primary connectome profile's default; native CSR remains the dependency-free fallback.
 
 Last updated: 2026-09-13
 
@@ -44,7 +44,7 @@ Median forward/backward/Adam-update time at `6144 x 16` (98,304 observations), m
 
 At this shape, adapters-only Triton is 3.14x faster than native CSR and 1.57x faster than torch_sparse, with 10.491 GB peak allocated memory versus 7.644 and 9.252 GB respectively. Its rollout batch-24,576 forward is 14.40 ms, compared with 55.27 ms native CSR, 29.50 ms torch_sparse and 24.21 ms cuSPARSE. LSTM measured 54.623 ms per synthetic training update and 3.810 GB; the fastest tested connectome therefore remains about 2.53x slower than LSTM for this update.
 
-Triton is the preferred measured performance candidate for these tested modes/shapes. The production default stays native CSR for optional-dependency compatibility; explicitly select `operator_backend: triton_fused` to use the candidate. Actor memory fitting on a 24 GB GPU does not establish that the full environment plus critic and rollout buffers will fit. Full-training configurations require a combined resource preflight before launch.
+Triton is the preferred measured backend for these tested modes/shapes and `SimToolRealConnectomeSAPG` now selects it by default. Use `operator_backend: native_csr` explicitly when optional Triton/CUDA support is unavailable. Actor memory fitting on a 24 GB GPU does not establish that the full environment plus critic and rollout buffers will fit. Full-training configurations require a combined resource preflight before launch.
 
 ### Isaac Gym integration gate
 

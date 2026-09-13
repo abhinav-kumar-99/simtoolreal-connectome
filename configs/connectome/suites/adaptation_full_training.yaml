@@ -39,4 +39,4 @@ training:
     task.env.objectAngVelPenaltyScale: 0.0
     task.env.goodResetBoundary: 0
     train.params.config.good_reset_boundary: 0
-    train.params.network.connectome.operator_backend: native_csr
+    train.params.network.connectome.operator_backend: triton_fused

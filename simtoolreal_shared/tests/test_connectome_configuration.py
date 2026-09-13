@@ -46,7 +46,7 @@ def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
                 assert config.train.params.network.connectome.expected.neurons == 4310
                 assert (
                     config.train.params.network.connectome.operator_backend
-                    == "native_csr"
+                    == "triton_fused"
                 )
                 adaptation = config.train.params.network.connectome.adaptation
                 assert "plasticity_mode" not in config.train.params.network.connectome
@@ -145,3 +145,23 @@ def test_checkpoint_verification_rejects_partial_training(tmp_path):
     config.write_text("train:\n  params:\n    config:\n      max_epochs: 2\n")
     with pytest.raises(RuntimeError, match="below requested"):
         _verify_checkpoint(checkpoint, config, "cpu")
+
+
+def test_one_million_step_suite_preserves_single_gpu_paper_batches() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (repository_root / "configs/connectome/suites/adaptation_1m.yaml").read_text()
+    )
+    training = suite["training"]
+    assert training["gpu_assignments"] == [0, 1]
+    assert training["max_parallel"] == 2
+    assert training["seeds"] == [42]
+    assert training["num_envs"] == 24576
+    assert training["sapg_block_size"] == 4096
+    assert training["minibatch_size"] == 98304
+    assert training["central_critic_minibatch_size"] == 98304
+    assert training["epochs"] == 2
+    assert training["max_frames"] == 1_000_000
+    assert training["num_envs"] * 16 * training["epochs"] <= training["max_frames"]
+    assert training["num_envs"] * 16 * (training["epochs"] + 1) > training["max_frames"]
+    assert len(training["train_profiles"]) == 5

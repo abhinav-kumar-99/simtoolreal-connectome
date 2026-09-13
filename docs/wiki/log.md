@@ -6,6 +6,10 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] implementation | Add dual single-GPU capped adaptation training
+
+Changed `SimToolRealConnectomeSAPG` to use the benchmark-winning Triton backend by default. Added the YAML-owned `adaptation_1m.yaml` pilot with five seed-42 adaptation cases, the original single-GPU SimToolReal SAPG batch geometry, two complete epochs/786,432 steps under a strict one-million-step ceiling, and two concurrent GPU-owned queues. Extended `run_connectome_suite.py` to record UTC timestamps and training, verification, and total elapsed wall time per run.
+
 ## [2026-09-13] initialize | MaleCNS connectome actor
 
 Initialized the repository wiki and recorded the front-leg circuit identity, actor boundary, and YAML-driven experiment workflow. Added pinned source configuration and reproducible graph preparation machinery.

@@ -8,7 +8,7 @@ Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
 ## Adaptation and custom-kernel suites
 
-The primary actor now defaults to adapters-only with frozen leaks/biases. See [adaptation controls](../concepts/connectome-adaptation.md) for all modes, parameter counts and legacy compatibility.
+The primary actor now defaults to adapters-only with frozen leaks/biases and the measured-fastest `triton_fused` recurrent backend. See [adaptation controls](../concepts/connectome-adaptation.md) for all modes, parameter counts and legacy compatibility.
 
 Run the matched custom-kernel benchmark from the repository root:
 
@@ -30,7 +30,7 @@ Run ten short Isaac Gym jobs (four adaptation modes plus the gains/dynamics cont
 
 The new suites use physical GPU 1 sequentially and pin `CC`/`CXX` to system compilers through `runtime_environment`. On this host an inherited conda compiler otherwise fails compiling Triton's Python 3.8 launcher because its sysroot lacks `crypt.h`. Edit these compiler paths on other hosts. No environment package upgrade is required for the checked PyTorch 2.4/CUDA 12.4/Triton 3.0 stack.
 
-The suite entrypoint owns preparation, GPU assignment, child execution and checkpoint verification. `training.train_profiles` accepts either a profile string or `{name, train_profile, overrides}`; named cases get distinct run directories, and case overrides supersede shared overrides. The custom smoke suite uses `on_existing: skip`: existing checkpoints must match the resolved configuration, reach the requested epoch count and pass reload verification. `on_existing: fail` remains available. Choose a new output directory to repeat training rather than reverify it.
+The suite entrypoint owns preparation, GPU assignment, child execution, elapsed-time measurement and checkpoint verification. `training.train_profiles` accepts either a profile string or `{name, train_profile, overrides}`; named cases get distinct run directories, and case overrides supersede shared overrides. `training.max_parallel` defaults to one. When larger than one, each worker owns a GPU queue and still launches ordinary `multi_gpu=false` children. The custom smoke suite uses `on_existing: skip`: existing checkpoints must match the resolved configuration, reach the requested epoch count and pass reload verification. `on_existing: fail` remains available. Choose a new output directory to repeat training rather than reverify it.
 
 The profiling helper `scripts/profile_connectome_actors.py` also accepts only `--config`, using `configs/connectome/profiling/custom_backends.yaml` or `custom_capacity.yaml`. Its YAML owns actor profiles, adaptation/backend overrides, shapes, warmups, repetitions, AMP, seed and output path. Every case resets initialization/input seeds; state hashes verify backend-matched parameters. It reports cold setup, forward/backward, optimizer-inclusive timing, memory and adaptation diagnostics. Results are saved incrementally with `status: running`; only `status: complete` is final. Capacity OOMs remain labeled failures, not smaller substituted batches.
 
@@ -38,7 +38,17 @@ Backend helpers `connectome_ops.py`, `connectome_cusparse.cpp`, and `connectome_
 
 Outputs: `profiles/connectome/custom_backends.json`, `profiles/connectome/custom_capacity.json`, and `train_dir/connectome/custom_smoke/`. The smoke launcher writes progress, resolved configurations, logs and checkpoint reload verifications. These generated files remain ignored.
 
-`configs/connectome/suites/adaptation_full_training.yaml` prepares the matched three-seed learning comparison. It is not launched as part of backend validation. After smoke acceptance and a resource check, run it with the same suite entrypoint. It retains native CSR until a backend is explicitly chosen in its shared overrides; inspect the large environment/minibatch sizes before launching. The older `full_training.yaml` explicitly selects GainsDynamics for its biological trainable-core control so its frozen control stays distinct after the default change.
+`configs/connectome/suites/adaptation_1m.yaml` is the capped pilot entry point. It runs five adaptation policies at seed 42, with at most two independent single-GPU jobs at once: one pinned to GPU 0 and one to GPU 1. Each child retains the published SimToolReal geometry of 24,576 environments, six 4,096-environment SAPG blocks, horizon/sequence length 16, 98,304 actor and central-critic minibatches, and two mini-epochs. Two epochs produce 786,432 environment steps; a third would produce 1,179,648 and violate the strict 1,000,000-step ceiling. Every run writes `timing.json` with child-training, checkpoint-verification and total wall time; the suite result repeats those fields.
+
+Run the capped pilot from the repository root:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/adaptation_1m.yaml
+```
+
+The important pilot keys are `train_profiles` (the five adaptation cases), `seeds`, `gpu_assignments`, `max_parallel`, `num_envs`, `sapg_block_size`, `epochs`, `max_frames`, both minibatch sizes, and the task overrides. `max_parallel: 2` creates two GPU-owned queues, so a device never receives overlapping policies. Set it to `1` for fully serial execution. The launcher accepts only `--config`; all experiment settings stay in YAML.
+
+`configs/connectome/suites/adaptation_full_training.yaml` remains the matched three-seed learning comparison and now explicitly selects Triton. It is not launched as part of the capped pilot. The older `full_training.yaml` explicitly selects GainsDynamics for its biological trainable-core control so its frozen control stays distinct after the default change.
 
 ## Gates
 
@@ -80,7 +90,7 @@ Compare native CSR, native COO, dense, and `torch_sparse` recurrence using the s
   --config configs/connectome/suites/backend_profiling.yaml
 ```
 
-The suite file owns the GPU and stages. Its profiling helper config owns the backend list, batch/sequence shapes, warmup and measurement counts, AMP choice, seed, and ignored JSON output path. The actor implementation also accepts `params.network.connectome.operator_backend` with `native_csr`, `native_coo`, `dense`, or `torch_sparse`; production profiles default to `native_csr`.
+The suite file owns the GPU and stages. Its profiling helper config owns the backend list, batch/sequence shapes, warmup and measurement counts, AMP choice, seed, and ignored JSON output path. The actor implementation accepts `native_csr`, `native_coo`, `dense`, `torch_sparse`, `cusparse`, and `triton_fused`; the primary production profile defaults to `triton_fused` based on the matched local benchmark.
 
 For a fast plumbing check on CPU, call the profiling helper directly:
 
@@ -116,7 +126,7 @@ The lower-level preparation helper is also YAML-only:
 
 `configs/connectome/malecns_4310.yaml` owns source URLs and hashes, expected graph dimensions, normalization, deterministic control seeds, and artifact paths. Hydra train profiles under `isaacgymenvs/cfg/train/` own network construction and SAPG settings. `params.network.connectome` owns graph variant, interface partitions, adapters, recurrent dynamics, plasticity, numerical dtype, and validation counts.
 
-Suite YAML owns the selected train profiles, seeds, GPU assignment, environment count, SAPG block size, epochs, minibatch, output directory, W&B settings, environment overrides, and checkpoint mode. The launcher deliberately exposes only `--config`; experiment changes belong in YAML.
+Suite YAML owns the selected train profiles, seeds, GPU assignment, maximum concurrent jobs, environment count, SAPG block size, epochs, frame cap, minibatch, output directory, W&B settings, environment overrides, and checkpoint mode. The launcher deliberately exposes only `--config`; experiment changes belong in YAML.
 
 ## Outputs and completion
 
