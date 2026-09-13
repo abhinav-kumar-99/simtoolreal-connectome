@@ -56,7 +56,7 @@ Final TensorBoard training telemetry uses the last pre-increment frame coordinat
 | adapters-only | 80.1783 | 0.801784 | 0.000001628 | 101.5146 |
 | neuron-gains | 107.6453 | 1.076453 | 0.000008138 | 109.6315 |
 
-The training success telemetry uses the curriculum tolerance 0.075 m. It is not paper Task Progress at 0.02 m or repository `avg_goal_pct` at 0.01 m; those require post-training evaluation.
+The training success telemetry logs a base curriculum tolerance of 0.075. The environment multiplies it by `keypointScale: 1.5`, giving an implemented maximum-keypoint threshold of 0.1125 m. It is not deterministic trajectory Task Progress; see [success metrics](../concepts/success-metrics.md) for the tag populations and evaluation thresholds.
 
 For external progress references and remaining source limitations, see [SimToolReal training references](../sources/summaries/simtoolreal-training-references.md). The active contract matches the release's effective rollout size, horizon, logical minibatches and gradient-update density; accumulation changes physical execution, not the number of weight updates.
 
@@ -95,7 +95,7 @@ The raw wall-clock median intervals are 2.248/2.155 seconds for old adapters/gai
 
 ## Final-checkpoint high-resolution evaluation
 
-`configs/connectome/evaluation/adaptation_1b_final_highres.yaml` evaluates the two epoch-2,543 checkpoints on the same three cases. It sets `action_selection: mean`; the parent emits `deterministic_actions: true`, and the continuous PPO player therefore executes the Gaussian mean `mu` rather than sampling from its exploration distribution. The worker rejects any attempt to record a video with sampled actions. It records video during the paper Task Progress pass at 0.02 m and separately runs the repository `avg_goal_pct` threshold at 0.01 m. Each cell contains one deterministic-policy episode, although simulator/environment state can still make a one-episode comparison insufficient for statistical policy ranking.
+`configs/connectome/evaluation/adaptation_1b_final_highres.yaml` evaluates the two epoch-2,543 checkpoints on the same three cases. It sets `action_selection: mean`; the parent emits `deterministic_actions: true`, and the continuous PPO player therefore executes the Gaussian mean `mu` rather than sampling from its exploration distribution. The worker rejects any attempt to record a video with sampled actions. It records video during the configured-base 0.02 Task Progress pass and separately runs the configured-base 0.01 `avg_goal_pct` pass. Because the inherited `keypointScale` is 1.5, the implemented maximum-keypoint thresholds are 0.03 m and 0.015 m. Each cell contains one deterministic-policy episode, although simulator/environment state can still make a one-episode comparison insufficient for statistical policy ranking.
 
 | Metric | adapters-only | neuron-gains |
 | --- | ---: | ---: |

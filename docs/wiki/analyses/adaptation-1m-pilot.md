@@ -30,7 +30,7 @@ All checkpoints reached epoch 5, contained optimizer state, recorded 983,040 fra
 
 ## Closed-loop evaluation
 
-The requested three videos per policy use `claw_hammer/swing_down`, `long_screwdriver/spin_vertical`, and `blue_brush/sweep_forward`. One deterministic rollout was run per case. Paper Task Progress used the paper's 2 cm success tolerance; repository `avg_goal_pct` used the existing evaluator's 1 cm tolerance. Both were 0% for every policy and case.
+The requested three videos per policy use `claw_hammer/swing_down`, `long_screwdriver/spin_vertical`, and `blue_brush/sweep_forward`. One deterministic rollout was run per case. Paper Task Progress used a configured-base tolerance of 0.02; repository `avg_goal_pct` used 0.01. The inherited `keypointScale: 1.5` made the implemented maximum-keypoint thresholds 0.03 m and 0.015 m. Both were 0% for every policy and case.
 
 The mean raw rollout rewards across the three selected cases at the 2 cm definition were 23.853 (adapters), 23.331 (gains), 19.613 (low rank), 24.310 (edgewise), and 25.836 (gains plus dynamics). The 1 cm runs produced identical rewards because no policy reached even the first waypoint under either threshold. These rewards are descriptive trajectory-rollout returns, not evidence of task completion.
 

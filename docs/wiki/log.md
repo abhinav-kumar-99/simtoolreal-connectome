@@ -6,6 +6,10 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] query | TensorBoard success-metric semantics
+
+Traced every live success-related TensorBoard tag through the environment and observer. Documented that `success_ratio` and `mean_success_ratio` are duplicate all-environment means divided by 50, while `successes` and its median/maximum are filtered to the zero-intrinsic-reward exploration block; per-block tags expose all six 2,048-environment populations. All `/frame`, `/iter`, and `/time` variants are same-step aliases. Also corrected the reporting boundary: `success_tolerance` is a base value multiplied by `keypointScale: 1.5` in the actual maximum-keypoint distance test, including during deterministic trajectory evaluation.
+
 ## [2026-09-13] launch | 100B gains update-timing comparison
 
 Launched `gains_new_update_timing` on physical GPU 0 and `gains_old_update_timing` on physical GPU 1 in the durable `connectome-100b` tmux session. Both resolved to fused Triton, neuron gains, seed 42, released-checkpoint perturbations, and a 100-billion-frame cap. The children reached live update phases at about 20.2/15.9 GB GPU memory with no startup OOM. Phase times increased from initial 4.1--4.5/1.9--2.1 seconds to about 10.8/5.2 seconds after the first environment-reset boundary, so the live ETA remains unsettled; recompute it after the first milestone.
