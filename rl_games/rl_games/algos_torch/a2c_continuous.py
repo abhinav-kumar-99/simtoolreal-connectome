@@ -64,6 +64,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
                 'multi_gpu' : self.multi_gpu,
                 'zero_rnn_on_done' : self.zero_rnn_on_done,
                 'type': 'simple' if 'learn_param' not in self.expl_type else 'extra_param',
+                'rollout_accumulation_steps': self.rollout_accumulation_steps,
             }
             if self.expl_type.startswith('mixed_expl'):
                 cv_config['coef_ids'] = self.intr_reward_coef_embd[::self.intr_coef_block_size,0]
@@ -95,7 +96,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             self.logical_minibatch_size,
             "physical microbatch:",
             self.microbatch_size,
-            "accumulation steps:",
+            "nominal accumulation steps:",
             self.microbatches_per_minibatch,
         )
         if self.microbatches_per_minibatch > 1 and os.getenv('LOG_OFF_POLICY_GRADS'):
@@ -109,6 +110,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             self.is_rnn,
             self.ppo_device,
             self.seq_length,
+            logical_minibatch_size=self.logical_minibatch_size,
         )
         if self.normalize_value:
             self.value_mean_std = self.central_value_net.model.value_mean_std if self.has_central_value else self.model.value_mean_std

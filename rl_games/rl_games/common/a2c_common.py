@@ -251,6 +251,11 @@ class A2CBase(BaseAlgorithm):
         #assert(self.batch_size % self.minibatch_size == 0)
 
         self.mini_epochs_num = self.config['mini_epochs']
+        self.rollout_accumulation_steps = int(
+            self.config.get('rollout_accumulation_steps', 1)
+        )
+        if self.rollout_accumulation_steps <= 0:
+            raise ValueError("rollout_accumulation_steps must be positive")
 
         self.mixed_precision = self.config.get('mixed_precision', False)
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.mixed_precision and self.ppo_device != 'cpu')
@@ -1373,12 +1378,55 @@ class ContinuousA2CBase(A2CBase):
         self.set_eval()
         play_time_start = time.time()
         with torch.no_grad():
-            orig_batch_dict, ps_extras = self.play_steps()
-            
-            if self.expl_type.startswith('mixed_expl') and self.use_others_experience != 'none':
-                batch_dict = self.augment_batch_for_mixed_expl(orig_batch_dict, ps_extras)
-            else:
-                batch_dict = orig_batch_dict
+            rollout_batches = []
+            rollout_extras = []
+            repeat_idxs = None
+            if (
+                self.rollout_accumulation_steps > 1
+                and self.expl_type.startswith('mixed_expl')
+                and self.use_others_experience != 'none'
+            ):
+                num_blocks = self.num_actors // self.intr_coef_block_size
+                num_repeat = min(
+                    num_blocks, int(self.config['off_policy_ratio']) + 1
+                )
+                repeat_idxs = [0] + [
+                    int(x)
+                    for x in np.random.choice(
+                        range(1, num_blocks), num_repeat - 1, replace=False
+                    )
+                ]
+                if self.multi_gpu:
+                    dist.broadcast_object_list(repeat_idxs, 0)
+            for _ in range(self.rollout_accumulation_steps):
+                orig_batch_dict, ps_extras = self.play_steps()
+                if (
+                    self.expl_type.startswith('mixed_expl')
+                    and self.use_others_experience != 'none'
+                ):
+                    batch_dict = self.augment_batch_for_mixed_expl(
+                        orig_batch_dict, ps_extras, repeat_idxs=repeat_idxs
+                    )
+                else:
+                    batch_dict = orig_batch_dict
+                rollout_batches.append(self._clone_rollout_batch(batch_dict))
+                rollout_extras.append(
+                    {
+                        'mb_intr_rewards': self._clone_optional_tensor(
+                            ps_extras['mb_intr_rewards']
+                        ),
+                        'rewards': ps_extras['rewards'].clone(),
+                    }
+                )
+            batch_dict = self._concatenate_rollouts(rollout_batches)
+            ps_extras = {
+                'mb_intr_rewards': self._concatenate_optional_tensors(
+                    [extras['mb_intr_rewards'] for extras in rollout_extras], dim=1
+                ),
+                'rewards': torch.cat(
+                    [extras['rewards'] for extras in rollout_extras], dim=1
+                ),
+            }
             if self.expl_type.startswith('mixed_expl'):
                 batch_dict = shuffle_batch(batch_dict, self.seq_length)
 
@@ -1415,15 +1463,18 @@ class ContinuousA2CBase(A2CBase):
 
         for mini_ep in range(0, self.mini_epochs_num):
             ep_kls = []
+            logical_a_loss = 0
+            logical_c_loss = 0
+            logical_entropy = 0
+            logical_kl = 0
+            logical_b_loss = 0
             for i in range(len(self.dataset)):
-                accumulation_index = i % self.microbatches_per_minibatch
+                input_dict = self.dataset[i]
                 a_loss, c_loss, entropy, kl, last_lr, lr_mul, cmu, csigma, b_loss, extras = self.train_actor_critic(
-                    self.dataset[i],
-                    zero_grad=accumulation_index == 0,
-                    optimizer_step=(
-                        accumulation_index == self.microbatches_per_minibatch - 1
-                    ),
-                    loss_scale=1.0 / self.microbatches_per_minibatch,
+                    input_dict,
+                    zero_grad=self.dataset.last_zero_grad,
+                    optimizer_step=self.dataset.last_optimizer_step,
+                    loss_scale=self.dataset.last_loss_scale,
                 )
                 extra_infos['on_policy_contrib'].append(extras['on_policy_contrib'])
                 extra_infos['on_policy_grads'].append(extras['on_policy_grads'])
@@ -1431,21 +1482,33 @@ class ContinuousA2CBase(A2CBase):
                 extra_infos['off_policy_grads'].append(extras['off_policy_grads'])
                 if 'entropies' in extras:
                     extra_infos['entropies'].append(extras['entropies'])
-                a_losses.append(a_loss)
-                c_losses.append(c_loss)
-                ep_kls.append(kl)
-                entropies.append(entropy)
-                if self.bounds_loss_coef is not None:
-                    b_losses.append(b_loss)
+                loss_scale = self.dataset.last_loss_scale
+                logical_a_loss = logical_a_loss + a_loss * loss_scale
+                logical_c_loss = logical_c_loss + c_loss * loss_scale
+                logical_entropy = logical_entropy + entropy * loss_scale
+                logical_kl = logical_kl + kl * loss_scale
+                logical_b_loss = logical_b_loss + b_loss * loss_scale
 
                 self.dataset.update_mu_sigma(cmu, csigma)
-                if self.schedule_type == 'legacy':
-                    av_kls = kl
-                    if self.multi_gpu:
-                        dist.all_reduce(kl, op=dist.ReduceOp.SUM)
-                        av_kls /= self.world_size
-                    self.last_lr, self.entropy_coef = self.scheduler.update(self.last_lr, self.entropy_coef, self.epoch_num, 0, av_kls.item())
-                    self.update_lr(self.last_lr)
+                if self.dataset.last_optimizer_step:
+                    a_losses.append(logical_a_loss)
+                    c_losses.append(logical_c_loss)
+                    ep_kls.append(logical_kl)
+                    entropies.append(logical_entropy)
+                    if self.bounds_loss_coef is not None:
+                        b_losses.append(logical_b_loss)
+                    if self.schedule_type == 'legacy':
+                        av_kls = logical_kl
+                        if self.multi_gpu:
+                            dist.all_reduce(av_kls, op=dist.ReduceOp.SUM)
+                            av_kls /= self.world_size
+                        self.last_lr, self.entropy_coef = self.scheduler.update(self.last_lr, self.entropy_coef, self.epoch_num, 0, av_kls.item())
+                        self.update_lr(self.last_lr)
+                    logical_a_loss = 0
+                    logical_c_loss = 0
+                    logical_entropy = 0
+                    logical_kl = 0
+                    logical_b_loss = 0
 
             av_kls = torch_ext.mean_list(ep_kls)
             if self.multi_gpu:
@@ -1471,6 +1534,52 @@ class ContinuousA2CBase(A2CBase):
         print(f"  Time to train epoch     : {total_time:.{DECIMALS}f} s\n")
 
         return batch_dict['step_time'], play_time, update_time, total_time, a_losses, c_losses, b_losses, entropies, kls, last_lr, lr_mul, extra_infos
+
+    @staticmethod
+    def _concatenate_optional_tensors(values, dim=0):
+        if values[0] is None:
+            if any(value is not None for value in values):
+                raise ValueError("rollout tensor presence must be consistent")
+            return None
+        return torch.cat(values, dim=dim)
+
+    @staticmethod
+    def _clone_optional_tensor(value):
+        return None if value is None else value.clone()
+
+    def _clone_rollout_batch(self, batch):
+        cloned = {}
+        for key, value in batch.items():
+            if isinstance(value, torch.Tensor):
+                cloned[key] = value.clone()
+            elif isinstance(value, list):
+                cloned[key] = [item.clone() for item in value]
+            else:
+                cloned[key] = value
+        return cloned
+
+    def _concatenate_rollouts(self, rollout_batches):
+        if len(rollout_batches) == 1:
+            return rollout_batches[0]
+        combined = {}
+        keys = set(rollout_batches[0])
+        if any(set(batch) != keys for batch in rollout_batches[1:]):
+            raise ValueError("all accumulated rollouts must have identical keys")
+        for key in keys:
+            values = [batch[key] for batch in rollout_batches]
+            if key in ('played_frames', 'step_time'):
+                combined[key] = sum(values)
+            elif key == 'rnn_states':
+                if values[0] is None:
+                    combined[key] = None
+                else:
+                    combined[key] = [
+                        torch.cat([value[index] for value in values], dim=1)
+                        for index in range(len(values[0]))
+                    ]
+            else:
+                combined[key] = self._concatenate_optional_tensors(values)
+        return combined
 
     def prepare_dataset(self, batch_dict, train_value_mean_std=True):
         obses = batch_dict['obses']

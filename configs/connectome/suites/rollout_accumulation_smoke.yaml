@@ -1,0 +1,49 @@
+schema_version: 1
+name: rollout_accumulation_smoke
+stages: [prepare, train]
+output_directory: train_dir/connectome/rollout_accumulation_smoke
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+preparation:
+  config: configs/connectome/malecns_4310.yaml
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - {name: adapters_only, train_profile: SimToolRealConnectomeSAPG}
+  seeds: [42]
+  gpu_assignments: [0]
+  max_parallel: 1
+  num_envs: 384
+  sapg_block_size: 64
+  rollout_accumulation_steps: 2
+  epochs: 2
+  max_frames: 24576
+  minibatch_size: 3072
+  central_critic_minibatch_size: 3072
+  actor_microbatch_size: 1536
+  central_critic_microbatch_size: 1536
+  save_frequency: 1
+  save_best_after: 0
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb: {enabled: false, project: simtoolreal-connectome, entity: '', group: rollout_accumulation_smoke, tags: [malecns, smoke, rollout-accumulation, gradient-accumulation]}
+  overrides:
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    train.params.config.expl_reward_coef_scale: 0.005
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

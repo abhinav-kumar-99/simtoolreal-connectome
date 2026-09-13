@@ -200,14 +200,21 @@ def test_release_settings_suite_preserves_original_logical_update_schedule() -> 
         ).read_text()
     )
     training = suite["training"]
-    assert training["num_envs"] == 24576
-    assert training["sapg_block_size"] == 4096
+    assert training["num_envs"] == 12288
+    assert training["sapg_block_size"] == 2048
+    assert training["rollout_accumulation_steps"] == 2
     assert training["minibatch_size"] == 98304
     assert training["central_critic_minibatch_size"] == 98304
-    assert training["actor_microbatch_size"] == 6144
-    assert training["central_critic_microbatch_size"] == 6144
+    assert training["actor_microbatch_size"] == 24576
+    assert training["central_critic_microbatch_size"] == 24576
     assert training["epochs"] == 2543
-    assert training["num_envs"] * 16 * training["epochs"] == 999_948_288
+    assert (
+        training["num_envs"]
+        * training["rollout_accumulation_steps"]
+        * 16
+        * training["epochs"]
+        == 999_948_288
+    )
     overrides = training["overrides"]
     assert overrides["train.params.config.expl_reward_coef_scale"] == 0.005
     assert overrides["task.env.forceScale"] == 2.0
@@ -239,11 +246,29 @@ def test_release_settings_suite_routes_microbatches_without_changing_logical_bat
     assert (
         "train.params.config.central_value_config.minibatch_size=98304" in overrides
     )
-    assert "++train.params.config.microbatch_size=6144" in overrides
+    assert "++train.params.config.rollout_accumulation_steps=2" in overrides
+    assert "++train.params.config.microbatch_size=24576" in overrides
     assert (
-        "++train.params.config.central_value_config.microbatch_size=6144"
+        "++train.params.config.central_value_config.microbatch_size=24576"
         in overrides
     )
+
+
+def test_rollout_accumulation_smoke_preserves_four_logical_batches() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/suites/rollout_accumulation_smoke.yaml"
+        ).read_text()
+    )
+    training = suite["training"]
+    frames_per_update_phase = (
+        training["num_envs"] * 16 * training["rollout_accumulation_steps"]
+    )
+    assert frames_per_update_phase == 12288
+    assert frames_per_update_phase // training["minibatch_size"] == 4
+    assert frames_per_update_phase * training["epochs"] == training["max_frames"]
 
 
 def test_capped_evaluation_contract_owns_metrics_and_videos() -> None:

@@ -12,7 +12,7 @@ from rl_games.common import schedulers
 class CentralValueTrain(nn.Module):
 
     def __init__(self, state_shape, value_size, ppo_device, num_agents, horizon_length, num_actors, num_actions, 
-                seq_length, normalize_value, network, config, writter, max_epochs, multi_gpu, zero_rnn_on_done, type, coef_ids=None, coef_id_idx=None):
+                seq_length, normalize_value, network, config, writter, max_epochs, multi_gpu, zero_rnn_on_done, type, coef_ids=None, coef_id_idx=None, rollout_accumulation_steps=1):
         nn.Module.__init__(self)
 
         self.ppo_device = ppo_device
@@ -30,6 +30,7 @@ class CentralValueTrain(nn.Module):
         self.type = type
         self.coef_ids = coef_ids
         self.coef_id_idx = coef_id_idx
+        self.rollout_accumulation_steps = rollout_accumulation_steps
         state_config = {
             'value_size' : value_size,
             'input_shape' : state_shape,
@@ -85,7 +86,7 @@ class CentralValueTrain(nn.Module):
             self.logical_minibatch_size,
             "physical microbatch:",
             self.microbatch_size,
-            "accumulation steps:",
+            "nominal accumulation steps:",
             self.microbatches_per_minibatch,
         )
         self.num_minibatches = (
@@ -142,6 +143,7 @@ class CentralValueTrain(nn.Module):
             self.is_rnn,
             self.ppo_device,
             self.seq_length,
+            logical_minibatch_size=self.logical_minibatch_size,
         )
 
     def update_lr(self, lr):
@@ -272,25 +274,30 @@ class CentralValueTrain(nn.Module):
     def train_net(self):
         self.train()
         loss = 0
+        logical_batches = 0
         for _ in range(self.mini_epoch):
+            logical_loss = 0
             for idx in range(len(self.dataset)):
-                accumulation_index = idx % self.microbatches_per_minibatch
-                loss += self.train_critic(
-                    self.dataset[idx],
-                    zero_grad=accumulation_index == 0,
-                    optimizer_step=(
-                        accumulation_index == self.microbatches_per_minibatch - 1
-                    ),
-                    loss_scale=1.0 / self.microbatches_per_minibatch,
+                input_dict = self.dataset[idx]
+                microbatch_loss = self.train_critic(
+                    input_dict,
+                    zero_grad=self.dataset.last_zero_grad,
+                    optimizer_step=self.dataset.last_optimizer_step,
+                    loss_scale=self.dataset.last_loss_scale,
                 )
+                logical_loss += microbatch_loss * self.dataset.last_loss_scale
+                if self.dataset.last_optimizer_step:
+                    loss += logical_loss
+                    logical_batches += 1
+                    logical_loss = 0
             if self.normalize_input:
                 self.model.running_mean_std.eval()  # don't need to update statstics more than one miniepoch
-        avg_loss = loss / (self.mini_epoch * len(self.dataset))
+        avg_loss = loss / logical_batches
 
         self.epoch_num += 1
         self.lr, _ = self.scheduler.update(self.lr, 0, self.epoch_num, 0, 0)
         self.update_lr(self.lr)
-        self.frame += self.batch_size
+        self.frame += self.batch_size * self.rollout_accumulation_steps
         if self.writter != None:
             self.writter.add_scalar('losses/cval_loss', avg_loss, self.frame)
             self.writter.add_scalar('info/cval_lr', self.lr, self.frame)        

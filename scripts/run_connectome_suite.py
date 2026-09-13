@@ -180,6 +180,11 @@ def _training_overrides(
         overrides.append(
             f"train.params.config.max_frames={int(training['max_frames'])}"
         )
+    if "rollout_accumulation_steps" in training:
+        overrides.append(
+            "++train.params.config.rollout_accumulation_steps="
+            f"{int(training['rollout_accumulation_steps'])}"
+        )
     if "actor_microbatch_size" in training:
         overrides.append(
             "++train.params.config.microbatch_size="
@@ -353,6 +358,9 @@ def _run_training(
         resolved = _compose_resolved(overrides)
         steps_per_epoch = int(resolved.train.params.config.num_actors) * int(
             resolved.train.params.config.horizon_length
+        )
+        steps_per_epoch *= int(
+            resolved.train.params.config.get('rollout_accumulation_steps', 1)
         )
         requested_steps = steps_per_epoch * int(training["epochs"])
         max_frames = int(training.get("max_frames", -1))

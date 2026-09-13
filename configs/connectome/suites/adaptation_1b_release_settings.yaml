@@ -5,9 +5,9 @@
 # The launcher assigns cases in order, so adapters_only owns physical GPU 0
 # and neuron_gains owns physical GPU 1. Each child remains single-GPU SAPG.
 schema_version: 1
-name: adaptation_1b_release_settings_microbatch_6k
+name: adaptation_1b_release_settings_rollout_accumulation
 stages: [prepare, train]
-output_directory: train_dir/connectome/adaptation_1b_release_settings_microbatch_6k
+output_directory: train_dir/connectome/adaptation_1b_release_settings_rollout_accumulation
 runtime_environment:
   CC: /usr/bin/gcc
   CXX: /usr/bin/g++
@@ -25,23 +25,26 @@ training:
   gpu_assignments: [0, 1]
   max_parallel: 2
   # Preserve the released policy's logical rollout and optimizer schedule.
-  num_envs: 24576
-  sapg_block_size: 4096
+  # Two unchanged 16-step rollouts are collected before each update phase.
+  # This avoids the unstable 24,576-environment PhysX scene while preserving
+  # the released 393,216 fresh frames between policy-update phases.
+  num_envs: 12288
+  sapg_block_size: 2048
+  rollout_accumulation_steps: 2
   # 24,576 envs x horizon 16 x 2,543 epochs = 999,948,288 steps. A 2,544th
   # complete epoch would exceed the strict one-billion-step ceiling.
   epochs: 2543
   max_frames: 1000000000
   minibatch_size: 98304
   central_critic_minibatch_size: 98304
-  # Sixteen equal physical chunks per logical actor/critic optimizer step.
-  # Larger chunks either OOMed or left insufficient long-running GPU headroom.
-  actor_microbatch_size: 6144
-  central_critic_microbatch_size: 6144
+  # Physical chunks are accumulated into the unchanged logical minibatches.
+  actor_microbatch_size: 24576
+  central_critic_microbatch_size: 24576
   save_frequency: 3000
   save_best_after: 100
   on_existing: fail
   checkpoint: {mode: none, path: ''}
-  wandb: {enabled: false, project: simtoolreal-connectome, entity: '', group: adaptation_1b_release_settings_microbatch_6k, tags: [malecns, adaptation, triton, one-billion-cap, released-settings, gradient-accumulation]}
+  wandb: {enabled: false, project: simtoolreal-connectome, entity: '', group: adaptation_1b_release_settings_rollout_accumulation, tags: [malecns, adaptation, triton, one-billion-cap, released-settings, rollout-accumulation, gradient-accumulation]}
   overrides:
     ++task.env.useSparseReward: false
     task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]

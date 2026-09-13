@@ -6,6 +6,7 @@ import torch
 from torch import nn
 
 from rl_games.algos_torch.central_value import CentralValueTrain
+from rl_games.common.datasets import PPODataset
 
 
 class _TinyValueModel(nn.Module):
@@ -72,3 +73,43 @@ def test_central_critic_microbatches_equal_one_logical_optimizer_step() -> None:
     full_step = next(iter(full.optimizer.state.values()))["step"]
     accumulated_step = next(iter(accumulated.optimizer.state.values()))["step"]
     assert int(full_step.item()) == int(accumulated_step.item()) == 1
+
+
+def test_microbatch_slices_preserve_enlarged_final_logical_batch() -> None:
+    dataset = PPODataset(
+        batch_size=32,
+        minibatch_size=4,
+        is_discrete=False,
+        is_rnn=False,
+        device="cpu",
+        seq_length=2,
+        logical_minibatch_size=8,
+    )
+    returns = torch.arange(38).reshape(38, 1)
+    dataset.update_values_dict({"returns": returns})
+
+    reconstructed = []
+    logical_scales = []
+    current_scales = []
+    optimizer_steps = 0
+    for index in range(len(dataset)):
+        item = dataset[index]
+        if dataset.last_zero_grad:
+            assert current_scales == []
+        reconstructed.append(item["returns"])
+        current_scales.append(dataset.last_loss_scale)
+        if dataset.last_optimizer_step:
+            optimizer_steps += 1
+            logical_scales.append(sum(current_scales))
+            current_scales = []
+
+    assert optimizer_steps == 4
+    assert current_scales == []
+    assert all(abs(scale - 1.0) < 1e-12 for scale in logical_scales)
+    assert torch.equal(torch.cat(reconstructed), returns)
+    assert [entry["end"] - entry["start"] for entry in dataset.slices[-4:]] == [
+        4,
+        4,
+        4,
+        2,
+    ]
