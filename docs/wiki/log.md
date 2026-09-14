@@ -269,3 +269,7 @@ Updated the eligibility runbook and index from active TensorBoard events at appr
 ## [2026-09-14] query | Distinguish policy improvement from TD credit estimation
 
 Updated the eligibility runbook and index using actor/critic source and primary PPO/GAE papers. Explained that TD and policy gradients coexist, and separated conventional recurrent differentiation from approximate local eligibility. Recorded the conventional actor-critic baseline recommendation as conceptual, not an empirical winner, plus the limited frozen-core/readout-only control. The interrupted all-actor-1e-3 restart was not executed. Preserved unrelated runtime/config/test changes already in the worktree.
+
+## [2026-09-14] query | Consider alternative input-adapter objectives and optimizers
+
+Updated the eligibility runbook and index with proposed sensory-code supervision, teacher-policy imitation, short-window recurrent gradients, and parameter-space search. Linked primary policy-distillation and evolution-strategy sources, distinguishing published methods from untested connectome-specific adaptations. Explicitly retained teacher cost, simulation cost, propagation horizon, and robot-to-fly correspondence limitations. No runtime or training configuration changes.
