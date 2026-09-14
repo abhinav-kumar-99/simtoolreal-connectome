@@ -232,6 +232,75 @@ def test_mlp_adapters_replacement_matches_stable_ppo_contract() -> None:
     )
 
 
+def test_original_kl_mlp_run_differs_only_in_threshold_and_gpu() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    config_root = repository_root / "configs/connectome"
+    kl004 = yaml.safe_load(
+        (config_root / "suites/ppo_1952_mlp_adapters_kl004_100b.yaml").read_text()
+    )
+    kl016 = yaml.safe_load(
+        (config_root / "suites/ppo_1952_mlp_adapters_kl016_100b.yaml").read_text()
+    )
+    import isaacgymenvs  # noqa: F401 - registers OmegaConf resolvers
+
+    with initialize_config_dir(
+        version_base="1.1", config_dir=str(repository_root / "isaacgymenvs/cfg")
+    ):
+        original_ppo = compose(
+            config_name="config",
+            overrides=[
+                "task=SimToolRealLSTMAsymmetric",
+                "train=SimToolRealLSTMAsymmetricPPO",
+            ],
+        )
+    assert original_ppo.train.params.config.kl_threshold == 0.016
+    assert kl016["training"]["gpu_assignments"] == [0]
+    assert kl004["training"]["gpu_assignments"] == [1]
+    assert kl016["training"]["train_profiles"] == kl004["training"][
+        "train_profiles"
+    ]
+    ignored = {"gpu_assignments", "overrides", "wandb"}
+    assert {
+        key: value
+        for key, value in kl016["training"].items()
+        if key not in ignored
+    } == {
+        key: value
+        for key, value in kl004["training"].items()
+        if key not in ignored
+    }
+    kl016_overrides = dict(kl016["training"]["overrides"])
+    kl004_overrides = dict(kl004["training"]["overrides"])
+    assert kl016_overrides.pop("train.params.config.kl_threshold") == 0.016
+    assert kl004_overrides.pop("train.params.config.kl_threshold") == 0.004
+    assert kl016_overrides == kl004_overrides
+
+    evaluation = yaml.safe_load(
+        (
+            config_root
+            / "evaluation/ppo_1952_mlp_adapters_kl016_milestones.yaml"
+        ).read_text()
+    )
+    assert evaluation["training_suite_name"] == kl016["name"]
+    assert evaluation["policies"] == [
+        {
+            "name": "adapters_mlp_kl016",
+            "seed": 42,
+            "gpu": 0,
+            "policy_config_path": (
+                "train_dir/connectome/adaptation_100b_gains_update_timing/"
+                "ppo_1952_mlp_adapters_kl016_lr01_100b/"
+                "00_ppo_1952_mlp_adapters_kl016_lr01_100b_adapters_mlp_seed42/"
+                "resolved_config.yaml"
+            ),
+        }
+    ]
+    assert evaluation["evaluation"]["action_selection"] == "mean"
+    assert evaluation["evaluation"]["videos"][
+        "camera_resolution_reduction_factor"
+    ] == 2
+
+
 def test_backend_profile_is_yaml_owned_and_covers_all_operators() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     suite_directory = repository_root / "configs/connectome/suites"
