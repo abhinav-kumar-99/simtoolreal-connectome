@@ -2,7 +2,7 @@
 
 An experimental YAML-selected local-trace actor-critic trains the compact connectome without recurrent backpropagation while retaining the existing deployment and video interfaces.
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
 
 Related: [Scientific boundary and design](../analyses/dopamine-inspired-learning.md), [Experiment workflow](connectome-experiments.md), [Compact circuit](../analyses/compact-1952-training.md)
 
@@ -47,6 +47,15 @@ Prepared from-scratch pilot, **not launched during implementation** (384 environ
 
 ```bash
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/eligibility_1952.yaml
+```
+
+The long adapter+gains eligibility contract uses physical CUDA 0, 384 environments and a nominal 100-billion-frame budget. Its final vectorized collection boundary is 100,001,120,256 frames (1,120,256 above 100B); milestone videos remain on the exact 250M grid through 100B. The actor updates on every vector step, while `horizon_length: 4096` only reduces log/checkpoint overhead to 63,579 collection chunks:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/eligibility_1952_100b.yaml
+
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/eligibility_1952_100b_milestones.yaml
 ```
 
 These suites use `on_existing: fail` to protect outputs. The smoke and continuation directories already exist after validation: use a new output directory to rerun, updating evaluation/checkpoint paths accordingly. `on_existing: skip` only reverifies a matching completed run; it does not continue training. Use `checkpoint.mode: resume` in a new run directory with larger absolute `epochs`/`max_frames` for continuation. The pilot's task disturbances follow the compact PPO run; the smaller integration smoke uses inherited task defaults and is not a matched performance comparison.

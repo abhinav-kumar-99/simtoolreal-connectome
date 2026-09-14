@@ -230,6 +230,10 @@ Validated the real simulator through 3,072 frames/32 updates then continuation t
 
 Final focused regression run passed 98 actor, eligibility, configuration, compact-circuit and milestone tests. CPU checkpoint tests also verify identical inference means and feedback after restore. Existing compact gains/adapters-only PPO PIDs 3211659 and 3248466 remained live at handoff.
 
+## [2026-09-14] experiment | Configure 100B adapter plus gains eligibility run
+
+Added a YAML-owned 1,952-cell adapter+gains eligibility contract pinned to physical CUDA 0 and a persistent mean-action evaluation contract for three task videos on every 250M-frame milestone through 100B. The validated conservative geometry uses 384 environments and six compatibility blocks; eligibility updates remain per vector step. Increased the logging/checkpoint chunk to 4,096 transitions per environment, producing 63,579 summaries and a final vectorized boundary of 100,001,120,256 frames. Outputs remain nested beneath TensorBoard 6008's existing log root. The prior failed gains job on GPU 0 was not restarted, and the running adapters-only PPO job on GPU 1 was not changed.
+
 ## [2026-09-14] query | Audit live compact-training status
 
 Checked tmux, process ownership, both RTX 4090s, training logs, recovery and inference checkpoints, TensorBoard scalars, and milestone manifests. The 1,952-cell gains trainer failed at 2,275,344,384 logged frames because its learned coefficient-conditioned action standard deviation became negative; its last recovery checkpoint is frame 2,241,331,200 with 91,164 applied actor Adam steps. Nine milestones and 27 mean-action videos are complete.

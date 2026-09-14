@@ -214,7 +214,7 @@ def test_suite_profile_and_checkpoint_validation(tmp_path):
     from pathlib import Path
     from scripts.run_connectome_suite import _compose_resolved, _training_overrides, _verify_checkpoint
     root = Path(__file__).resolve().parents[2]
-    for name in ("eligibility_smoke", "eligibility_resume_smoke", "eligibility_1952"):
+    for name in ("eligibility_smoke", "eligibility_resume_smoke", "eligibility_1952", "eligibility_1952_100b"):
         suite = yaml.safe_load((root / f"configs/connectome/suites/{name}.yaml").read_text())
         training = suite["training"]
         overrides = _training_overrides(training, training["train_profiles"][0]["train_profile"], 42, "test", tmp_path)
@@ -224,6 +224,12 @@ def test_suite_profile_and_checkpoint_validation(tmp_path):
         assert resolved.train.params.config.central_value_config is None
         assert not resolved.train.params.config.ppo
         assert resolved.train.params.config.seq_length == 1
+        if name == "eligibility_1952_100b":
+            assert resolved.train.params.config.num_actors == 384
+            assert resolved.train.params.config.horizon_length == 4096
+            assert resolved.train.params.config.max_epochs == 63579
+            assert resolved.train.params.config.max_frames == 100001120256
+            assert resolved.train.params.config.inference_checkpoint_interval_frames == 250000000
     from omegaconf import OmegaConf
     config = tmp_path / "config.yaml"
     OmegaConf.save(resolved, config)
