@@ -2,7 +2,7 @@
 
 The default actor learns robot adapters and heads; recurrent weight adaptation and learned neuron dynamics are independent choices.
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
 
 Related: [Actor](connectome-actor.md), [Backend analysis](../analyses/sparse-backends.md), [Workflow](../workflows/connectome-experiments.md)
 
@@ -16,10 +16,14 @@ adaptation:
   learn_dynamics: false
   rank: 4
   edge_scale_bounds: [0.0625, 16.0]
+interface_projections:
+  architecture: linear  # or mlp
+  hidden_size: 256
+  activation: elu
 operator_backend: triton_fused
 ```
 
-All modes train input adapters, motor action and actor-value heads, SAPG embeddings and action log standard deviations. The central critic is unchanged. `learn_dynamics` independently enables neuron leaks and recurrent biases (8,620 additional parameters); the default holds leaks at 0.5 and biases at zero.
+All modes train input adapters, motor action and actor-value heads, SAPG embeddings and action log standard deviations. Interface architecture is orthogonal to recurrent adaptation: `linear` preserves the original projections, while `mlp` replaces both input projections and the action-mean projection with one 256-unit hidden layer. The central critic is unchanged. `learn_dynamics` independently enables neuron leaks and recurrent biases (8,620 additional parameters); the default holds leaks at 0.5 and biases at zero.
 
 | Mode | Recurrent parameters | Actor total with frozen dynamics | Meaning |
 | --- | ---: | ---: | --- |
@@ -60,8 +64,10 @@ Legacy saved configurations containing only `plasticity_mode` retain their meani
 
 `connectome_ops.py` owns transient CSR/transpose structure, per-stream/shape cuSPARSE plans and autograd. `connectome_cusparse.cpp` uses generic SpMM with reusable preprocessing and SDDMM for edge gradients. First use compiles a C++ extension into PyTorch's external cache; matching CUDA headers/libraries, a compiler and ninja are required.
 
-`connectome_triton.py` fuses tiled CSR accumulation with population drives, gains, tanh and leak interpolation. Backward computes pointwise derivatives, transposed sparse propagation and sampled edge reductions. Dense adapters stay in PyTorch. Recurrence stays FP32 under AMP. These helpers have no CLI; select them through `operator_backend`.
+`connectome_triton.py` fuses tiled CSR accumulation with population drives, gains, tanh and leak interpolation. Backward computes pointwise derivatives, transposed sparse propagation and sampled edge reductions. Linear and MLP interface projections stay as ordinary PyTorch dense operations outside the custom recurrent kernel. Selecting an MLP therefore does not change Triton/cuSPARSE correctness or recurrent-kernel coverage, but it adds interface compute and reduces the fraction of total actor time that recurrence can accelerate. Benchmark end-to-end actor steps when comparing architectures. Recurrence stays FP32 under AMP. These helpers have no CLI; select them through `operator_backend`.
 
 Frozen weights still require hidden-state derivatives to train input adapters. Shared trainable edge values add edge-gradient reductions but retain the shared graph. Values are formed once per sequence forward, reused across timesteps, and never cached detached across optimizer updates. Backend caches are absent from checkpoints and invalidated on model moves and state loads.
 
 `backend_options.cusparse_algorithm` accepts `alg1`, `alg2` (default), or `alg3`; `cusparse_layout` accepts `row` or `column` (column for alg1, row otherwise). Unavailable requested backends fail explicitly.
+
+The local-eligibility trainer currently supports only linear projections. Its hand-derived sensory, descending and action eligibility traces address a single weight matrix directly; an MLP requires layerwise traces and activation derivatives. It rejects `architecture: mlp` explicitly instead of silently applying an incomplete update. PPO uses autograd and supports both architectures.

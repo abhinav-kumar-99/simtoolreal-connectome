@@ -40,6 +40,43 @@ def _select_ranges(
     return torch.cat([observations[:, start:stop] for start, stop in ranges], dim=-1)
 
 
+def _interface_activation(name: str) -> nn.Module:
+    activations = {
+        "elu": nn.ELU,
+        "relu": nn.ReLU,
+        "tanh": nn.Tanh,
+    }
+    try:
+        return activations[name]()
+    except KeyError as error:
+        raise ValueError(
+            f"Unknown interface projection activation {name!r}; "
+            f"expected one of {sorted(activations)}"
+        ) from error
+
+
+def _interface_projection(
+    input_size: int,
+    output_size: int,
+    architecture: str,
+    hidden_size: int,
+    activation: str,
+    bias: bool,
+) -> nn.Module:
+    if architecture == "linear":
+        return nn.Linear(input_size, output_size, bias=bias)
+    if architecture == "mlp":
+        return nn.Sequential(
+            nn.Linear(input_size, hidden_size, bias=bias),
+            _interface_activation(activation),
+            nn.Linear(hidden_size, output_size, bias=bias),
+        )
+    raise ValueError(
+        f"Unknown interface projection architecture {architecture!r}; "
+        "expected 'linear' or 'mlp'"
+    )
+
+
 class ConnectomeBuilder(network_builder.NetworkBuilder):
     """Builds a continuous actor whose recurrent state is the MaleCNS circuit."""
 
@@ -246,15 +283,38 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 )
 
             adapter = connectome["population_adapters"]
-            self.sensory_adapter = nn.Linear(
+            projections = connectome.get("interface_projections", {})
+            self.projection_architecture = str(
+                projections.get("architecture", "linear")
+            ).lower()
+            hidden_size = projections.get("hidden_size", 256)
+            if isinstance(hidden_size, bool) or not isinstance(hidden_size, int):
+                raise TypeError("interface projection hidden_size must be an integer")
+            if hidden_size < 1:
+                raise ValueError("interface projection hidden_size must be positive")
+            self.projection_hidden_size = hidden_size
+            self.projection_activation = str(
+                projections.get("activation", "elu")
+            ).lower()
+            # Validate all projection settings even for the linear option so a
+            # later YAML architecture switch cannot expose a latent bad value.
+            _interface_activation(self.projection_activation)
+            input_bias = bool(adapter.get("bias", False))
+            self.sensory_adapter = _interface_projection(
                 sensory_size,
                 len(sensory_indices),
-                bias=bool(adapter.get("bias", False)),
+                self.projection_architecture,
+                self.projection_hidden_size,
+                self.projection_activation,
+                bias=input_bias,
             )
-            self.descending_adapter = nn.Linear(
+            self.descending_adapter = _interface_projection(
                 goal_size + self.coef_embedding_size,
                 len(descending_indices),
-                bias=bool(adapter.get("bias", False)),
+                self.projection_architecture,
+                self.projection_hidden_size,
+                self.projection_activation,
+                bias=input_bias,
             )
 
             dynamics = connectome["dynamics"]
@@ -299,7 +359,14 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 )
             )
 
-            self.mu = nn.Linear(len(motor_indices), self.actions_num)
+            self.mu = _interface_projection(
+                len(motor_indices),
+                self.actions_num,
+                self.projection_architecture,
+                self.projection_hidden_size,
+                self.projection_activation,
+                bias=True,
+            )
             self.value = nn.Linear(self.neuron_count, self.value_size)
             continuous = params["space"]["continuous"]
             self.mu_act = self.activations_factory.create(continuous["mu_activation"])
@@ -369,11 +436,20 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
 
         def _initialize_linear_layers(self) -> None:
             for module in (self.sensory_adapter, self.descending_adapter, self.value):
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-            nn.init.uniform_(self.mu.weight, -1.0e-3, 1.0e-3)
-            nn.init.zeros_(self.mu.bias)
+                for layer in module.modules():
+                    if isinstance(layer, nn.Linear):
+                        nn.init.xavier_uniform_(layer.weight)
+                        if layer.bias is not None:
+                            nn.init.zeros_(layer.bias)
+            mu_layers = [
+                layer for layer in self.mu.modules() if isinstance(layer, nn.Linear)
+            ]
+            for layer in mu_layers:
+                nn.init.xavier_uniform_(layer.weight)
+                if layer.bias is not None:
+                    nn.init.zeros_(layer.bias)
+            nn.init.uniform_(mu_layers[-1].weight, -1.0e-3, 1.0e-3)
+            nn.init.zeros_(mu_layers[-1].bias)
 
         def incoming_gains(self) -> torch.Tensor:
             log_gain = self.log_gain_min + self.log_gain_span * torch.sigmoid(

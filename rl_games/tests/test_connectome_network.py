@@ -38,8 +38,9 @@ def _network_params(
     artifact_path,
     plasticity_mode="neuron_gains",
     operator_backend="native_csr",
+    interface_projections=None,
 ):
-    return {
+    params = {
         "name": "connectome_actor_critic",
         "connectome": {
             "artifact_path": str(artifact_path),
@@ -80,6 +81,9 @@ def _network_params(
             }
         },
     }
+    if interface_projections is not None:
+        params["connectome"]["interface_projections"] = interface_projections
+    return params
 
 
 def _build(
@@ -88,12 +92,14 @@ def _build(
     num_seqs=2,
     operator_backend="native_csr",
     adaptation=None,
+    interface_projections=None,
 ):
     builder = ConnectomeBuilder()
     params = _network_params(
         artifact_path,
         plasticity_mode,
         operator_backend,
+        interface_projections,
     )
     if adaptation is not None:
         params["connectome"].pop("plasticity_mode")
@@ -115,6 +121,59 @@ def _observations(batch):
     obs = torch.randn(batch, 6)
     obs[:, 5] = torch.tensor([50.0, 0.0] * ((batch + 1) // 2))[:batch]
     return obs
+
+
+def test_mlp_interface_projections_have_one_256_unit_hidden_layer(
+    artifact_path,
+) -> None:
+    projection = {"architecture": "mlp", "hidden_size": 256, "activation": "elu"}
+    network = _build(
+        artifact_path,
+        adaptation={"weight_mode": "adapters_only", "learn_dynamics": False},
+        interface_projections=projection,
+    )
+    assert network.projection_architecture == "mlp"
+    assert network.projection_hidden_size == 256
+    assert network.projection_activation == "elu"
+    for module, sizes, biased in (
+        (network.sensory_adapter, (2, 256, 2), False),
+        (network.descending_adapter, (7, 256, 2), False),
+        (network.mu, (2, 256, 2), True),
+    ):
+        assert isinstance(module, torch.nn.Sequential)
+        assert isinstance(module[0], torch.nn.Linear)
+        assert isinstance(module[1], torch.nn.ELU)
+        assert isinstance(module[2], torch.nn.Linear)
+        assert (module[0].in_features, module[0].out_features) == sizes[:2]
+        assert (module[2].in_features, module[2].out_features) == sizes[1:]
+        assert (module[0].bias is not None) is biased
+        assert (module[2].bias is not None) is biased
+    assert network.mu[2].weight.abs().max() <= 1e-3
+    assert torch.count_nonzero(network.mu[2].bias) == 0
+    outputs = network({"obs": _observations(6), "seq_length": 3})
+    loss = outputs[0].square().sum() + outputs[1].sum() + outputs[2].square().sum()
+    loss.backward()
+    for name, parameter in network.named_parameters():
+        if parameter.requires_grad:
+            assert parameter.grad is not None and torch.isfinite(parameter.grad).all(), name
+    assert outputs[0].shape == (6, 2)
+    assert outputs[2].shape == (6, 1)
+
+
+@pytest.mark.parametrize(
+    "projection,error_type,message",
+    [
+        ({"architecture": "cnn"}, ValueError, "architecture"),
+        ({"architecture": "mlp", "hidden_size": True}, TypeError, "hidden_size"),
+        ({"architecture": "mlp", "hidden_size": 0}, ValueError, "hidden_size"),
+        ({"architecture": "mlp", "activation": "swish"}, ValueError, "activation"),
+    ],
+)
+def test_invalid_interface_projection_configuration(
+    artifact_path, projection, error_type, message
+) -> None:
+    with pytest.raises(error_type, match=message):
+        _build(artifact_path, interface_projections=projection)
 
 
 def test_sparse_step_matches_dense_reference(artifact_path) -> None:
@@ -303,15 +362,31 @@ def test_adapters_default_and_low_rank_initial_gradient(artifact_path):
 
 @pytest.mark.parametrize("backend", ["cusparse", "triton_fused"])
 @pytest.mark.parametrize("batch", [1, 37])
-def test_cuda_shapes_amp_reload_and_stream(artifact_path, backend, batch):
+@pytest.mark.parametrize("projection_architecture", ["linear", "mlp"])
+def test_cuda_shapes_amp_reload_and_stream(
+    artifact_path, backend, batch, projection_architecture
+):
     if not torch.cuda.is_available():
         pytest.skip("CUDA required")
     opts = {"weight_mode": "edgewise", "learn_dynamics": True}
+    projections = {
+        "architecture": projection_architecture,
+        "hidden_size": 256,
+        "activation": "elu",
+    }
     a = _build(
-        artifact_path, num_seqs=batch, operator_backend="dense", adaptation=opts
+        artifact_path,
+        num_seqs=batch,
+        operator_backend="dense",
+        adaptation=opts,
+        interface_projections=projections,
     ).cuda()
     b = _build(
-        artifact_path, num_seqs=batch, operator_backend=backend, adaptation=opts
+        artifact_path,
+        num_seqs=batch,
+        operator_backend=backend,
+        adaptation=opts,
+        interface_projections=projections,
     ).cuda()
     b.load_state_dict(a.state_dict())
     obs = _observations(batch * 2).cuda()
@@ -323,9 +398,18 @@ def test_cuda_shapes_amp_reload_and_stream(artifact_path, backend, batch):
             with torch.autocast("cuda"):
                 result = model({"obs": obs, "seq_length": 2})
             (result[0].float().sum() + result[2].float().sum()).backward()
-        torch.testing.assert_close(
-            a.mu.weight.grad, b.mu.weight.grad, atol=2e-4, rtol=3e-3
-        )
+        for module_name in ("sensory_adapter", "descending_adapter", "mu"):
+            a_parameters = dict(getattr(a, module_name).named_parameters())
+            b_parameters = dict(getattr(b, module_name).named_parameters())
+            assert a_parameters.keys() == b_parameters.keys()
+            for name in a_parameters:
+                torch.testing.assert_close(
+                    a_parameters[name].grad,
+                    b_parameters[name].grad,
+                    atol=2e-4,
+                    rtol=3e-3,
+                    msg=f"{module_name}.{name}",
+                )
     original_stream.wait_stream(stream)
     with torch.no_grad():
         a.recurrent_values.mul_(0.3)

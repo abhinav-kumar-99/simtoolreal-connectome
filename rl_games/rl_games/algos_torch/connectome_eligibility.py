@@ -19,6 +19,8 @@ class LocalEligibility:
         self.net, self.config = network, dict(config)
         if network.weight_mode not in {"adapters_only", "neuron_gains"} or network.learn_dynamics:
             raise ValueError("Eligibility requires adapters_only/neuron_gains and frozen dynamics")
+        if network.projection_architecture != "linear":
+            raise ValueError("Eligibility currently requires linear interface projections")
         if network.sensory_adapter.bias is not None or network.descending_adapter.bias is not None:
             raise ValueError("Eligibility currently requires bias-free input adapters")
         if not isinstance(network.mu_act, torch.nn.Identity):

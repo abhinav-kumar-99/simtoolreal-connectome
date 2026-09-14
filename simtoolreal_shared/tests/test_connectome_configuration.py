@@ -20,6 +20,7 @@ def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
         "SimToolRealConnectomeLowRankSAPG": "connectome_actor_critic",
         "SimToolRealConnectomeEdgewiseSAPG": "connectome_actor_critic",
         "SimToolRealConnectomeGainsDynamicsSAPG": "connectome_actor_critic",
+        "SimToolRealConnectomeMLPSAPG": "connectome_actor_critic",
     }
     with initialize_config_dir(
         version_base="1.1", config_dir=str(repository_root / "isaacgymenvs/cfg")
@@ -52,6 +53,15 @@ def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
                     == "triton_fused"
                 )
                 adaptation = config.train.params.network.connectome.adaptation
+                projections = (
+                    config.train.params.network.connectome.interface_projections
+                )
+                expected_projection = (
+                    "mlp" if profile == "SimToolRealConnectomeMLPSAPG" else "linear"
+                )
+                assert projections.architecture == expected_projection
+                assert projections.hidden_size == 256
+                assert projections.activation == "elu"
                 assert "plasticity_mode" not in config.train.params.network.connectome
                 if profile == "SimToolRealConnectomeSAPG":
                     assert adaptation.weight_mode == "adapters_only"
@@ -70,13 +80,15 @@ def test_compact_profiles_compose_with_explicit_adaptation_modes() -> None:
     import isaacgymenvs  # noqa: F401 - registers OmegaConf resolvers
 
     profiles = {
-        "SimToolRealConnectome1952AdaptersSAPG": "adapters_only",
-        "SimToolRealConnectome1952GainsSAPG": "neuron_gains",
+        "SimToolRealConnectome1952AdaptersSAPG": ("adapters_only", "linear"),
+        "SimToolRealConnectome1952GainsSAPG": ("neuron_gains", "linear"),
+        "SimToolRealConnectome1952AdaptersMLPSAPG": ("adapters_only", "mlp"),
+        "SimToolRealConnectome1952GainsMLPSAPG": ("neuron_gains", "mlp"),
     }
     with initialize_config_dir(
         version_base="1.1", config_dir=str(repository_root / "isaacgymenvs/cfg")
     ):
-        for profile, weight_mode in profiles.items():
+        for profile, (weight_mode, projection_architecture) in profiles.items():
             config = compose(
                 config_name="config",
                 overrides=["task=SimToolRealLSTMAsymmetric", f"train={profile}"],
@@ -95,6 +107,12 @@ def test_compact_profiles_compose_with_explicit_adaptation_modes() -> None:
             }
             assert connectome.adaptation.weight_mode == weight_mode
             assert connectome.adaptation.learn_dynamics is False
+            assert (
+                connectome.interface_projections.architecture
+                == projection_architecture
+            )
+            assert connectome.interface_projections.hidden_size == 256
+            assert connectome.interface_projections.activation == "elu"
 
 
 def test_suite_contracts_own_required_execution_settings() -> None:
@@ -102,6 +120,9 @@ def test_suite_contracts_own_required_execution_settings() -> None:
     suite_directory = repository_root / "configs/connectome/suites"
     smoke = yaml.safe_load((suite_directory / "smoke.yaml").read_text())
     full = yaml.safe_load((suite_directory / "full_training.yaml").read_text())
+    mlp_smoke = yaml.safe_load(
+        (suite_directory / "mlp_projection_smoke.yaml").read_text()
+    )
     assert smoke["training"]["num_envs"] == 384
     assert smoke["training"]["sapg_block_size"] == 64
     assert smoke["training"]["epochs"] == 2
@@ -111,6 +132,15 @@ def test_suite_contracts_own_required_execution_settings() -> None:
     assert full["training"]["sapg_block_size"] == 4096
     assert len(full["training"]["train_profiles"]) == 5
     assert len(full["training"]["seeds"]) >= 3
+    assert [
+        profile["train_profile"]
+        for profile in mlp_smoke["training"]["train_profiles"]
+    ] == [
+        "SimToolRealConnectome1952AdaptersMLPSAPG",
+        "SimToolRealConnectome1952GainsMLPSAPG",
+    ]
+    assert mlp_smoke["training"]["num_envs"] == 384
+    assert mlp_smoke["training"]["minibatch_size"] == 1536
     for suite in (smoke, full):
         training = suite["training"]
         assert training["num_envs"] // training["sapg_block_size"] == 6

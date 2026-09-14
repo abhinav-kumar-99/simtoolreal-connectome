@@ -2,7 +2,7 @@
 
 Experiments are owned by YAML contracts and proceed through data, profile, smoke, and full-training gates.
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
@@ -13,6 +13,14 @@ The separately selected `connectome_eligibility` trainer now supports the compac
 ## Adaptation and custom-kernel suites
 
 The primary actor now defaults to adapters-only with frozen leaks/biases and the measured-fastest `triton_fused` recurrent backend. See [adaptation controls](../concepts/connectome-adaptation.md) for all modes, parameter counts and legacy compatibility.
+
+Run the compact two-policy MLP projection smoke gate from the repository root:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/mlp_projection_smoke.yaml
+```
+
+This YAML runs the 1,952-cell adapters-only and adapters-plus-gains MLP profiles concurrently, one per GPU, for two short epochs. The important settings are `train_profiles`, `interface_projections` inherited from each profile, `gpu_assignments`, `max_parallel`, `num_envs`, both minibatch sizes, `epochs`, and `max_frames`. `on_existing: fail` prevents accidental reuse of a prior smoke directory. The suite was added as a reproducible gate but was not launched while the long-running jobs occupied both GPUs. For a longer YAML-owned experiment, select `SimToolRealConnectome1952AdaptersMLPSAPG` or `SimToolRealConnectome1952GainsMLPSAPG` as `train_profile`; no architecture CLI argument is required.
 
 Old timing is now the connectome profile default: one rollout and 49,152-sample actor/critic minibatches, with physical batches following the logical size. Historical suites can explicitly override this. The approved compact gains run pins 12,288 environments and the complete old geometry; see [1,952-cell preparation, smoke, launch and monitoring commands](../analyses/compact-1952-training.md). Its exact body-ID set is validated, not padded to a size target.
 

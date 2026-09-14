@@ -299,3 +299,9 @@ Read both live event streams and the exact SAPG loss path. At approximately 72.7
 ## [2026-09-14] query | Explain the compact neural circuit in plain language
 
 Added an accessible overview to the actor concept page and updated the index. Recounted population masks from the prepared CSV: 92 proprioceptors, 292 tactile cells, 157 directly driven descending cells, 135 motor readout cells and 1,276 other cells. Verified the graph manifest, seed/path/motif selection, 33,720 pairwise edges, five-contact filter, 44 isolates and synchronous actor update. Distinguished anatomical family labels from demonstrated functions, body sensing from actual robot tactile availability, and measured wiring from engineered dynamics and learned cross-species interfaces. Clarified the PPO versus eligibility critic distinction. No training changes.
+
+## [2026-09-14] implementation | Add optional MLP interface projections
+
+Added a YAML-selectable shared interface architecture for the sensory, goal/conditioning and motor-action projections. The backward-compatible default remains linear; the new profiles use one 256-unit ELU hidden layer while leaving the recurrent connectome and actor value head unchanged. Added general and compact adapters-only/gains MLP profiles plus a two-GPU smoke-suite contract. The compact MLP shapes are `128 -> 256 -> 384`, `44 -> 256 -> 157` and `135 -> 256 -> 29`, adding 164,793 trainable actor scalars relative to either linear counterpart.
+
+PPO supports the MLPs through autograd with the Triton/cuSPARSE recurrent backend unchanged. The local-eligibility trainer explicitly rejects MLP interfaces because its manual traces currently assume one linear matrix. CPU forward/backward, configuration composition and CUDA dense-versus-cuSPARSE/Triton parity tests cover both architectures. Existing training processes were not restarted or altered.

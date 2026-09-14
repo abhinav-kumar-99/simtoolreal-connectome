@@ -25,6 +25,10 @@ params:
       sapg_embedding_size: 32
       population_adapters:
         bias: false
+      interface_projections:
+        architecture: linear
+        hidden_size: 256
+        activation: elu
       dynamics:
         activation: tanh
         beta: 0.9

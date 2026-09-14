@@ -78,6 +78,20 @@ def test_adapters_only_omits_gain_credit_and_keeps_gains_fixed(artifact_path):
     torch.testing.assert_close(net.outgoing_gain_raw, gains[1])
 
 
+def test_mlp_interface_projections_rejected_by_local_eligibility(artifact_path):
+    net = _build(
+        artifact_path,
+        adaptation={"weight_mode": "adapters_only", "learn_dynamics": False},
+        interface_projections={
+            "architecture": "mlp",
+            "hidden_size": 256,
+            "activation": "elu",
+        },
+    )
+    with pytest.raises(ValueError, match="linear interface projections"):
+        LocalEligibility(net, 2, settings())
+
+
 def test_decay_and_resume_contract(artifact_path):
     net = local_network(artifact_path)
     engine = LocalEligibility(net, 2, settings())

@@ -1,0 +1,57 @@
+# Two-phase execution gate for 256-unit MLP interface projections.
+schema_version: 1
+name: mlp_projection_smoke
+stages: [prepare, train]
+output_directory: train_dir/connectome/mlp_projection_smoke
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+preparation:
+  config: configs/connectome/malecns_1952.yaml
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - {name: adapters_mlp, train_profile: SimToolRealConnectome1952AdaptersMLPSAPG}
+    - {name: adapters_gains_mlp, train_profile: SimToolRealConnectome1952GainsMLPSAPG}
+  seeds: [42]
+  gpu_assignments: [0, 1]
+  max_parallel: 2
+  num_envs: 384
+  sapg_block_size: 64
+  epochs: 2
+  max_frames: 12288
+  minibatch_size: 1536
+  central_critic_minibatch_size: 1536
+  rollout_accumulation_steps: 1
+  actor_microbatch_size: 1536
+  central_critic_microbatch_size: 1536
+  inference_checkpoint_interval_frames: 6144
+  save_frequency: 1
+  save_best_after: 0
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: mlp_projection_smoke
+    tags: [malecns, interface-mlp, triton, smoke]
+  overrides:
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    train.params.config.expl_reward_coef_scale: 0.005
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

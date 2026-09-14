@@ -30,9 +30,28 @@ What is biological is the selected cell identity and source-derived wiring. What
 
 ## Contract
 
-System observations enter sensory neurons, goal and SAPG exploration conditioning enter descending neurons, and only motor-neuron state is decoded into 29 robot actions. The default now learns adapters and heads only. Optional weight adaptation and learned leaks/biases are independent; see [adaptation controls](connectome-adaptation.md). The dynamics and parameter accounting below describe the preserved gains-plus-dynamics control.
+System observations enter sensory neurons, goal and SAPG exploration conditioning enter descending neurons, and only motor-neuron state is decoded into 29 robot actions. These three interface projections can use the backward-compatible linear layers or an optional one-hidden-layer MLP. The default remains linear and learns adapters and heads only. Optional weight adaptation and learned leaks/biases are independent; see [adaptation controls](connectome-adaptation.md). The dynamics and parameter accounting below describe the preserved gains-plus-dynamics control.
 
 For PPO, the privileged asymmetric critic remains the standard SimToolReal MLP and never consumes connectome state. The separate eligibility trainer instead uses a critic on observations plus detached recurrent activity; see [eligibility training](../workflows/eligibility-training.md).
+
+## Interface projection architectures
+
+`params.network.connectome.interface_projections.architecture` selects one shared architecture for the sensory input projection, goal-plus-conditioning projection, and motor-state action-mean projection:
+
+- `linear` preserves the original single-layer interface and checkpoint parameter names. It is the default, including when an older configuration omits `interface_projections`.
+- `mlp` uses `Linear -> ELU -> Linear` with one 256-unit hidden layer. `hidden_size` and `activation` are explicit YAML fields; the supplied MLP profiles pin them to `256` and `elu`.
+
+The input projections retain `population_adapters.bias: false`, so both linear layers in each input MLP are bias-free. Both layers in the action MLP have biases. Every hidden/input layer uses Xavier initialization; the final action layer retains the small `[-1e-3, 1e-3]` initialization used by the linear readout. The actor-side value head remains linear because it is a training head, not part of the deployed observation-to-action interface.
+
+For the 1,952-cell graph, the MLP shapes are:
+
+| Projection | MLP shapes |
+| --- | --- |
+| robot sensory features to sensory cells | `128 -> 256 -> 384` |
+| goal plus SAPG conditioning to descending cells | `44 -> 256 -> 157` |
+| motor-cell state to robot action mean | `135 -> 256 -> 29` |
+
+This changes the adapters-only actor from 62,323 to 227,116 trainable scalars, and the neuron-gains actor from 66,227 to 231,020. The increase is 164,793 trainable scalars in either case. It makes the cross-species interface substantially more expressive, so attribution to the fixed fly-derived recurrent computation becomes weaker unless linear and MLP interfaces are evaluated as matched controls.
 
 ## Dynamics
 
@@ -161,6 +180,9 @@ followed by the configured moving average. The final 22 commands are mapped line
 ## Profiles
 
 - `SimToolRealConnectomeSAPG`: biological topology with learned adapters and heads, frozen core.
+- `SimToolRealConnectomeMLPSAPG`: the same 4,310-cell frozen-core profile with 256-unit MLP input/output projections.
+- `SimToolRealConnectome1952AdaptersMLPSAPG`: compact 1,952-cell frozen-core profile with 256-unit MLP projections.
+- `SimToolRealConnectome1952GainsMLPSAPG`: compact 1,952-cell neuron-gains profile with 256-unit MLP projections.
 - `SimToolRealConnectomeGainsDynamicsSAPG`: previous primary behavior with learned gains, leak, and bias.
 - `SimToolRealConnectomeGainsSAPG`, `SimToolRealConnectomeLowRankSAPG`, `SimToolRealConnectomeEdgewiseSAPG`: alternative weight adaptations with frozen dynamics.
 - `SimToolRealConnectomeFrozenSAPG`: biological topology with gains, leak, and recurrent bias frozen; adapters and heads remain learned.
