@@ -62,6 +62,36 @@ def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
                     assert adaptation.learn_dynamics is True
 
 
+def test_compact_profiles_compose_with_explicit_adaptation_modes() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    import isaacgymenvs  # noqa: F401 - registers OmegaConf resolvers
+
+    profiles = {
+        "SimToolRealConnectome1952AdaptersSAPG": "adapters_only",
+        "SimToolRealConnectome1952GainsSAPG": "neuron_gains",
+    }
+    with initialize_config_dir(
+        version_base="1.1", config_dir=str(repository_root / "isaacgymenvs/cfg")
+    ):
+        for profile, weight_mode in profiles.items():
+            config = compose(
+                config_name="config",
+                overrides=["task=SimToolRealLSTMAsymmetric", f"train={profile}"],
+            )
+            connectome = config.train.params.network.connectome
+            assert connectome.operator_backend == "triton_fused"
+            assert connectome.artifact_path.endswith("malecns_1952/biological.npz")
+            assert dict(connectome.expected) == {
+                "neurons": 1952,
+                "edges": 33720,
+                "sensory_neurons": 384,
+                "descending_neurons": 157,
+                "motor_neurons": 135,
+            }
+            assert connectome.adaptation.weight_mode == weight_mode
+            assert connectome.adaptation.learn_dynamics is False
+
+
 def test_suite_contracts_own_required_execution_settings() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     suite_directory = repository_root / "configs/connectome/suites"
@@ -404,3 +434,48 @@ def test_hundred_billion_milestone_evaluation_is_mean_action_high_resolution() -
         == 2
     )
     assert len(config["evaluation"]["eval_cases"]) == 3
+
+
+def test_compact_adapters_replacement_owns_matched_training_and_evaluation() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/suites/adaptation_1952_adapters_100b.yaml"
+        ).read_text()
+    )
+    training = suite["training"]
+    assert training["train_profiles"] == [
+        {
+            "name": "adapters_only_old_timing",
+            "train_profile": "SimToolRealConnectome1952AdaptersSAPG",
+        }
+    ]
+    assert training["gpu_assignments"] == [1]
+    assert training["max_parallel"] == 1
+    assert training["num_envs"] == 12_288
+    assert training["sapg_block_size"] == 2_048
+    assert training["rollout_accumulation_steps"] == 1
+    assert training["minibatch_size"] == 49_152
+    assert training["central_critic_minibatch_size"] == 49_152
+    assert training["actor_microbatch_size"] == 49_152
+    assert training["central_critic_microbatch_size"] == 49_152
+    assert training["max_frames"] == 100_000_000_000
+    assert 12_288 * 16 * training["epochs"] == 99_999_940_608
+
+    evaluation = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/evaluation/adaptation_1952_adapters_milestones.yaml"
+        ).read_text()
+    )
+    assert evaluation["training_suite_name"] == suite["name"]
+    assert evaluation["training_suite_directory"] == suite["output_directory"]
+    assert evaluation["milestone_interval_frames"] == 250_000_000
+    assert evaluation["policies"][0]["gpu"] == 1
+    assert evaluation["evaluation"]["action_selection"] == "mean"
+    assert (
+        evaluation["evaluation"]["videos"]["camera_resolution_reduction_factor"]
+        == 2
+    )
+    assert len(evaluation["evaluation"]["eval_cases"]) == 3
