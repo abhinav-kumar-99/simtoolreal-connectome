@@ -8,6 +8,8 @@ Related: [Billion-step adaptation run](adaptation-1b-run.md), [Experiment workfl
 
 ## Training contract
 
+Operational update: the user stopped `gains_new_update_timing` and made old timing the default. Its artifacts are preserved. The original old-timing job continues on GPU 1; an [approved 1,952-cell old-timing job](compact-1952-training.md) now uses GPU 0 and the same TensorBoard 6008 root. The table and two-policy YAML below describe the historical comparison. The active original-run watcher now uses `adaptation_100b_old_only_milestones.yaml`, so it does not wait for canceled new-timing milestones.
+
 The YAML entry point is `configs/connectome/suites/adaptation_100b_gains_update_timing.yaml`. The two fully composed Hydra configurations differ only in rollout accumulation, logical/physical minibatch sizes, and the epoch count needed to match total environment exposure:
 
 | Case | GPU | Fresh frames per update phase | Logical minibatch | Physical microbatch | Phases | Scheduled actor and critic calls |

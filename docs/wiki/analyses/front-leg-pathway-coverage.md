@@ -95,7 +95,7 @@ The [Pugliese preprint](https://pmc.ncbi.nlm.nih.gov/articles/PMC13142387/) desc
 
 ## Evidence-led additions, not a 2,000-cell quota
 
-The user explicitly rejected filling a neuron budget. The approximately 2,000 target above is **superseded as a selection objective**: neuron count must follow justified pathway inclusion. No compact training has been launched and no compact actor artifact has been deployed.
+The user explicitly rejected filling a neuron budget. The approximately 2,000 target above is **superseded as a selection objective**: neuron count must follow justified pathway inclusion. The following screen was initially analysis-only; the user subsequently approved the exact 1,952-cell union for [training](compact-1952-training.md), with no further additions or pruning.
 
 A preliminary structural screen starts with the 1,285 seeds and the 4,778-cell public-reference universe, retaining directed pairs with >=5 contacts. With IDs sorted, build a source-row/destination-column CSR graph; run SciPy `csgraph.dijkstra` with `unweighted=True`, `min_only=True`, and `return_predecessors=True`, first from all proprioceptor/tactile/selected-descending inputs, then from front motors on the transposed graph. Trace the predecessor chain of every reachable seed in both traversals. Union those paths with all seeds. This yields 1,596 cells, 18,663 induced edges and 44 isolated cells. It is one shortest-path footprint, not a minimum or sufficient circuit; equal-hop alternatives and inhibitory feedback need separate consideration.
 
@@ -108,7 +108,7 @@ Screening cells **outside that 1,596 set** gives the following independently cou
 | Union of those two sensory-to-motor motifs | 356 | 338 |
 | Selected descending neuron -> cell -> front motor | 672 | 600 |
 
-The proprioceptive and tactile sets overlap by 39 cells. The other 18 cells in their union are 15 ascending, two descending and one sensory neuron; do not describe all 356 as local interneurons. The 276 proprioceptive candidates make 1,682 directed connections totaling 49,702 contacts onto 112 front motors: 19.32% of all >=5-contact input onto the 135 front motors **from within the 4,778 reference**, not of whole-CNS motor input. This is synapse mass, not percent behavioral contribution. Adding the full sensory-motif union would produce 1,952 cells and 33,720 edges, still with 44 isolated cells; this is an illustrative set calculation, not a chosen profile. The larger descending set is a review pool, not an automatic inclusion list.
+The proprioceptive and tactile sets overlap by 39 cells. The other 18 cells in their union are 15 ascending, two descending and one sensory neuron; do not describe all 356 as local interneurons. The 276 proprioceptive candidates make 1,682 directed connections totaling 49,702 contacts onto 112 front motors: 19.32% of all >=5-contact input onto the 135 front motors **from within the 4,778 reference**, not of whole-CNS motor input. This is synapse mass, not percent behavioral contribution. Adding the full sensory-motif union produces 1,952 cells and 33,720 edges, still with 44 isolated cells; initially an illustrative calculation, this exact union was subsequently approved for training. The larger descending set remains a review pool, not an automatic inclusion list.
 
 Concrete omitted examples, already present in the original 4,310-cell inventory:
 
