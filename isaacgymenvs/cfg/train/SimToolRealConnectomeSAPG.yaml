@@ -40,6 +40,9 @@ params:
 
   config:
     name: ${resolve_default:SimToolRealConnectomeSAPG,${....experiment}}
+    kl_threshold: 0.004
+    min_lr: 1.0e-6
+    max_lr: 1.0e-3
     # Old timing is the connectome default. Suites may explicitly override it.
     rollout_accumulation_steps: 1
     minibatch_size: 49152

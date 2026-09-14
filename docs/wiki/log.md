@@ -273,3 +273,9 @@ Updated the eligibility runbook and index using actor/critic source and primary 
 ## [2026-09-14] query | Consider alternative input-adapter objectives and optimizers
 
 Updated the eligibility runbook and index with proposed sensory-code supervision, teacher-policy imitation, short-window recurrent gradients, and parameter-space search. Linked primary policy-distillation and evolution-strategy sources, distinguishing published methods from untested connectome-specific adaptations. Explicitly retained teacher cost, simulation cost, propagation horizon, and robot-to-fly correspondence limitations. No runtime or training configuration changes.
+
+## [2026-09-14] implementation | Stabilize PPO KL and configure conservative LR feedback
+
+Replaced overflow-prone Gaussian KL with scale-ratio/normalized-mean float64 arithmetic and cancellation-resistant `expm1`; invalid distributions report infinite KL. Negative/non-finite scheduler input now reduces LR. Exposed adaptive LR bounds through YAML and set connectome threshold 0.004, ceiling 1e-3, floor 1e-6, preserving initial 1e-4. Added exact per-mini-epoch scheduler telemetry and paired fresh-start training/evaluation YAMLs for compact adapters-only and gains with unchanged old update timing, 100B cap and 250M-frame mean-action video cadence.
+
+117 focused tests passed. Both full-size updated smoke jobs completed 393,216 frames with 16 applied actor Adam steps, all finite model tensors and finite deployment actions, without microbatch fallback. New scheduler scalars matched each expected decision. Child training took 27.60 seconds for gains and 25.81 seconds for adapters while sharing GPUs with untouched eligibility jobs. Historical failed checkpoints/logs and both smoke directories remain preserved. These checks establish execution and arithmetic correctness, not long-run stability.

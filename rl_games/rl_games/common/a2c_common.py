@@ -185,7 +185,11 @@ class A2CBase(BaseAlgorithm):
         # Setting learning rate scheduler
         if self.is_adaptive_lr:
             self.kl_threshold = config['kl_threshold']
-            self.scheduler = schedulers.AdaptiveScheduler(self.kl_threshold)
+            self.scheduler = schedulers.AdaptiveScheduler(
+                self.kl_threshold,
+                min_lr=float(config.get('min_lr', 1e-6)),
+                max_lr=float(config.get('max_lr', 1e-2)),
+            )
 
         elif self.linear_lr:
             
@@ -1567,8 +1571,18 @@ class ContinuousA2CBase(A2CBase):
                 dist.all_reduce(av_kls, op=dist.ReduceOp.SUM)
                 av_kls /= self.world_size
             if self.schedule_type == 'standard':
-                self.last_lr, self.entropy_coef = self.scheduler.update(self.last_lr, self.entropy_coef, self.epoch_num, 0, av_kls.item())
+                kl_value = av_kls.item()
+                lr_before = self.last_lr
+                self.last_lr, self.entropy_coef = self.scheduler.update(self.last_lr, self.entropy_coef, self.epoch_num, 0, kl_value)
                 self.update_lr(self.last_lr)
+                if self.global_rank == 0:
+                    log_frame = self.frame // self.num_agents
+                    prefix = f'info/scheduler/mini_epoch_{mini_ep}'
+                    self.writer.add_scalar(prefix + '/kl', kl_value, log_frame)
+                    self.writer.add_scalar(prefix + '/lr_before', lr_before, log_frame)
+                    self.writer.add_scalar(prefix + '/lr_after', self.last_lr, log_frame)
+                    invalid_kl = not math.isfinite(kl_value) or kl_value < 0
+                    self.writer.add_scalar(prefix + '/invalid_kl', float(invalid_kl), log_frame)
 
             kls.append(av_kls)
             self.diagnostics.mini_epoch(self, mini_ep)

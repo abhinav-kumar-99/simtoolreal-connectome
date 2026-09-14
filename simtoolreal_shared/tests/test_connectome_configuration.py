@@ -39,6 +39,9 @@ def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
                 == "actor_critic"
             )
             if expected_network == "connectome_actor_critic":
+                assert config.train.params.config.kl_threshold == 0.004
+                assert config.train.params.config.max_lr == 1e-3
+                assert config.train.params.config.min_lr == 1e-6
                 assert (
                     config.train.params.network.connectome.observations.policy_size
                     == 140
@@ -79,6 +82,8 @@ def test_compact_profiles_compose_with_explicit_adaptation_modes() -> None:
                 overrides=["task=SimToolRealLSTMAsymmetric", f"train={profile}"],
             )
             connectome = config.train.params.network.connectome
+            assert config.train.params.config.kl_threshold == 0.004
+            assert config.train.params.config.max_lr == 1e-3
             assert connectome.operator_backend == "triton_fused"
             assert connectome.artifact_path.endswith("malecns_1952/biological.npz")
             assert dict(connectome.expected) == {

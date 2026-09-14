@@ -1,6 +1,6 @@
 # Approved 1,952-neuron training runs
 
-The exact path-plus-sensory-premotor candidate was launched as matched neuron-gains and adapters-only policies with old optimizer timing; gains failed numerically and adapters-only was stopped after its actor updates became invalid.
+The exact path-plus-sensory-premotor candidate uses matched neuron-gains and adapters-only policies with old optimizer timing; failed histories are preserved and a fresh stable-KL restart contract is available.
 
 Last updated: 2026-09-14
 
@@ -65,6 +65,25 @@ The old-timing compact contracts schedule eight actor optimizer calls per 196,60
 Mixed-precision `GradScaler` prevented many corrupt gradients from being applied, but it is not a recovery mechanism: after the forward loss became non-finite it skipped optimizer steps while leaving the already extreme distribution parameter in place. This explains why the adapters process kept accumulating frames while its actor step counter stopped. Mean-action evaluation videos do not sample this distribution, so they can remain finite even when stochastic training is broken.
 
 ## Commands and configuration ownership
+
+### Stable-KL fresh restart (2026-09-14)
+
+The user requested a numerically stable KL, LR reduction for negative/non-finite KL, threshold `0.004`, and subsequently a maximum actor LR of `1e-3`. `torch_ext.policy_kl` now computes Gaussian KL from normalized mean differences and scale ratios using float64 intermediates and `expm1`, without squaring absolute float32 standard deviations or adding biased denominator epsilons. Invalid means/scales produce infinite KL. `AdaptiveScheduler` reduces LR by 1.5 for negative/non-finite KL, bounded below by `1e-6`; every return respects configurable bounds. With threshold `0.004`, finite KL below `0.002` increases LR by 1.5 and above `0.008` decreases it. This is feedback, not a hard KL cap.
+
+`SimToolRealConnectomeSAPG.yaml` owns `params.config.kl_threshold: 0.004`, `min_lr: 1e-6`, and `max_lr: 1e-3`; the paired suite explicitly repeats the threshold and ceiling. Initial actor LR remains `1e-4`; critic LR and entropy/exploration settings are unchanged. The generic scheduler retains legacy default bounds for unrelated callers. No log-standard-deviation bound or entropy intervention was added, so this does not guarantee against cumulative variance growth.
+
+New `info/scheduler/mini_epoch_{0,1}/{kl,lr_before,lr_after,invalid_kl}` scalars expose every standard-schedule decision at the same frame coordinate as existing aggregate PPO logs. Existing reward/KL/LR axes are unchanged. The suite starts both 1,952-cell policies from seed 42, without loading already-diverged checkpoints. It retains old timing: 12,288 environments, horizon 16, one rollout per phase, 49,152 logical/physical actor and critic minibatches, and two mini-epochs (eight actor optimizer calls per 196,608 frames). The cap remains 100B frames, with three 800x450, 20-FPS mean-action evaluation videos every 250M frames. Gains uses GPU 0 and adapters-only GPU 1. Separate eligibility jobs remain untouched and share the GPUs; their contention changes throughput, not the configured PPO update density.
+
+Validation: 117 focused tests passed, including CPU/CUDA extreme-scale KL reference checks, invalid-KL reductions, custom LR bounds, profile composition and connectome backends. The updated full-batch paired smoke completed 393,216 frames/two phases per policy without OOM, with finite reloaded deployment actions; child training elapsed 27.60 seconds (gains) and 25.81 seconds (adapters). Evidence is under `train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_kl004_lr001_smoke/`. The earlier smoke without the requested ceiling is preserved separately. Short execution validation is not evidence of long-run learning stability.
+
+Run from the repository root (do not relaunch into populated output directories):
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_kl004_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_kl004_milestones.yaml
+```
+
+The training entrypoint prepares the pinned graph, launches one process per assigned GPU, and records resolved config, progress and elapsed time. The milestone entrypoint watches inference checkpoints and dispatches the three configured eval cases using mean actions. Suite YAML owns batch/update geometry, GPU mapping, caps and LR overrides; evaluation YAML owns snapshot paths, mean-action selection, video settings and cadence. For a new smoke, use `configs/connectome/suites/ppo_1952_kl004_smoke.yaml` after choosing a fresh `name` and `output_directory`. The modified `torch_ext.py`, `schedulers.py` and `a2c_common.py` are imported trainer helpers, not separate launch scripts. TensorBoard 6008 watches the shared parent and will discover `ppo_1952_kl004_100b` automatically.
 
 ### Interpretation of KL and the baseline comparison
 

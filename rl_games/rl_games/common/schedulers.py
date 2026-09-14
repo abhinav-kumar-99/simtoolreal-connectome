@@ -1,3 +1,4 @@
+import math
 
 
 class RLScheduler:
@@ -17,19 +18,23 @@ class IdentityScheduler(RLScheduler):
 
 
 class AdaptiveScheduler(RLScheduler):
-    def __init__(self, kl_threshold = 0.008):
+    def __init__(self, kl_threshold=0.008, min_lr=1e-6, max_lr=1e-2):
         super().__init__()
-        self.min_lr = 1e-6
-        self.max_lr = 1e-2
+        if not (math.isfinite(min_lr) and math.isfinite(max_lr) and 0 < min_lr <= max_lr):
+            raise ValueError('Adaptive LR bounds must be finite and 0 < min_lr <= max_lr')
+        self.min_lr = min_lr
+        self.max_lr = max_lr
         self.kl_threshold = kl_threshold
 
     def update(self, current_lr, entropy_coef, epoch, frames, kl_dist, **kwargs):
         lr = current_lr
+        if not math.isfinite(kl_dist) or kl_dist < 0:
+            return min(max(current_lr / 1.5, self.min_lr), self.max_lr), entropy_coef
         if kl_dist > (2.0 * self.kl_threshold):
             lr = max(current_lr / 1.5, self.min_lr)
         if kl_dist < (0.5 * self.kl_threshold):
             lr = min(current_lr * 1.5, self.max_lr)
-        return lr, entropy_coef         
+        return min(max(lr, self.min_lr), self.max_lr), entropy_coef
 
 
 class LinearScheduler(RLScheduler):
@@ -55,4 +60,4 @@ class LinearScheduler(RLScheduler):
         if self.apply_to_entropy:
             entropy_coef = self.min_entropy_coef + (self.start_entropy_coef - self.min_entropy_coef) * mul
 
-        return lr, entropy_coef     
+        return lr, entropy_coef
