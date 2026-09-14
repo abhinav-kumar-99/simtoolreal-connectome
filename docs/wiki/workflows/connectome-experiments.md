@@ -41,6 +41,23 @@ Run the matched adapters-only MLP policy with the original actor KL target 0.016
 
 This contract differs from the KL-0.004 MLP run only in output identity, GPU assignment and actor scheduler threshold. Both use the same MLP profile, seed, optimizer geometry, perturbations, exploration and video cases. `0.016` is validated against the composed original LSTM PPO profile rather than inferred from the later connectome defaults.
 
+The clipped-Gaussian KL-0.016 job above was stopped after its executed-action entropy became badly misaligned with its raw-Gaussian entropy. Its fresh tanh-squashed replacement is selected entirely through YAML:
+
+```bash
+# Full-geometry, two-epoch execution and checkpoint-reload gate.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_mlp_adapters_tanh_kl016_smoke.yaml
+
+# Fresh 100B-cap training job on physical GPU 0.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_mlp_adapters_tanh_kl016_100b.yaml
+
+# Three deterministic mean-action videos at every 250M-frame milestone.
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_mlp_adapters_tanh_kl016_milestones.yaml
+```
+
+`SimToolRealConnectome1952AdaptersMLPTanhSAPG.yaml` inherits the same compact adapters-only MLP actor and changes `params.model.name` to `continuous_a2c_tanh_logstd`. `entropy_samples: 1` selects one reparameterized Monte Carlo sample per state for transformed-entropy optimization; the large training batch supplies the averaging. There is deliberately no `log_std_bounds` setting or latent clamp. The suite YAML retains seed 42, 12,288 environments, horizon 16, 49,152 actor/critic minibatches, two mini-epochs, KL target 0.016, LR ceiling 0.01, SAPG coefficients, perturbations and 250M checkpoint cadence. Change experiment identity, budgets or geometry in the YAML rather than appending Hydra overrides to the command.
+
+The suite entrypoint prepares and verifies the graph, isolates the requested GPU, builds the Hydra child command, records resolved configuration/timing and reload-verifies the terminal checkpoint. The milestone-evaluation helper independently polls the run directory and dispatches the three YAML-owned mean-action cases, so video rendering does not block training. The imported model helper applies `tanh`, evaluates the log-Jacobian-corrected likelihood and transformed entropy, and returns latent actions/means for rollout-buffer PPO and KL bookkeeping; it is not a separate script.
+
 Old timing is now the connectome profile default: one rollout and 49,152-sample actor/critic minibatches, with physical batches following the logical size. Historical suites can explicitly override this. The approved compact gains run pins 12,288 environments and the complete old geometry; see [1,952-cell preparation, smoke, launch and monitoring commands](../analyses/compact-1952-training.md). Its exact body-ID set is validated, not padded to a size target.
 
 Run the matched custom-kernel benchmark from the repository root:
