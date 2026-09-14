@@ -19,7 +19,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 - [Connectome actor](concepts/connectome-actor.md) — Plain-language circuit inventory, actor dynamics, linear/MLP interfaces, and frozen-circuit attribution limits. Last updated 2026-09-14.
 - [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, adapters-only default, and GPU implementation. Last updated 2026-09-14.
-- [Training and evaluation success metrics](concepts/success-metrics.md) — TensorBoard tag populations, tolerance scaling, exploration blocks, and deterministic Task Progress. Last updated 2026-09-13.
+- [Training and evaluation success metrics](concepts/success-metrics.md) — TensorBoard tag populations, tolerance scaling, exploration blocks, and deterministic Task Progress. Last updated 2026-09-14.
 
 ## Workflows
 
