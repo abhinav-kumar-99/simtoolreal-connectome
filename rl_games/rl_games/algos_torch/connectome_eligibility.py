@@ -17,8 +17,8 @@ class LocalEligibility:
     @torch.no_grad()
     def __init__(self, network, num_envs, config):
         self.net, self.config = network, dict(config)
-        if network.weight_mode != "neuron_gains" or network.learn_dynamics:
-            raise ValueError("Eligibility requires neuron_gains and frozen dynamics")
+        if network.weight_mode not in {"adapters_only", "neuron_gains"} or network.learn_dynamics:
+            raise ValueError("Eligibility requires adapters_only/neuron_gains and frozen dynamics")
         if network.sensory_adapter.bias is not None or network.descending_adapter.bias is not None:
             raise ValueError("Eligibility currently requires bias-free input adapters")
         if not isinstance(network.mu_act, torch.nn.Identity):
@@ -32,11 +32,11 @@ class LocalEligibility:
         self.params = {
             "sensory": network.sensory_adapter.weight,
             "descending": network.descending_adapter.weight,
-            "incoming": network.incoming_gain_raw,
-            "outgoing": network.outgoing_gain_raw,
             "readout": network.mu.weight,
             "readout_bias": network.mu.bias,
         }
+        if network.weight_mode == "neuron_gains":
+            self.params.update(incoming=network.incoming_gain_raw, outgoing=network.outgoing_gain_raw)
         for parameter in network.parameters():
             parameter.requires_grad_(False)
         device = network.recurrent_values.device
@@ -48,9 +48,10 @@ class LocalEligibility:
         self.diag.index_add_(0, self.dst[diagonal], network.recurrent_values[diagonal])
         self.local = {name: parameter.new_zeros((num_envs,) + tuple(parameter.shape))
                       for name, parameter in self.params.items() if name in ("sensory", "descending", "incoming")}
-        # Outgoing gains are shared across edges: keep an edge sensitivity,
-        # then reduce to the source gain parameter only after spatial feedback.
-        self.local["outgoing_edges"] = network.recurrent_values.new_zeros(num_envs, network.edge_count)
+        if network.weight_mode == "neuron_gains":
+            # Outgoing gains are shared across edges: keep an edge sensitivity,
+            # then reduce to the source gain parameter only after spatial feedback.
+            self.local["outgoing_edges"] = network.recurrent_values.new_zeros(num_envs, network.edge_count)
         self.credit = {name: parameter.new_zeros((num_envs,) + tuple(parameter.shape))
                        for name, parameter in self.params.items()}
         generator = torch.Generator(device=device).manual_seed(int(config["feedback_seed"]))
@@ -83,21 +84,22 @@ class LocalEligibility:
             trace.mul_(local_jacobian[:, indices, None]).add_(derivative[:, indices, None] * inputs[:, None, :])
             trace.clamp_(-self.config["trace_clip"], self.config["trace_clip"])
             signals[name] = learning_signal[:, indices, None] * trace
-        recurrent = torch.sparse.mm(n._native_csr_matrix(), (previous * go).T).T
-        sigmoid_in = n.incoming_gain_raw.sigmoid()
-        sigmoid_out = n.outgoing_gain_raw.sigmoid()
-        dgi = gi * n.log_gain_span * sigmoid_in * (1 - sigmoid_in)
-        dgo = go * n.log_gain_span * sigmoid_out * (1 - sigmoid_out)
-        self.local["incoming"].mul_(local_jacobian).add_(derivative * n.recurrent_gain * recurrent * dgi)
-        edge_trace = self.local["outgoing_edges"]
-        edge_trace.mul_(local_jacobian[:, self.dst]).add_(
-            derivative[:, self.dst] * n.recurrent_gain * gi[self.dst] * n.recurrent_values
-            * previous[:, self.src] * dgo[self.src])
-        for name in ("incoming", "outgoing_edges"):
-            self.local[name].clamp_(-self.config["trace_clip"], self.config["trace_clip"])
-        signals["incoming"] = learning_signal * self.local["incoming"]
-        signals["outgoing"] = torch.zeros_like(self.credit["outgoing"])
-        signals["outgoing"].index_add_(1, self.src, learning_signal[:, self.dst] * edge_trace)
+        if n.weight_mode == "neuron_gains":
+            recurrent = torch.sparse.mm(n._native_csr_matrix(), (previous * go).T).T
+            sigmoid_in = n.incoming_gain_raw.sigmoid()
+            sigmoid_out = n.outgoing_gain_raw.sigmoid()
+            dgi = gi * n.log_gain_span * sigmoid_in * (1 - sigmoid_in)
+            dgo = go * n.log_gain_span * sigmoid_out * (1 - sigmoid_out)
+            self.local["incoming"].mul_(local_jacobian).add_(derivative * n.recurrent_gain * recurrent * dgi)
+            edge_trace = self.local["outgoing_edges"]
+            edge_trace.mul_(local_jacobian[:, self.dst]).add_(
+                derivative[:, self.dst] * n.recurrent_gain * gi[self.dst] * n.recurrent_values
+                * previous[:, self.src] * dgo[self.src])
+            for name in ("incoming", "outgoing_edges"):
+                self.local[name].clamp_(-self.config["trace_clip"], self.config["trace_clip"])
+            signals["incoming"] = learning_signal * self.local["incoming"]
+            signals["outgoing"] = torch.zeros_like(self.credit["outgoing"])
+            signals["outgoing"].index_add_(1, self.src, learning_signal[:, self.dst] * edge_trace)
         signals["readout"] = score[:, :, None] * hidden[:, None, n.motor_indices]
         signals["readout_bias"] = score
         for name, trace in self.credit.items():
@@ -131,12 +133,13 @@ class LocalEligibility:
     def state_dict(self):
         # Physics cannot be restored exactly. Restart with fresh episodes and
         # zero hidden/traces; deliberately do not carry stale episode credit.
-        return {"version": 1, "config": self.config, "feedback": self.feedback,
+        return {"version": 1, "config": self.config, "weight_mode": self.net.weight_mode, "feedback": self.feedback,
                 "updates": self.updates, "restart_semantics": "fresh_episodes_zero_traces"}
 
     @torch.no_grad()
     def load_state_dict(self, state):
-        if state["version"] != 1 or state["config"] != self.config:
+        if (state["version"] != 1 or state["config"] != self.config
+                or state.get("weight_mode", self.net.weight_mode) != self.net.weight_mode):
             raise ValueError("Eligibility checkpoint algorithm/config mismatch")
         self.feedback.copy_(state["feedback"])
         self.updates = int(state["updates"])

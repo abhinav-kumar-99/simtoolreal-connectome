@@ -63,6 +63,21 @@ def test_reward_trace_products_reset_and_frozen_graph(artifact_path):
     assert all(t.grad_fn is None for t in engine.local.values())
 
 
+def test_adapters_only_omits_gain_credit_and_keeps_gains_fixed(artifact_path):
+    net = _build(artifact_path, adaptation={"weight_mode": "adapters_only", "learn_dynamics": False})
+    engine = LocalEligibility(net, 2, settings())
+    assert set(engine.params) == {"sensory", "descending", "readout", "readout_bias"}
+    assert "incoming" not in engine.local and "outgoing_edges" not in engine.local
+    gains = (net.incoming_gain_raw.clone(), net.outgoing_gain_raw.clone())
+    before = {name: parameter.clone() for name, parameter in engine.params.items()}
+    for trace in engine.credit.values():
+        trace.fill_(1)
+    engine.update(torch.ones(2))
+    assert all(not torch.equal(parameter, before[name]) for name, parameter in engine.params.items())
+    torch.testing.assert_close(net.incoming_gain_raw, gains[0])
+    torch.testing.assert_close(net.outgoing_gain_raw, gains[1])
+
+
 def test_decay_and_resume_contract(artifact_path):
     net = local_network(artifact_path)
     engine = LocalEligibility(net, 2, settings())
@@ -214,7 +229,8 @@ def test_suite_profile_and_checkpoint_validation(tmp_path):
     from pathlib import Path
     from scripts.run_connectome_suite import _compose_resolved, _training_overrides, _verify_checkpoint
     root = Path(__file__).resolve().parents[2]
-    for name in ("eligibility_smoke", "eligibility_resume_smoke", "eligibility_1952", "eligibility_1952_100b"):
+    for name in ("eligibility_smoke", "eligibility_resume_smoke", "eligibility_1952",
+                 "eligibility_1952_100b", "eligibility_1952_adapters_100b"):
         suite = yaml.safe_load((root / f"configs/connectome/suites/{name}.yaml").read_text())
         training = suite["training"]
         overrides = _training_overrides(training, training["train_profiles"][0]["train_profile"], 42, "test", tmp_path)
@@ -224,12 +240,14 @@ def test_suite_profile_and_checkpoint_validation(tmp_path):
         assert resolved.train.params.config.central_value_config is None
         assert not resolved.train.params.config.ppo
         assert resolved.train.params.config.seq_length == 1
-        if name == "eligibility_1952_100b":
+        if name in {"eligibility_1952_100b", "eligibility_1952_adapters_100b"}:
             assert resolved.train.params.config.num_actors == 384
             assert resolved.train.params.config.horizon_length == 4096
             assert resolved.train.params.config.max_epochs == 63579
             assert resolved.train.params.config.max_frames == 100001120256
             assert resolved.train.params.config.inference_checkpoint_interval_frames == 250000000
+        if name == "eligibility_1952_adapters_100b":
+            assert resolved.train.params.network.connectome.adaptation.weight_mode == "adapters_only"
     from omegaconf import OmegaConf
     config = tmp_path / "config.yaml"
     OmegaConf.save(resolved, config)

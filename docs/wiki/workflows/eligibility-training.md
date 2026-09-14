@@ -58,6 +58,16 @@ The long adapter+gains eligibility contract uses physical CUDA 0, 384 environmen
   --config configs/connectome/evaluation/eligibility_1952_100b_milestones.yaml
 ```
 
+The matched adapters-only eligibility contract uses CUDA 1. Here “adapters only” includes the sensory/descending projections and motor action readout; both gain vectors stay fixed at one. Task, seed, critic, exploration, environment count, update cadence, budget, TensorBoard root and video cases match the CUDA-0 run:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/eligibility_1952_adapters_100b.yaml
+
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/eligibility_1952_adapters_100b_milestones.yaml
+```
+
 These suites use `on_existing: fail` to protect outputs. The smoke and continuation directories already exist after validation: use a new output directory to rerun, updating evaluation/checkpoint paths accordingly. `on_existing: skip` only reverifies a matching completed run; it does not continue training. Use `checkpoint.mode: resume` in a new run directory with larger absolute `epochs`/`max_frames` for continuation. The pilot's task disturbances follow the compact PPO run; the smaller integration smoke uses inherited task defaults and is not a matched performance comparison.
 
 ## Important YAML settings
@@ -92,7 +102,7 @@ The video YAML owns checkpoint discovery, output root, GPU, task cases, mean act
 
 - `scripts/run_connectome_suite.py`: YAML orchestration, preparation, subprocess/GPU assignment, algorithm-aware overrides and completion verification. This is the training entrypoint to execute.
 - `scripts/prepare_malecns_connectome.py` with `configs/connectome/malecns_1952.yaml`: verifies/prepares the existing compact artifact; the suite invokes it automatically.
-- `rl_games/rl_games/algos_torch/connectome_eligibility.py`: imported local sensitivities, action-credit traces and manual actor updates; no standalone command.
+- `rl_games/rl_games/algos_torch/connectome_eligibility.py`: imported local sensitivities, action-credit traces and manual actor updates; skips gain/edge traces entirely in adapters-only mode; no standalone command.
 - `rl_games/rl_games/algos_torch/connectome_eligibility_agent.py`: imported environment/critic/observer/checkpoint loop; constructed by the registered runner through `isaacgymenvs.train`.
 - `scripts/run_connectome_milestone_evaluation.py`: executable YAML-owned snapshot discovery/video orchestration, using the unchanged evaluator/player.
 
