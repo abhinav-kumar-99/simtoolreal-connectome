@@ -371,3 +371,7 @@ Compared major fly sensorimotor systems using primary literature and inventoried
 ## [2026-09-14] query | Compare weak-edge restoration and current training costs
 
 Verified the active frozen-core 1,952-neuron MLP PPO jobs and recomputed fixed-262 edge/contact counts at thresholds one and five. Recorded the cutoff's reference-study/noise-filter provenance, 86.6% reduction in neuron-sized buffers, exact rollout/core-save component shapes, narrower interface parameter counts and backend row-chunk counts. Distinguished 2.97x more edges from nearly unchanged state memory and unmeasured end-to-end timing; current NVIDIA allocations are only a live snapshot. No training process, runtime profile or graph artifact changed.
+
+## [2026-09-14] query | Clarify threshold motivation and uncertain wiring
+
+Updated the minimal-circuit analysis and index after checking CPG, BANC influence and descending-network methods. Distinguished weak-edge pruning from calibrated reconstruction-error rejection, and fixed wiring uncertainty from stochastic forward-pass noise. Given the user's preference to avoid uncertain connections, recommended the 262/3,194 candidate as the initial experiment rather than indiscriminate weak-edge restoration; exceptions require additional evidence. No graph, configuration or process changed.
