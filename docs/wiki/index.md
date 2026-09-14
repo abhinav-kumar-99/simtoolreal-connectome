@@ -17,7 +17,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Concepts
 
-- [Connectome actor](concepts/connectome-actor.md) — Plain-language 1,952-cell circuit inventory, actor dynamics, and selectable linear/MLP robot interfaces. Last updated 2026-09-14.
+- [Connectome actor](concepts/connectome-actor.md) — Plain-language circuit inventory, actor dynamics, linear/MLP interfaces, and frozen-circuit attribution limits. Last updated 2026-09-14.
 - [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, adapters-only default, and GPU implementation. Last updated 2026-09-14.
 - [Training and evaluation success metrics](concepts/success-metrics.md) — TensorBoard tag populations, tolerance scaling, exploration blocks, and deterministic Task Progress. Last updated 2026-09-13.
 
@@ -29,7 +29,7 @@ Related: [Overview](overview.md), [Log](log.md)
 ## Analyses
 
 - [Dopamine-inspired online learning](analyses/dopamine-inspired-learning.md) — Eligibility rationale, historical design, implementation link and unproven learning/cost hypotheses. Last updated 2026-09-13.
-- [Approved 1,952-neuron training](analyses/compact-1952-training.md) — Exact graph, failure audit, stable-KL gains run, and adapters-only MLP replacement. Last updated 2026-09-14.
+- [Approved 1,952-neuron training](analyses/compact-1952-training.md) — Exact graph, failure audit, and matched adapters-only MLP runs at KL targets 0.004/0.016. Last updated 2026-09-14.
 - [Front-leg pathway coverage](analyses/front-leg-pathway-coverage.md) — Public-reference audit, 4,353/4,589/4,778-cell candidates, and evidence-led compact sensory-motor/feedback additions without a size quota. Last updated 2026-09-13.
 - [Sparse recurrent backends](analyses/sparse-backends.md) — 160 benchmark cases, 32 capacity probes, memory tradeoffs and ten completed Isaac Gym smoke gates. Last updated 2026-09-13.
 - [One-million-step adaptation pilot](analyses/adaptation-1m-pilot.md) — Five timed policies, 40 actor updates each, matched reward/success metrics, and 15 evaluation videos. Last updated 2026-09-13.

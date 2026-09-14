@@ -53,6 +53,14 @@ For the 1,952-cell graph, the MLP shapes are:
 
 This changes the adapters-only actor from 62,323 to 227,116 trainable scalars, and the neuron-gains actor from 66,227 to 231,020. The increase is 164,793 trainable scalars in either case. It makes the cross-species interface substantially more expressive, so attribution to the fixed fly-derived recurrent computation becomes weaker unless linear and MLP interfaces are evaluated as matched controls.
 
+### Attribution with MLP interfaces and no gain adaptation
+
+The compact `SimToolRealConnectome1952AdaptersMLPSAPG` profile inherits `weight_mode: adapters_only` and `learn_dynamics: false`: recurrent weights, gains, leak and bias remain fixed. Its three interface MLPs contain 224,797 learned parameters (131,072 sensory, 51,456 descending, 42,269 action readout); the actor total additionally includes its value head, conditioning embeddings and exploration parameters. This count measures learned capacity, not percentage of causal computation.
+
+Source inspection of `_step` and `forward` in `connectome_network_builder.py` confirms no direct robot-observation shortcut to the action-mean MLP: that MLP receives only the 135 motor-cell activities. The input MLPs can nevertheless compute sophisticated features or control-relevant codes, and the output MLP can decode them nonlinearly. A fixed recurrent network can act as a useful transformation/memory channel without its particular biological wiring being uniquely useful. Furthermore, learned inputs can change which dynamical regimes the fixed circuit visits. Therefore necessary routing through the circuit does not establish that native fly motor computations supply the task strategy.
+
+Defensible without further evaluation: the policy uses a fixed fly-derived recurrent circuit with learned nonlinear input/output interfaces. Not established: a percentage of intelligence supplied by the circuit, native dexterity transfer, or an advantage of biological wiring. Test biological specificity by independently retraining matched MLP interfaces around degree-preserving rewired and random frozen graphs, matching populations, edge/sign/scale statistics, optimization and evaluation. Compare against a directly trained MLP controller with a stated capacity and observation/history budget as well. Perturbing circuit state or wiring only at inference tests dependence of an already trained policy, but its distribution shift does not show that a matched replacement could not learn. These are proposed controls, not completed attribution results.
+
 ## Dynamics
 
 For each environment step the actor applies
