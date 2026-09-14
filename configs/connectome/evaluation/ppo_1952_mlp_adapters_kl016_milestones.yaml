@@ -8,7 +8,7 @@ milestone_interval_frames: 250000000
 poll_interval_seconds: 30
 watch_until_complete: true
 policies:
-  - name: adapters_mlp_kl016
+  - name: adapters_mlp
     seed: 42
     gpu: 0
     policy_config_path: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_mlp_adapters_kl016_lr01_100b/00_ppo_1952_mlp_adapters_kl016_lr01_100b_adapters_mlp_seed42/resolved_config.yaml

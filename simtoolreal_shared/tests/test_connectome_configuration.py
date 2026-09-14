@@ -284,7 +284,7 @@ def test_original_kl_mlp_run_differs_only_in_threshold_and_gpu() -> None:
     assert evaluation["training_suite_name"] == kl016["name"]
     assert evaluation["policies"] == [
         {
-            "name": "adapters_mlp_kl016",
+            "name": "adapters_mlp",
             "seed": 42,
             "gpu": 0,
             "policy_config_path": (
@@ -296,6 +296,10 @@ def test_original_kl_mlp_run_differs_only_in_threshold_and_gpu() -> None:
         }
     ]
     assert evaluation["evaluation"]["action_selection"] == "mean"
+    assert (
+        evaluation["policies"][0]["name"]
+        == kl016["training"]["train_profiles"][0]["name"]
+    )
     assert evaluation["evaluation"]["videos"][
         "camera_resolution_reduction_factor"
     ] == 2

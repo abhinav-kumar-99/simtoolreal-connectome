@@ -325,3 +325,9 @@ Added a YAML-owned GPU-0 100B adapters-only MLP contract with actor KL target 0.
 ## [2026-09-14] query | Audit original-KL video watcher
 
 Confirmed watcher PID 3515963 and trainer PID 3516083 remain alive, but the watcher is not discovering the available 250,085,376-frame checkpoint and has produced zero videos. The evaluation policy name is `adapters_mlp_kl016`, while the suite case/run name is `adapters_mlp`; checkpoint discovery constructs its directory from the former and silently sees no files. The status manifest consequently reports zero completed targets and no failures. Recorded this as an open configuration defect without changing or restarting the watcher.
+
+## [2026-09-14] fix | Repair original-KL video checkpoint discovery
+
+Changed the KL-0.016 evaluation policy name to `adapters_mlp`, matching the suite case/run name used by checkpoint discovery, and extended the configuration test to enforce that equality. Nineteen configuration tests passed. Restarted only the milestone watcher; trainer PID 3516083 was uninterrupted.
+
+The replacement watcher immediately discovered and completed the existing target-250M/actual-frame-250,085,376 checkpoint with no failures. All three mean-action videos decode at 800x450, 20 FPS. Marker, eraser and spatula paper Task Progress was 0.0%, 0.0% and 2.2%, respectively. The watcher remains live for future milestones.
