@@ -24,12 +24,12 @@ Related: [Overview](overview.md), [Log](log.md)
 ## Workflows
 
 - [Experiment workflow](workflows/connectome-experiments.md) — Preparation, profiling, linear/MLP smoke testing, and training. Last updated 2026-09-14.
-- [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, and early gain audit. Last updated 2026-09-14.
+- [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, early gain audit, and stopped-run status. Last updated 2026-09-14.
 
 ## Analyses
 
 - [Dopamine-inspired online learning](analyses/dopamine-inspired-learning.md) — Eligibility rationale, historical design, implementation link and unproven learning/cost hypotheses. Last updated 2026-09-13.
-- [Approved 1,952-neuron training](analyses/compact-1952-training.md) — Exact graph, failure audit, and matched adapters-only MLP runs at KL targets 0.004/0.016. Last updated 2026-09-14.
+- [Approved 1,952-neuron training](analyses/compact-1952-training.md) — Exact graph, action-entropy failure audit, and matched adapters-only MLP runs at KL targets 0.004/0.016. Last updated 2026-09-14.
 - [Front-leg pathway coverage](analyses/front-leg-pathway-coverage.md) — Public-reference audit, 4,353/4,589/4,778-cell candidates, and evidence-led compact sensory-motor/feedback additions without a size quota. Last updated 2026-09-13.
 - [Sparse recurrent backends](analyses/sparse-backends.md) — 160 benchmark cases, 32 capacity probes, memory tradeoffs and ten completed Isaac Gym smoke gates. Last updated 2026-09-13.
 - [One-million-step adaptation pilot](analyses/adaptation-1m-pilot.md) — Five timed policies, 40 actor updates each, matched reward/success metrics, and 15 evaluation videos. Last updated 2026-09-13.
