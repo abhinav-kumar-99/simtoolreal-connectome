@@ -947,7 +947,18 @@ class A2CBase(BaseAlgorithm):
             self.experience_buffer.update_data('dones', n, self.dones.byte())
 
             for k in update_list:
-                self.experience_buffer.update_data(k, n, res_dict[k])
+                # Squashed policies execute bounded actions but retain latent
+                # Gaussian coordinates for stable PPO ratios and exact KL.
+                storage_key = {
+                    'actions': 'pre_tanh_actions',
+                    'mus': 'pre_tanh_mus',
+                }.get(k)
+                value = (
+                    res_dict.get(storage_key, res_dict[k])
+                    if storage_key
+                    else res_dict[k]
+                )
+                self.experience_buffer.update_data(k, n, value)
             if self.has_central_value:
                 self.experience_buffer.update_data('states', n, self.obs['states'])
 

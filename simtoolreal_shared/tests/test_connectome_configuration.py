@@ -83,6 +83,10 @@ def test_compact_profiles_compose_with_explicit_adaptation_modes() -> None:
         "SimToolRealConnectome1952AdaptersSAPG": ("adapters_only", "linear"),
         "SimToolRealConnectome1952GainsSAPG": ("neuron_gains", "linear"),
         "SimToolRealConnectome1952AdaptersMLPSAPG": ("adapters_only", "mlp"),
+        "SimToolRealConnectome1952AdaptersMLPTanhSAPG": (
+            "adapters_only",
+            "mlp",
+        ),
         "SimToolRealConnectome1952GainsMLPSAPG": ("neuron_gains", "mlp"),
     }
     with initialize_config_dir(
@@ -113,6 +117,15 @@ def test_compact_profiles_compose_with_explicit_adaptation_modes() -> None:
             )
             assert connectome.interface_projections.hidden_size == 256
             assert connectome.interface_projections.activation == "elu"
+            expected_model = (
+                "continuous_a2c_tanh_logstd"
+                if profile == "SimToolRealConnectome1952AdaptersMLPTanhSAPG"
+                else "continuous_a2c_logstd"
+            )
+            assert config.train.params.model.name == expected_model
+            if expected_model == "continuous_a2c_tanh_logstd":
+                assert config.train.params.model.entropy_samples == 1
+                assert "log_std_bounds" not in config.train.params.model
 
 
 def test_suite_contracts_own_required_execution_settings() -> None:
@@ -303,6 +316,62 @@ def test_original_kl_mlp_run_differs_only_in_threshold_and_gpu() -> None:
     assert evaluation["evaluation"]["videos"][
         "camera_resolution_reduction_factor"
     ] == 2
+
+
+def test_tanh_kl016_run_changes_only_policy_distribution_and_identity() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    config_root = repository_root / "configs/connectome"
+    clipped = yaml.safe_load(
+        (config_root / "suites/ppo_1952_mlp_adapters_kl016_100b.yaml").read_text()
+    )
+    squashed = yaml.safe_load(
+        (
+            config_root
+            / "suites/ppo_1952_mlp_adapters_tanh_kl016_100b.yaml"
+        ).read_text()
+    )
+    smoke = yaml.safe_load(
+        (
+            config_root
+            / "suites/ppo_1952_mlp_adapters_tanh_kl016_smoke.yaml"
+        ).read_text()
+    )
+    matched_keys = set(clipped["training"]) - {
+        "train_profiles",
+        "wandb",
+    }
+    for key in matched_keys:
+        assert squashed["training"][key] == clipped["training"][key]
+    assert squashed["training"]["train_profiles"] == [
+        {
+            "name": "adapters_mlp_tanh",
+            "train_profile": "SimToolRealConnectome1952AdaptersMLPTanhSAPG",
+        }
+    ]
+    for key in (
+        "num_envs",
+        "sapg_block_size",
+        "minibatch_size",
+        "central_critic_minibatch_size",
+        "rollout_accumulation_steps",
+        "actor_microbatch_size",
+        "central_critic_microbatch_size",
+        "overrides",
+    ):
+        assert smoke["training"][key] == squashed["training"][key]
+    assert smoke["training"]["epochs"] == 2
+    assert smoke["training"]["max_frames"] == 393_216
+
+    evaluation = yaml.safe_load(
+        (
+            config_root
+            / "evaluation/ppo_1952_mlp_adapters_tanh_kl016_milestones.yaml"
+        ).read_text()
+    )
+    assert evaluation["training_suite_name"] == squashed["name"]
+    assert evaluation["policies"][0]["name"] == "adapters_mlp_tanh"
+    assert evaluation["policies"][0]["gpu"] == 0
+    assert evaluation["evaluation"]["action_selection"] == "mean"
 
 
 def test_backend_profile_is_yaml_owned_and_covers_all_operators() -> None:

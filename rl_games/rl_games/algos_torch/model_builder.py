@@ -47,6 +47,12 @@ class ModelBuilder:
                                             lambda network, **kwargs: models.ModelA2CContinuous(network))
         self.model_factory.register_builder('continuous_a2c_logstd',
                                             lambda network, **kwargs: models.ModelA2CContinuousLogStd(network))
+        self.model_factory.register_builder(
+            'continuous_a2c_tanh_logstd',
+            lambda network, **kwargs: models.ModelA2CContinuousTanhLogStd(
+                network, **kwargs
+            ),
+        )
         self.model_factory.register_builder('multi_continuous_a2c_logstd',
                                             lambda network, **kwargs: models.ModelMultiA2CContinuousLogStd(network))
         self.model_factory.register_builder('soft_actor_critic',
@@ -61,5 +67,9 @@ class ModelBuilder:
     def load(self, params):
         model_name = params['model']['name']
         network = self.network_builder.load(params['network'])
-        model = self.model_factory.create(model_name, network=network)
+        model_config = dict(params['model'])
+        model_config.pop('name')
+        model = self.model_factory.create(
+            model_name, network=network, **model_config
+        )
         return model

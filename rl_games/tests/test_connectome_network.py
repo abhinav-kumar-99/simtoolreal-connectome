@@ -123,6 +123,26 @@ def _observations(batch):
     return obs
 
 
+def _build_policy_model(artifact_path, model_config, num_seqs=2):
+    params = {
+        "model": model_config,
+        "network": _network_params(artifact_path),
+    }
+    return model_builder.ModelBuilder().load(deepcopy(params)).build(
+        {
+            "actions_num": 2,
+            "input_shape": (6,),
+            "num_seqs": num_seqs,
+            "value_size": 1,
+            "normalize_input": False,
+            "normalize_value": False,
+            "type": "extra_param",
+            "coef_ids": torch.tensor([50.0, 0.0]),
+            "coef_id_idx": 5,
+        }
+    )
+
+
 def test_mlp_interface_projections_have_one_256_unit_hidden_layer(
     artifact_path,
 ) -> None:
@@ -642,6 +662,108 @@ def test_frozen_core_and_global_builder_checkpoint_round_trip(
     )
     for first_tensor, second_tensor in zip(first[:3], second[:3]):
         torch.testing.assert_close(first_tensor, second_tensor)
+
+
+def test_tanh_policy_executes_bounded_actions_and_keeps_latent_coordinates(
+    artifact_path,
+) -> None:
+    torch.manual_seed(41)
+    model = _build_policy_model(
+        artifact_path,
+        {"name": "continuous_a2c_tanh_logstd", "entropy_samples": 8},
+    )
+    observations = _observations(2)
+    rollout = model(
+        {
+            "is_train": False,
+            "obs": observations.clone(),
+            "rnn_states": model.get_default_rnn_state(),
+            "seq_length": 1,
+        }
+    )
+
+    assert torch.all(rollout["actions"].abs() <= 1.0)
+    torch.testing.assert_close(
+        rollout["actions"], torch.tanh(rollout["pre_tanh_actions"])
+    )
+    torch.testing.assert_close(rollout["mus"], torch.tanh(rollout["pre_tanh_mus"]))
+
+    base = torch.distributions.Normal(
+        rollout["pre_tanh_mus"], rollout["sigmas"]
+    )
+    log_jacobian = model.log_abs_det_jacobian(rollout["pre_tanh_actions"])
+    expected_neglogp = (
+        -base.log_prob(rollout["pre_tanh_actions"]) + log_jacobian
+    ).sum(dim=-1)
+    torch.testing.assert_close(rollout["neglogpacs"], expected_neglogp)
+
+    training = model(
+        {
+            "is_train": True,
+            "obs": observations.clone(),
+            "prev_actions": rollout["pre_tanh_actions"],
+            "rnn_states": model.get_default_rnn_state(),
+            "seq_length": 1,
+        }
+    )
+    torch.testing.assert_close(training["prev_neglogp"], rollout["neglogpacs"])
+    torch.testing.assert_close(training["mus"], rollout["pre_tanh_mus"])
+    assert torch.isfinite(training["entropy"]).all()
+
+
+def test_tanh_policy_does_not_clamp_log_standard_deviation(artifact_path) -> None:
+    torch.manual_seed(43)
+    model = _build_policy_model(
+        artifact_path,
+        {"name": "continuous_a2c_tanh_logstd", "entropy_samples": 4096},
+    )
+    with torch.no_grad():
+        model.a2c_network.sigma.fill_(3.25)
+        for parameter in model.a2c_network.mu.parameters():
+            parameter.zero_()
+
+    observations = _observations(2)
+    rollout = model(
+        {
+            "is_train": False,
+            "obs": observations.clone(),
+            "rnn_states": model.get_default_rnn_state(),
+            "seq_length": 1,
+        }
+    )
+    torch.testing.assert_close(
+        rollout["sigmas"], torch.full_like(rollout["sigmas"], np.exp(3.25))
+    )
+    assert torch.isfinite(rollout["neglogpacs"]).all()
+    assert torch.all(rollout["actions"].abs() <= 1.0)
+
+    training = model(
+        {
+            "is_train": True,
+            "obs": observations.clone(),
+            "prev_actions": rollout["pre_tanh_actions"],
+            "rnn_states": model.get_default_rnn_state(),
+            "seq_length": 1,
+        }
+    )
+    training["entropy"].mean().backward()
+    sigma_gradient = model.a2c_network.sigma.grad
+    assert sigma_gradient is not None and torch.isfinite(sigma_gradient).all()
+    assert sigma_gradient.mean() < 0.0
+
+
+@pytest.mark.parametrize("entropy_samples", [True, 0, -1, 1.5])
+def test_tanh_policy_rejects_invalid_entropy_sample_count(
+    artifact_path, entropy_samples
+) -> None:
+    with pytest.raises((TypeError, ValueError), match="positive integer"):
+        _build_policy_model(
+            artifact_path,
+            {
+                "name": "continuous_a2c_tanh_logstd",
+                "entropy_samples": entropy_samples,
+            },
+        )
 
 
 def test_deployment_rl_player_loads_connectome_checkpoint(
