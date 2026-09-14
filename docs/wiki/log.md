@@ -195,3 +195,7 @@ Checked primary fly dopamine/plasticity and e-prop papers, current actor recurre
 ## [2026-09-13] query | Eligibility learning from scratch
 
 Extended the online-learning analysis with random adapter/readout initialization, identity gains, learnable input interfaces, per-environment local and delayed-reward traces, Gaussian action credit, approximate neuron-specific feedback, and bounded shared-gain aggregation. Distinguished a proposed rate-network actor-critic from exact e-prop/BPTT and the previous readout-only warm start. Recorded reward/exploration, GPU update cadence, reset masks and future YAML requirements without presenting an untested implementation as ready. Rechecked actual actor step/population configuration and the primary e-prop paper. Documentation only; current runs unchanged.
+
+## [2026-09-13] query | Eligibility trainer infrastructure compatibility
+
+Inspected the actual Isaac Gym entrypoint, algorithm/player factories, GPU observer, suite overrides/budget checks, checkpoint verification, inference export, deployment conditioning and video/milestone loaders. Documented workflow-compatible integration versus a non-drop-in PPO optimizer replacement, including algorithm-aware validation, recovery trace state, frozen evaluation and comparable TensorBoard axes. Preserved the separate trainer/YAML proposal and listed end-to-end acceptance gates. No trainer implementation, executable eligibility config, runtime mutation or new training was performed.
