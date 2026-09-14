@@ -236,6 +236,10 @@ Added a YAML-owned 1,952-cell adapter+gains eligibility contract pinned to physi
 
 Extended the same eligibility implementation with an adapters-only mode that omits incoming/outgoing gain and edge traces, while still learning both input adapters and the motor readout. Added a matched CUDA-1 100B suite and 250M milestone-video watcher contract. The earlier adapters-only PPO process was no longer live when this matched eligibility run was requested; its artifacts were preserved.
 
+## [2026-09-14] experiment | Match eligibility TensorBoard frame cadence
+
+At the user's direction, stopped only the newly launched CUDA-0/CUDA-1 eligibility trainers and their milestone watchers. Preserved both partial training trees and both evaluation-status trees with the suffix `_log4096_stopped_20260914_072647`; no artifacts were deleted. Changed both authoritative long-run YAMLs from 4,096 to 512 steps per logging chunk, so 384 environments produce one TensorBoard point per 196,608 frames, exactly matching the old-timing PPO frame cadence. Recomputed the vector-aligned run boundary as 508,627 chunks and 100,000,137,216 frames, and changed recovery save frequency from 10 to 80 chunks to preserve its approximately 15.7M-frame spacing. Eligibility actor updates remain online every vector step; the 250M inference/video schedule is unchanged.
+
 ## [2026-09-14] query | Audit live compact-training status
 
 Checked tmux, process ownership, both RTX 4090s, training logs, recovery and inference checkpoints, TensorBoard scalars, and milestone manifests. The 1,952-cell gains trainer failed at 2,275,344,384 logged frames because its learned coefficient-conditioned action standard deviation became negative; its last recovery checkpoint is frame 2,241,331,200 with 91,164 applied actor Adam steps. Nine milestones and 27 mean-action videos are complete.

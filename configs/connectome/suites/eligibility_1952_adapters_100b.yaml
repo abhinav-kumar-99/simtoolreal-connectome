@@ -21,10 +21,11 @@ training:
   max_parallel: 1
   num_envs: 384
   sapg_block_size: 64
-  epochs: 63579
-  max_frames: 100001120256
+  # Match the old-timing PPO TensorBoard cadence: 384 x 512 = 196,608 frames.
+  epochs: 508627
+  max_frames: 100000137216
   inference_checkpoint_interval_frames: 250000000
-  save_frequency: 10
+  save_frequency: 80
   save_best_after: 0
   on_existing: fail
   checkpoint: {mode: none, path: ''}
@@ -35,7 +36,7 @@ training:
     group: eligibility_1952_adapters_100b
     tags: [malecns, eligibility, adapters-only, from-scratch, one-hundred-billion]
   overrides:
-    train.params.config.horizon_length: 4096
+    train.params.config.horizon_length: 512
     ++task.env.useSparseReward: false
     task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
     task.env.forceConsecutiveNearGoalSteps: true

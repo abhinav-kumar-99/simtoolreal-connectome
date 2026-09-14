@@ -23,12 +23,14 @@ training:
   # retained for legacy task/player compatibility, not SAPG experience mixing.
   num_envs: 384
   sapg_block_size: 64
-  # The actor still updates every vector step. The larger logging chunk keeps
-  # the 100B run to 63,579 TensorBoard points instead of 16.3 million.
-  epochs: 63579
-  max_frames: 100001120256
+  # The actor updates every vector step. A 512-step chunk writes every 196,608
+  # frames, exactly matching the old-timing PPO TensorBoard cadence.
+  epochs: 508627
+  max_frames: 100000137216
   inference_checkpoint_interval_frames: 250000000
-  save_frequency: 10
+  # Preserve the previous approximately 15.7M-frame recovery cadence after
+  # making logging chunks eight times shorter.
+  save_frequency: 80
   save_best_after: 0
   on_existing: fail
   checkpoint: {mode: none, path: ''}
@@ -39,7 +41,7 @@ training:
     group: eligibility_1952_100b
     tags: [malecns, eligibility, adapters, neuron-gains, from-scratch, one-hundred-billion]
   overrides:
-    train.params.config.horizon_length: 4096
+    train.params.config.horizon_length: 512
     ++task.env.useSparseReward: false
     task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
     task.env.forceConsecutiveNearGoalSteps: true

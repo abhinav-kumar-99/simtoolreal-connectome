@@ -242,10 +242,11 @@ def test_suite_profile_and_checkpoint_validation(tmp_path):
         assert resolved.train.params.config.seq_length == 1
         if name in {"eligibility_1952_100b", "eligibility_1952_adapters_100b"}:
             assert resolved.train.params.config.num_actors == 384
-            assert resolved.train.params.config.horizon_length == 4096
-            assert resolved.train.params.config.max_epochs == 63579
-            assert resolved.train.params.config.max_frames == 100001120256
+            assert resolved.train.params.config.horizon_length == 512
+            assert resolved.train.params.config.max_epochs == 508627
+            assert resolved.train.params.config.max_frames == 100000137216
             assert resolved.train.params.config.inference_checkpoint_interval_frames == 250000000
+            assert resolved.train.params.config.save_frequency == 80
         if name == "eligibility_1952_adapters_100b":
             assert resolved.train.params.network.connectome.adaptation.weight_mode == "adapters_only"
     from omegaconf import OmegaConf

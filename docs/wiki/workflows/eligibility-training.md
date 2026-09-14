@@ -49,7 +49,7 @@ Prepared from-scratch pilot, **not launched during implementation** (384 environ
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/eligibility_1952.yaml
 ```
 
-The long adapter+gains eligibility contract uses physical CUDA 0, 384 environments and a nominal 100-billion-frame budget. Its final vectorized collection boundary is 100,001,120,256 frames (1,120,256 above 100B); milestone videos remain on the exact 250M grid through 100B. The actor updates on every vector step, while `horizon_length: 4096` only reduces log/checkpoint overhead to 63,579 collection chunks:
+The long adapter+gains eligibility contract uses physical CUDA 0, 384 environments and a nominal 100-billion-frame budget. Its final vectorized collection boundary is 100,000,137,216 frames (137,216 above 100B); milestone videos remain on the exact 250M grid through 100B. The actor updates on every vector step. `horizon_length: 512` is only the logging/checkpoint chunk, yielding one TensorBoard point every 196,608 frames—the same environment-frame cadence as the old-timing PPO jobs—and 508,627 chunks:
 
 ```bash
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/eligibility_1952_100b.yaml
@@ -87,6 +87,8 @@ Learning settings live in `isaacgymenvs/cfg/train/SimToolRealConnectome1952Eligi
 | `bootstrap_timeouts` | false | Only supported finite-horizon terminal convention |
 
 The selected group set and per-step update cadence are fixed in this first implementation. Do not tune inherited PPO learning-rate/minibatch/GAE keys and expect eligibility behavior to change. Single-process GPU/CPU execution only; DDP is rejected. Changing algorithm settings on full resume is rejected. Use a matching actor configuration and graph, not just matching tensor sizes.
+
+The first live launch briefly used `horizon_length: 4096`, logging every 1,572,864 frames. At the user's request, both trainers/watchers were stopped before a 250M milestone, and all partial artifacts were preserved under names ending `_log4096_stopped_20260914_072647`. The authoritative live contracts now use 512. `save_frequency` changed from 10 to 80 chunks, preserving the same approximately 15.7M-frame recovery-checkpoint spacing rather than increasing checkpoint I/O eightfold.
 
 ## Checkpoints, TensorBoard and evaluation
 
