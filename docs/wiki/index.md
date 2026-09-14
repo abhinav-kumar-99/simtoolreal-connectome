@@ -17,7 +17,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Concepts
 
-- [Connectome actor](concepts/connectome-actor.md) — Actor dynamics and robot interfaces. Last updated 2026-09-13.
+- [Connectome actor](concepts/connectome-actor.md) — Plain-language 1,952-cell circuit inventory, actor dynamics, and robot interfaces. Last updated 2026-09-14.
 - [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent controls, adapters-only default, and GPU implementation. Last updated 2026-09-13.
 - [Training and evaluation success metrics](concepts/success-metrics.md) — TensorBoard tag populations, tolerance scaling, exploration blocks, and deterministic Task Progress. Last updated 2026-09-13.
 
