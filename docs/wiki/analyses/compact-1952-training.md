@@ -1,8 +1,8 @@
 # Approved 1,952-neuron training runs
 
-The exact path-plus-sensory-premotor candidate is running as matched neuron-gains and adapters-only policies with old optimizer timing.
+The exact path-plus-sensory-premotor candidate was launched as matched neuron-gains and adapters-only policies with old optimizer timing; the gains process has failed and the surviving adapters process is not producing valid actor updates.
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
 
 Related: [Selection evidence](front-leg-pathway-coverage.md), [Timing comparison](adaptation-100b-update-timing.md), [Experiment workflow](../workflows/connectome-experiments.md)
 
@@ -44,9 +44,17 @@ At the user's direction, the 4,310-cell GPU-1 trainer and its dedicated watcher 
 
 The fresh adapters-only replacement started in tmux `connectome-1952-adapters`: coordinator PID 3248406 and trainer PID 3248466. The milestone watcher is PID 3248583 in `connectome-1952-adapters-eval`. The resolved configuration confirms `weight_mode: adapters_only`, `learn_dynamics: false`, `operator_backend: triton_fused`, the 1,952/33,720 graph, 12,288 environments, 49,152 minibatches, one rollout per phase, seed 42, and the 100B cap. Its first audit found 160 finite scalar tags and `rewards/step=34.874` at frame 1,769,472. TensorBoard 6008 discovered the new run under the shared parent log directory.
 
+## 2026-09-14 numerical-failure status
+
+The gains trainer exited nonzero after 11,574 phases and 2,275,344,384 logged frames. The immediate exception was `RuntimeError: normal expects all elements of std >= 0.0` while sampling the rollout action. Its last complete recovery checkpoint is epoch 11,400/frame 2,241,331,200 with 91,164 applied actor Adam steps; the last inference milestone is 2,250,178,560 and all nine available milestones have their three mean-action videos. The standard SAPG configuration uses an identity `sigma_activation`, so its coefficient-conditioned action standard deviations are not positivity constrained. Several learned sigma entries had crossed below zero before the exception.
+
+The adapters-only trainer remains process-alive on GPU 1. At the status snapshot it had logged about 3.32 billion frames, but `losses/a_loss` and `info/kl` had remained `NaN` since approximately frame 3.19 billion. Its epoch-16,800/frame-3,303,014,400 recovery checkpoint contains 129,745 applied actor steps versus 134,400 scheduled calls, showing 4,655 mixed-precision-suppressed calls. The actor is therefore no longer learning even though simulation and critic updates continue. Its first 13 milestones through 3,250,126,848 have all 39 requested mean-action videos. This is an unhealthy run, not valid progress toward the 100-billion cap.
+
+TensorBoard remains on port 6008. GPU 0 is idle apart from desktop processes, the failed gains watcher remains alive waiting for checkpoints that will not arrive, and the adapters watcher remains active. No process was stopped or restarted during this status audit.
+
 ## Commands and configuration ownership
 
-Run from the repository root. The full job is already running: **do not rerun its launch command to start a duplicate**. `on_existing: fail` protects populated run directories; choose a new suite name and output directory for another experiment.
+Run from the repository root. The adapters process is still running but numerically unhealthy, and the gains process has failed: **do not rerun either launch command into its populated output directory**. `on_existing: fail` protects those directories; a repaired experiment needs a new suite name and output directory or an explicit, validated resume contract.
 
 ```bash
 # Prepare/verify the exact graph only (does not train).
@@ -55,13 +63,13 @@ Run from the repository root. The full job is already running: **do not rerun it
 # Full-size two-phase training and checkpoint reload gate.
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/adaptation_1952_smoke.yaml
 
-# Fresh 100B-capped gains training, already launched on GPU 0.
+# Historical gains launch command; the recorded process failed and is not running.
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/adaptation_1952_100b.yaml
 
 # Persistent gains milestone evaluator, already launched separately.
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/adaptation_1952_milestones.yaml
 
-# Fresh adapters-only training, already launched on GPU 1.
+# Historical adapters-only launch command; its process remains alive but unhealthy on GPU 1.
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/adaptation_1952_adapters_100b.yaml
 
 # Persistent adapters-only milestone evaluator, already launched separately.

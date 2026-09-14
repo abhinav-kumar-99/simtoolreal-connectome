@@ -229,3 +229,9 @@ Added separate local-sensitivity/action-credit engine and online TD actor-critic
 Validated the real simulator through 3,072 frames/32 updates then continuation to 4,608/48; deployment reloads produced finite 29-actions, both runs appeared on TensorBoard 6008, and two 30-frame 800x450 mean-action videos completed. Both short task-progress evaluations were zero. Checkpoint deltas confirm intended parameter groups changed and graph/dynamics/embedding/sigma stayed fixed. No long eligibility job or changes to the existing PPO processes. Integration success is not evidence of faster or better learning.
 
 Final focused regression run passed 98 actor, eligibility, configuration, compact-circuit and milestone tests. CPU checkpoint tests also verify identical inference means and feedback after restore. Existing compact gains/adapters-only PPO PIDs 3211659 and 3248466 remained live at handoff.
+
+## [2026-09-14] query | Audit live compact-training status
+
+Checked tmux, process ownership, both RTX 4090s, training logs, recovery and inference checkpoints, TensorBoard scalars, and milestone manifests. The 1,952-cell gains trainer failed at 2,275,344,384 logged frames because its learned coefficient-conditioned action standard deviation became negative; its last recovery checkpoint is frame 2,241,331,200 with 91,164 applied actor Adam steps. Nine milestones and 27 mean-action videos are complete.
+
+The adapters-only process remains alive on GPU 1 and passed 3.32 billion logged frames, but actor loss and KL have been `NaN` since about 3.19 billion. Its frame-3,303,014,400 recovery checkpoint has 129,745 applied actor steps versus 134,400 scheduled calls, so simulator/critic activity is continuing without valid actor learning. Thirteen milestones and 39 mean-action videos are complete. GPU 0 is idle and no training/evaluation process was changed during the audit.

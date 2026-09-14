@@ -2,13 +2,13 @@
 
 Two neuron-gains policies isolate optimizer-update timing over a strict 100-billion-environment-step budget. Both actors learn the same input/output adapters and topology-preserving neuron gains, use the fused Triton recurrence, seed 42, released-checkpoint exploration and perturbation settings, and one independent physical RTX 4090 per policy. They do not train the original LSTM.
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
 
 Related: [Billion-step adaptation run](adaptation-1b-run.md), [Experiment workflow](../workflows/connectome-experiments.md)
 
 ## Training contract
 
-Operational update: the user first stopped `gains_new_update_timing` and made old timing the default, then stopped the remaining 4,310-cell old-timing job at logged frame 928,579,584. Both histories and all artifacts are preserved. The dedicated 4,310-cell watcher is also stopped. Matched [1,952-cell gains and adapters-only old-timing jobs](compact-1952-training.md) now use GPUs 0 and 1 under the same TensorBoard 6008 root. The table and two-policy YAML below describe the historical 4,310-cell comparison rather than the active pair.
+Operational update: the user first stopped `gains_new_update_timing` and made old timing the default, then stopped the remaining 4,310-cell old-timing job at logged frame 928,579,584. Both histories and all artifacts are preserved. The dedicated 4,310-cell watcher is also stopped. Matched [1,952-cell gains and adapters-only old-timing jobs](compact-1952-training.md) subsequently used GPUs 0 and 1 under the same TensorBoard 6008 root, but the gains job failed at 2,275,344,384 frames and the adapters-only actor became numerically invalid after about 3.19 billion frames. The table and two-policy YAML below describe the historical 4,310-cell comparison rather than the compact pair.
 
 The YAML entry point is `configs/connectome/suites/adaptation_100b_gains_update_timing.yaml`. The two fully composed Hydra configurations differ only in rollout accumulation, logical/physical minibatch sizes, and the epoch count needed to match total environment exposure:
 
