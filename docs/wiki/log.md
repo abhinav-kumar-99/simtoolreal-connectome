@@ -283,3 +283,9 @@ Replaced overflow-prone Gaussian KL with scale-ratio/normalized-mean float64 ari
 ## [2026-09-14] experiment | Launch stable-KL compact PPO pair
 
 Launched suite `ppo_1952_kl004_100b` in tmux `connectome-ppo-kl004` (coordinator 3449384), with gains PID 3449479 on GPU 0 and adapters-only PID 3449478 on GPU 1. Started mean-action milestone watcher PID 3449390 in `connectome-ppo-kl004-eval`. Verified resolved threshold 0.004/max LR 0.001, 168 initial scalar tags, finite actor losses/KL, and actual scheduler saturation at 1e-3 without exceeding the cap. Existing eligibility jobs remained active. Full training is ongoing; no completion or long-run stability claim is made.
+
+## [2026-09-14] experiment | Restore PPO maximum LR and replace compact pair
+
+At the user's direction, restored the connectome maximum adaptive actor LR from `1e-3` to `1e-2` while retaining stable KL arithmetic, target `0.004`, invalid-KL reductions, and floor `1e-6`. Changed the YAML-owned suite/output identity to `ppo_1952_kl004_lr01_100b` and updated its mean-action milestone watcher paths; all batch geometry, update timing, seed, exploration settings, 100B cap and 250M-frame video cadence remain unchanged. The stopped `1e-3` histories are preserved through approximately 39.3M gains and 44.0M adapters frames, before any evaluation milestone. Existing eligibility jobs were not stopped.
+
+Validation after the ceiling change passed 52 focused tests and the paired suite/evaluation linkage check. A new full-batch two-phase smoke completed 393,216 frames per policy without OOM; both checkpoints had 16 applied actor Adam steps, finite model tensors and finite deployment actions. Gains/adapters child training took 28.13/25.60 seconds while sharing the machine with the untouched eligibility jobs.

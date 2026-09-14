@@ -1,8 +1,8 @@
 # Mean-action milestone videos for the approved compact circuit.
 schema_version: 1
-training_suite_name: ppo_1952_kl004_100b
-training_suite_directory: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_kl004_100b
-output_directory: evals/connectome/ppo_1952_kl004_100b_milestones
+training_suite_name: ppo_1952_kl004_lr01_100b
+training_suite_directory: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_kl004_lr01_100b
+output_directory: evals/connectome/ppo_1952_kl004_lr01_100b_milestones
 max_frames: 100000000000
 milestone_interval_frames: 250000000
 poll_interval_seconds: 30
@@ -11,11 +11,11 @@ policies:
   - name: adapters_gains
     seed: 42
     gpu: 0
-    policy_config_path: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_kl004_100b/00_ppo_1952_kl004_100b_adapters_gains_seed42/resolved_config.yaml
+    policy_config_path: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_kl004_lr01_100b/00_ppo_1952_kl004_lr01_100b_adapters_gains_seed42/resolved_config.yaml
   - name: adapters_only
     seed: 42
     gpu: 1
-    policy_config_path: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_kl004_100b/00_ppo_1952_kl004_100b_adapters_only_seed42/resolved_config.yaml
+    policy_config_path: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_kl004_lr01_100b/00_ppo_1952_kl004_lr01_100b_adapters_only_seed42/resolved_config.yaml
 evaluation:
   runtime_environment:
     CC: /usr/bin/gcc
