@@ -1,6 +1,6 @@
 # Approved 1,952-neuron training runs
 
-The exact path-plus-sensory-premotor candidate uses old optimizer timing; stopped/failed histories are preserved, the gains PPO policy remains live, and its linear adapters-only counterpart has been replaced by a fresh MLP-interface policy.
+The exact path-plus-sensory-premotor candidate uses old optimizer timing; stopped/failed histories are preserved, and the two live PPO policies now use matched adapters-only MLP interfaces with actor KL targets 0.004 and 0.016.
 
 Last updated: 2026-09-14
 
@@ -128,6 +128,23 @@ Run the replacement contracts from the repository root:
 ```
 
 The suite entrypoint owns preparation, exact training overrides, GPU isolation, timing and checkpoint reload validation. The milestone helper owns checkpoint polling, mean-action evaluation and three object/task videos; it should be launched separately so training never waits on rendering. The key suite fields are `train_profiles`, `gpu_assignments`, `num_envs`, `sapg_block_size`, rollout accumulation, logical/physical minibatches, `epochs`, `max_frames`, KL/LR overrides and checkpoint cadence. The key evaluation fields are suite/run paths, policy GPU, milestone interval, `action_selection: mean`, camera reduction factor and eval cases.
+
+### Original-KL MLP replacement for the gains policy
+
+At the user's direction, the remaining stable-KL adapters-plus-gains PPO child PID 3454787 and gains-only milestone watcher PID 3502127 were interrupted on 2026-09-14. The final TensorBoard coordinate is frame 711,131,136 with finite reward, actor loss, KL, LR and entropy. The latest recovery checkpoint is finite at epoch 3,600/frame 707,788,800 with 28,788 applied actor Adam steps. Its 250M and 500M inference checkpoints and all six high-resolution mean-action videos remain preserved. The KL-0.004 MLP run and both eligibility trainers were not signaled.
+
+The replacement is another fresh `SimToolRealConnectome1952AdaptersMLPSAPG` policy, with no learned recurrent gains. Its contract is deliberately identical to the GPU-1 MLP run except for output identity, physical GPU and `train.params.config.kl_threshold: 0.016`. The value 0.016 is the actor KL target inherited by the original `SimToolRealLSTMAsymmetricPPO` profile from `SimToolRealPPO`; it is not the later connectome-specific 0.004 target. Stable float64 KL arithmetic, invalid-KL LR reduction, LR range `[1e-6, 1e-2]`, seed 42, old update timing, environment/task/exploration settings, 100B cap and mean-action video cadence are unchanged.
+
+The original-KL MLP suite launched in tmux `connectome-ppo-mlp-adapters-kl016`: coordinator PID 3515959 and trainer PID 3516083 on physical GPU 0. Its independent watcher is PID 3515963 in `connectome-ppo-mlp-adapters-kl016-eval`. Initial telemetry through frame 6,684,672 was finite, both invalid-KL flags were zero, and the resolved profile confirms MLP/adapters-only/Triton, 12,288 environments, horizon 16, 49,152 logical/physical minibatches, KL 0.016 and maximum LR 0.01. The earlier full-geometry MLP smoke already established memory fit for this otherwise identical actor and batch geometry; changing only the scheduler threshold does not add activation memory.
+
+Run the original-KL replacement from the repository root:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_mlp_adapters_kl016_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_mlp_adapters_kl016_milestones.yaml
+```
+
+The training YAML is the authoritative comparison contract; it should not be reproduced with ad hoc CLI overrides. The suite helper prepares/verifies the graph, pins GPU 0, launches training, records elapsed time and verifies the terminal checkpoint if the job completes. The milestone helper watches the separate run directory and produces three high-resolution mean-action videos every 250M frames.
 
 ### Interpretation of KL and the baseline comparison
 

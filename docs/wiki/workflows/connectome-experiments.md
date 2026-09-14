@@ -30,7 +30,16 @@ The active full-size adapters-only MLP replacement uses a single-policy gate and
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_mlp_adapters_kl004_milestones.yaml
 ```
 
-The smoke and long-run YAMLs use the same 12,288-environment, 49,152-minibatch geometry, seed, KL/LR feedback, task perturbations and exploration settings; only their frame budget/save cadence differ. The evaluator uses mean actions and three high-resolution object/task videos every 250M frames. `ppo_1952_kl004_gains_milestones.yaml` is the separate watcher for the surviving gains policy and deliberately reuses its original evaluation state tree.
+The smoke and long-run YAMLs use the same 12,288-environment, 49,152-minibatch geometry, seed, KL/LR feedback, task perturbations and exploration settings; only their frame budget/save cadence differ. The evaluator uses mean actions and three high-resolution object/task videos every 250M frames. The historical `ppo_1952_kl004_gains_milestones.yaml` watcher was stopped when its gains policy was replaced; its existing evaluation tree remains preserved.
+
+Run the matched adapters-only MLP policy with the original actor KL target 0.016 using:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_mlp_adapters_kl016_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_mlp_adapters_kl016_milestones.yaml
+```
+
+This contract differs from the KL-0.004 MLP run only in output identity, GPU assignment and actor scheduler threshold. Both use the same MLP profile, seed, optimizer geometry, perturbations, exploration and video cases. `0.016` is validated against the composed original LSTM PPO profile rather than inferred from the later connectome defaults.
 
 Old timing is now the connectome profile default: one rollout and 49,152-sample actor/critic minibatches, with physical batches following the logical size. Historical suites can explicitly override this. The approved compact gains run pins 12,288 environments and the complete old geometry; see [1,952-cell preparation, smoke, launch and monitoring commands](../analyses/compact-1952-training.md). Its exact body-ID set is validated, not padded to a size target.
 
