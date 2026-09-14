@@ -21,6 +21,12 @@ The online loop, for each fresh transition:
 
 This is approximate rate-network eligibility, not exact e-prop, an unbiased full recurrent policy gradient, or a literal dopamine circuit. Trace clipping, changing parameters and online observation statistics introduce additional approximations. There is no actor autograd history, PPO replay, central PPO critic, intrinsic exploration reward, learned sigma, or new anatomical edge. The compatibility actor value head is unused/frozen; the separate learned critic is training-only.
 
+## Policy gradients and TD are complementary
+
+Policy gradients specify how to improve the actor; temporal-difference learning specifies a bootstrapped value/credit estimate. A conventional PPO/GAE actor-critic combines both: [GAE](https://arxiv.org/abs/1506.02438) forms advantages from discounted TD residuals, while [PPO](https://arxiv.org/abs/1707.06347) optimizes a policy surrogate. The local trainer also combines both, but its recurrent actor credit is approximate. Source: `connectome_eligibility_agent.py` computes the Gaussian score and TD residual; `connectome_eligibility.py` combines local/random-feedback credit with that residual.
+
+Conceptual recommendation, not a measured winner: use a conventional policy-gradient actor with a TD-trained critic and explicitly chosen recurrent differentiation horizon as the main dexterity baseline. Keep local eligibility as a separate experiment aimed at avoiding recurrent backpropagation. Input adapters and gains can influence actions through multi-neuron, multi-step paths that this implementation's local derivatives omit; a frozen recurrent weight matrix does not eliminate the need to differentiate through it when learning its inputs. A frozen input/core plus trainable readout is a useful cheaper control with an exact instantaneous actor score, but has less adaptation capacity. Neither a fly-derived graph nor the name dopamine establishes that random-feedback eligibility will exploit native dexterity or train more efficiently. No learning-rate restart was performed during this conceptual discussion.
+
 ## Relation to REINFORCE
 
 Plain REINFORCE waits for a sampled return (usually episode return or reward-to-go) and multiplies it by the exact policy score, `G_t * grad(log pi(a_t | history_t))`. A learned value baseline is optional; the return itself is Monte Carlo and does not bootstrap. For this recurrent actor, computing the exact score for adapters/gains would ordinarily require backpropagation through the recurrent history.

@@ -265,3 +265,7 @@ Verified that all saved actor-core and critic tensors remained finite and that a
 ## [2026-09-14] query | Audit early eligibility learning curves
 
 Updated the eligibility runbook and index from active TensorBoard events at approximately 20M/23M frames and both 15,728,640-frame recovery checkpoints. Metrics are finite and traces stable, but matched-window rewards show no convincing task improvement and successes remain rare. CPU float32 reconstruction finds only two of 3,904 effective gains differ from initialization, by approximately 1.2e-7; logged nonzero gain update norms measure proposed raw-parameter changes, not effective gain movement. Documented startup episode-length confounding, reward/critic interpretation, and the unproven small-update-scale hypothesis. No jobs, training settings, or generated artifacts were modified.
+
+## [2026-09-14] query | Distinguish policy improvement from TD credit estimation
+
+Updated the eligibility runbook and index using actor/critic source and primary PPO/GAE papers. Explained that TD and policy gradients coexist, and separated conventional recurrent differentiation from approximate local eligibility. Recorded the conventional actor-critic baseline recommendation as conceptual, not an empirical winner, plus the limited frozen-core/readout-only control. The interrupted all-actor-1e-3 restart was not executed. Preserved unrelated runtime/config/test changes already in the worktree.
