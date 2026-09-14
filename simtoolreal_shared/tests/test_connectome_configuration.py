@@ -149,6 +149,89 @@ def test_suite_contracts_own_required_execution_settings() -> None:
         assert "wandb" in training
 
 
+def test_mlp_adapters_replacement_matches_stable_ppo_contract() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    config_root = repository_root / "configs/connectome"
+    original = yaml.safe_load(
+        (config_root / "suites/ppo_1952_kl004_100b.yaml").read_text()
+    )
+    replacement = yaml.safe_load(
+        (config_root / "suites/ppo_1952_mlp_adapters_kl004_100b.yaml").read_text()
+    )
+    smoke = yaml.safe_load(
+        (config_root / "suites/ppo_1952_mlp_adapters_kl004_smoke.yaml").read_text()
+    )
+    matched_keys = {
+        "task_profile",
+        "seeds",
+        "num_envs",
+        "sapg_block_size",
+        "epochs",
+        "max_frames",
+        "minibatch_size",
+        "central_critic_minibatch_size",
+        "rollout_accumulation_steps",
+        "actor_microbatch_size",
+        "central_critic_microbatch_size",
+        "inference_checkpoint_interval_frames",
+        "save_frequency",
+        "save_best_after",
+        "checkpoint",
+        "overrides",
+    }
+    for key in matched_keys:
+        assert replacement["training"][key] == original["training"][key]
+    assert replacement["training"]["train_profiles"] == [
+        {
+            "name": "adapters_mlp",
+            "train_profile": "SimToolRealConnectome1952AdaptersMLPSAPG",
+        }
+    ]
+    assert replacement["training"]["gpu_assignments"] == [1]
+    assert replacement["training"]["max_parallel"] == 1
+    assert smoke["training"]["train_profiles"] == replacement["training"][
+        "train_profiles"
+    ]
+    for key in (
+        "num_envs",
+        "sapg_block_size",
+        "minibatch_size",
+        "central_critic_minibatch_size",
+        "rollout_accumulation_steps",
+        "actor_microbatch_size",
+        "central_critic_microbatch_size",
+        "overrides",
+    ):
+        assert smoke["training"][key] == replacement["training"][key]
+    assert smoke["training"]["epochs"] == 2
+    assert smoke["training"]["max_frames"] == 393_216
+
+    evaluation = yaml.safe_load(
+        (
+            config_root
+            / "evaluation/ppo_1952_mlp_adapters_kl004_milestones.yaml"
+        ).read_text()
+    )
+    gains_evaluation = yaml.safe_load(
+        (config_root / "evaluation/ppo_1952_kl004_gains_milestones.yaml").read_text()
+    )
+    assert evaluation["training_suite_name"] == replacement["name"]
+    assert evaluation["policies"][0]["name"] == "adapters_mlp"
+    assert evaluation["policies"][0]["gpu"] == 1
+    assert evaluation["evaluation"]["action_selection"] == "mean"
+    assert evaluation["evaluation"]["videos"][
+        "camera_resolution_reduction_factor"
+    ] == 2
+    assert gains_evaluation["training_suite_name"] == original["name"]
+    assert [policy["name"] for policy in gains_evaluation["policies"]] == [
+        "adapters_gains"
+    ]
+    assert (
+        gains_evaluation["output_directory"]
+        == "evals/connectome/ppo_1952_kl004_lr01_100b_milestones"
+    )
+
+
 def test_backend_profile_is_yaml_owned_and_covers_all_operators() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     suite_directory = repository_root / "configs/connectome/suites"
