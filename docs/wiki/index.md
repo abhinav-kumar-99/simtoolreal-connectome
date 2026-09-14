@@ -28,7 +28,7 @@ Related: [Overview](overview.md), [Log](log.md)
 ## Analyses
 
 - [Dopamine-inspired online learning](analyses/dopamine-inspired-learning.md) — Eligibility proposals, existing GAE credit assignment, connectome-specific hypotheses, integration points and cost limits; not implemented. Last updated 2026-09-13.
-- [Approved 1,952-neuron training](analyses/compact-1952-training.md) — Exact unpadded graph, old-timing defaults, passed full-size smoke and live GPU-0 run on TensorBoard 6008. Last updated 2026-09-13.
+- [Approved 1,952-neuron training](analyses/compact-1952-training.md) — Exact unpadded graph with matched live gains and adapters-only old-timing runs on GPUs 0 and 1. Last updated 2026-09-13.
 - [Front-leg pathway coverage](analyses/front-leg-pathway-coverage.md) — Public-reference audit, 4,353/4,589/4,778-cell candidates, and evidence-led compact sensory-motor/feedback additions without a size quota. Last updated 2026-09-13.
 - [Sparse recurrent backends](analyses/sparse-backends.md) — 160 benchmark cases, 32 capacity probes, memory tradeoffs and ten completed Isaac Gym smoke gates. Last updated 2026-09-13.
 - [One-million-step adaptation pilot](analyses/adaptation-1m-pilot.md) — Five timed policies, 40 actor updates each, matched reward/success metrics, and 15 evaluation videos. Last updated 2026-09-13.

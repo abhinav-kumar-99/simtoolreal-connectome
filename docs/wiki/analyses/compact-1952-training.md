@@ -1,6 +1,6 @@
-# Approved 1,952-neuron training run
+# Approved 1,952-neuron training runs
 
-The exact path-plus-sensory-premotor candidate is running with neuron gains and old optimizer timing, alongside the original old-timing policy.
+The exact path-plus-sensory-premotor candidate is running as matched neuron-gains and adapters-only policies with old optimizer timing.
 
 Last updated: 2026-09-13
 
@@ -22,6 +22,8 @@ The artifact is `data/connectomes/processed/malecns_1952/biological.npz`, SHA256
 
 `SimToolRealConnectome1952GainsSAPG` inherits adapters plus neuron-gain adaptation, frozen leak/bias dynamics, and fused Triton recurrence. The new job starts fresh at seed 42 on physical GPU 0; it does not transfer the original graph's checkpoint. Task reward, perturbations, exploration, horizon/sequence length 16, and budget match the existing old-timing run.
 
+`SimToolRealConnectome1952AdaptersSAPG` uses the same artifact, interfaces, Triton recurrence, seed, environment contract, and old update timing on physical GPU 1, but freezes incoming/outgoing gains at one as well as leak and bias. Its recurrent operator therefore remains exactly the prepared spectrally normalized matrix while only adapters, heads, SAPG embeddings, and action log standard deviations learn.
+
 - 12,288 environments, six blocks of 2,048.
 - One rollout per phase: 196,608 fresh frames; `rollout_accumulation_steps: 1`.
 - Actor and critic logical/physical minibatches both 49,152, with two mini-epochs: eight scheduled optimizer calls each per phase.
@@ -38,6 +40,10 @@ The full-size smoke used 12,288 environments and the intended 49,152-sample phys
 
 The full run started around 2026-09-14 00:10 UTC (September 13 local time), in tmux `connectome-1952`: coordinator PID 3211542, training PID 3211659. At the initial check, TensorBoard served 18 actor/critic loss points through logged frame 3,342,336 with finite values. The old graph's GPU-1 training PID 3172351 remained alive. The stopped new-timing job's artifacts were preserved; its watcher was replaced by an old-only watcher, retaining the existing evaluation history. The compact watcher is in `connectome-1952-eval`, configured for three mean-action videos per 250M-frame milestone. Training is ongoing, not complete.
 
+At the user's direction, the 4,310-cell GPU-1 trainer and its dedicated watcher were stopped after the training log reached frame 928,579,584. Its milestone/checkpoint/evaluation artifacts remain in place; the latest full recovery checkpoint is `last/model.pth` at frame 904,396,800 and the latest inference milestone is 750,059,520. No directory was removed or overwritten.
+
+The fresh adapters-only replacement started in tmux `connectome-1952-adapters`: coordinator PID 3248406 and trainer PID 3248466. The milestone watcher is PID 3248583 in `connectome-1952-adapters-eval`. The resolved configuration confirms `weight_mode: adapters_only`, `learn_dynamics: false`, `operator_backend: triton_fused`, the 1,952/33,720 graph, 12,288 environments, 49,152 minibatches, one rollout per phase, seed 42, and the 100B cap. Its first audit found 160 finite scalar tags and `rewards/step=34.874` at frame 1,769,472. TensorBoard 6008 discovered the new run under the shared parent log directory.
+
 ## Commands and configuration ownership
 
 Run from the repository root. The full job is already running: **do not rerun its launch command to start a duplicate**. `on_existing: fail` protects populated run directories; choose a new suite name and output directory for another experiment.
@@ -49,15 +55,21 @@ Run from the repository root. The full job is already running: **do not rerun it
 # Full-size two-phase training and checkpoint reload gate.
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/adaptation_1952_smoke.yaml
 
-# Fresh 100B-capped training, already launched in tmux.
+# Fresh 100B-capped gains training, already launched on GPU 0.
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/adaptation_1952_100b.yaml
 
-# Persistent milestone evaluator, already launched separately.
+# Persistent gains milestone evaluator, already launched separately.
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/adaptation_1952_milestones.yaml
+
+# Fresh adapters-only training, already launched on GPU 1.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/adaptation_1952_adapters_100b.yaml
+
+# Persistent adapters-only milestone evaluator, already launched separately.
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/adaptation_1952_adapters_milestones.yaml
 ```
 
 The preparation entrypoint dispatches by `preparation_kind`. Its new helper `simtoolreal_shared/compact_connectome.py` performs hash verification, path/motif selection, population indexing, signing, normalization, and artifact/manifest writing; import it rather than launching it directly. Its inputs are the pinned completed audit tables and public neurotransmitter Feather file. Missing sources must be restored from the pinned snapshot; rerunning the audit may change the compressed-file hash even with identical logical rows, so do not bypass the hash check without verifying provenance and selected IDs.
 
-The suite entrypoint handles preparation, device isolation, resolved YAML, logs, checkpoints, and post-exit deployment verification. Important training YAML keys are `train_profiles`, `gpu_assignments`, `num_envs`, `sapg_block_size`, `rollout_accumulation_steps`, logical/physical minibatch sizes, `epochs`, `max_frames`, milestone interval and `output_directory`. The evaluation entrypoint watches snapshots and invokes the existing video evaluator; its YAML owns paths, GPU, polling interval, mean-action cases, and video settings. The old run uses `configs/connectome/evaluation/adaptation_100b_old_only_milestones.yaml`.
+The suite entrypoint handles preparation, device isolation, resolved YAML, logs, checkpoints, and post-exit deployment verification. Important training YAML keys are `train_profiles`, `gpu_assignments`, `num_envs`, `sapg_block_size`, `rollout_accumulation_steps`, logical/physical minibatch sizes, `epochs`, `max_frames`, milestone interval and `output_directory`. The evaluation entrypoint watches snapshots and invokes the existing video evaluator; its YAML owns paths, GPU, polling interval, mean-action cases, and video settings. The stopped large run used `configs/connectome/evaluation/adaptation_100b_old_only_milestones.yaml`; that watcher is no longer active.
 
-TensorBoard remains at **http://localhost:6008**, watching `train_dir/connectome/adaptation_100b_gains_update_timing`. The compact run is nested under `compact_1952/00_adaptation_1952_100b_gains_old_timing_seed42/rl_runs/00_adaptation_1952_100b_gains_old_timing_seed42/summaries`; the API confirmed it is visible with 160 scalar tags. Both original histories remain visible. Training/evaluation artifacts are ignored and are not committed.
+TensorBoard remains at **http://localhost:6008**, watching `train_dir/connectome/adaptation_100b_gains_update_timing`. The compact gains and adapters-only runs are nested under `compact_1952/` and `compact_1952_adapters/`; the API confirmed both are visible with 160 scalar tags. All stopped histories remain visible. Training/evaluation artifacts are ignored and are not committed.

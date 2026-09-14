@@ -8,7 +8,7 @@ Related: [Billion-step adaptation run](adaptation-1b-run.md), [Experiment workfl
 
 ## Training contract
 
-Operational update: the user stopped `gains_new_update_timing` and made old timing the default. Its artifacts are preserved. The original old-timing job continues on GPU 1; an [approved 1,952-cell old-timing job](compact-1952-training.md) now uses GPU 0 and the same TensorBoard 6008 root. The table and two-policy YAML below describe the historical comparison. The active original-run watcher now uses `adaptation_100b_old_only_milestones.yaml`, so it does not wait for canceled new-timing milestones.
+Operational update: the user first stopped `gains_new_update_timing` and made old timing the default, then stopped the remaining 4,310-cell old-timing job at logged frame 928,579,584. Both histories and all artifacts are preserved. The dedicated 4,310-cell watcher is also stopped. Matched [1,952-cell gains and adapters-only old-timing jobs](compact-1952-training.md) now use GPUs 0 and 1 under the same TensorBoard 6008 root. The table and two-policy YAML below describe the historical 4,310-cell comparison rather than the active pair.
 
 The YAML entry point is `configs/connectome/suites/adaptation_100b_gains_update_timing.yaml`. The two fully composed Hydra configurations differ only in rollout accumulation, logical/physical minibatch sizes, and the epoch count needed to match total environment exposure:
 
@@ -49,7 +49,7 @@ Run the persistent evaluator in a separate process:
 
 The training YAML owns both profiles, GPU assignment, update geometry, 100B cap, checkpoint interval, released perturbations, seed, and output roots. The evaluation YAML owns policy-to-GPU mapping, watcher cadence, the three fixed eval cases, mean-action selection, paper tolerance, resolution, frame sampling, and output root. The helper module `simtoolreal_shared/milestone_checkpoints.py` centralizes target scheduling and filename parsing; it is imported by training and evaluation rather than launched directly.
 
-Generated training artifacts live under `train_dir/connectome/adaptation_100b_gains_update_timing/`. Evaluations live under `evals/connectome/adaptation_100b_gains_update_timing_milestones/`. Completion requires both training children to exit successfully, final recovery checkpoints to pass deployment reload, and all 400 milestones per policy to appear in the evaluator status manifest with three videos each.
+Generated 4,310-cell artifacts live under `train_dir/connectome/adaptation_100b_gains_update_timing/`, with evaluations under `evals/connectome/adaptation_100b_gains_update_timing_milestones/`. The original 400-milestone-per-policy completion condition is superseded because both 4,310-cell jobs were explicitly stopped. Their partial artifacts remain valid historical evidence, not completed 100B runs.
 
 ## Live launch
 

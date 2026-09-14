@@ -100,6 +100,12 @@ All five revised runs completed and passed optimizer/checkpoint/deployment verif
 
 The final checkpoints each recorded 983,040 frames and 40 actor Adam updates. Training wall times ranged from 29.492 to 31.405 seconds; final raw mean episode rewards ranged from 52.913 to 52.947 and every training success ratio was zero. Thirty closed-loop evaluations completed, with zero Task Progress at both thresholds. Fifteen requested videos were verified as nonempty 100-frame, 10-second simulator recordings.
 
+## [2026-09-13] experiment | Replace large gains run with compact adapters-only
+
+Stopped the 4,310-cell old-timing trainer and its dedicated milestone watcher without deleting artifacts. Its log reached frame 928,579,584; the latest full recovery checkpoint is frame 904,396,800 and the latest inference milestone is 750,059,520. Added a YAML-owned 1,952-cell adapters-only Triton profile, matched 100B old-timing GPU-1 suite, and deterministic three-video-per-250M milestone evaluator. Twenty-two focused configuration/compact-graph tests passed.
+
+Launched the replacement in tmux `connectome-1952-adapters` with trainer PID 3248466 and its watcher in `connectome-1952-adapters-eval` with PID 3248583. The resolved config confirms frozen gains/dynamics, seed 42, release perturbations, 12,288 environments and 49,152 minibatches. TensorBoard 6008 discovered 160 scalar tags; the first captured reward was 34.874 at frame 1,769,472. The existing compact gains run on GPU 0 continues unchanged.
+
 ## [2026-09-13] query | Audit biological attribution of gains actors
 
 Traced the exact frozen/trainable boundary from graph preparation, active gains profiles, actor execution, and stable milestone checkpoints. The policies retain exact prepared edge buffers, support, direction, sign, population masks, and source-derived base magnitudes, but execute diagonally gain-reweighted operators behind fully learned cross-species interfaces and non-biological rate dynamics. At 750.060 million frames the 4,310-cell effective edge array had relative L2 change 0.697 from base with only 10.5% of edges within +/-10%; at 250.085 million frames the 1,952-cell values were 0.604 and 20.0%. Documented why the defensible claim is a MaleCNS-derived recurrent scaffold and why topology attribution still requires matched adapters-only, rewired, and random controls.
