@@ -34,6 +34,8 @@ These are alternative weight parameterizations. Low-rank/edgewise do not add tra
 
 Low-rank scores are `sum(U[dst] * V[src]) / sqrt(rank)`, evaluated only at existing edges. One factor initializes randomly and the other to zero: identity weights with nonzero learning gradients. Edgewise uses one zero-initialized score per edge. Both map scores through a shifted sigmoid into bounded log multipliers and multiply base values by their exponentials. Zero scores map to one, including asymmetric bounds. Neuron gain bounds are square roots of the edge-scale bounds, giving the same overall limits.
 
+The original `[0.25, 4]` neuron-gain interval was introduced as an engineering prior in the initial connectome implementation plan; it was not derived from MaleCNS physiology, the connectome data, or the SimToolReal paper. Its reciprocal endpoints are symmetric around identity in log space. Because incoming and outgoing gains multiply on each edge, it permits total edge scaling from `0.25^2 = 0.0625` through `4^2 = 16`. The later low-rank and edgewise modes inherited `[0.0625, 16]` only to make their allowed per-edge magnitude range comparable, not because that range has biological calibration.
+
 This is a parameter-efficiency comparison, not a strictly nested hierarchy of functions. Nonlinear bounded low-rank modulation is not itself guaranteed to have rank r. Rank 16 would use more factors than independent edge weights. No adaptation penalty is added to SAPG; hard bounds limit weight drift, not dynamical instability. Activation saturation and effective log-weight drift are reported.
 
 ## Biological interpretation
