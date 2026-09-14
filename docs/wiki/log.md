@@ -6,6 +6,10 @@ Last updated: 2026-09-13
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-13] query | Align videos with deployed SAPG member
+
+Confirmed from the official SimToolReal source and the local call path that real deployment and evaluation videos both use `deployment.RlPlayer`, which supplies coefficient ID 50 (block 0); video capture additionally enforces the deterministic Gaussian mean. Documented that any future coefficient-ID selection must change deployment and evaluation together and should be chosen on validation objects rather than the final evaluation cohort.
+
 ## [2026-09-13] query | Gain-bound provenance and success blocks
 
 Traced `[0.25, 4]` to the initial connectome implementation plan and documented that it is a reciprocal log-symmetric engineering prior, not a biologically calibrated MaleCNS range. Expanded success-metric documentation with the six current 2,048-environment SAPG blocks, coefficient IDs `[50, 40, 30, 20, 10, 0]`, entropy-loss coefficients `[0.0025, 0.0020, 0.0015, 0.0010, 0.0005, 0]`, their shared success definition, and the distinction between block-5 training summaries and coefficient-ID-50 deployment.
