@@ -59,6 +59,30 @@ The five-contact filter remains a sensitivity variable, not biological ground tr
 
 Other unresolved choices include keeping the parent graph's weight normalization versus rescaling the smaller operator, preserving required delayed/inhibitory feedback, and matching input/output MLP capacity. With a nonlinear readout, 17 motor features can map to 29 action numbers, but this does not ensure sufficient independently variable control. A tiny core plus a large MLP also weakens biological attribution. No mathematical neuron-count lower bound follows from the number of robot actuators alone.
 
+## Five-contact threshold and resource comparison
+
+The cutoff counts anatomical contacts per directed neuron pair: a pair with four contacts is omitted, while one with five is retained with its count-derived weight. It is inherited from the reference extraction, not fitted to robot performance. The [reference CPG study](https://pmc.ncbi.nlm.nih.gov/articles/PMC13142387/) describes using a minimum count of five for mCNS, but not for its BANC/FANC matrices. [Distributed control circuits across a brain-and-cord connectome](https://www.nature.com/articles/s41586-026-10735-w) also describes filtering connections below five to reduce reconstruction or biological noise. This supports a conservative filtering convention, not a biological boundary or proof that four-contact connections are unimportant.
+
+For the fixed 262 IDs, threshold five retains 3,194 pairs representing 69,216 contacts; threshold one retains 9,483 pairs representing 80,324 contacts. Thus dropping 66.3% of pairs removes only 13.8% of recorded contact count. Contact count is not a measured fraction of functional importance. Threshold one still obeys the reference audit's confidence and VNC-region filters; it is not every synapse in the full CNS. Rerunning neuron selection at threshold one would be a different experiment.
+
+Read-only snapshot on 2026-09-14: the active clipped-Gaussian KL-0.004 and tanh-Gaussian KL-0.016 jobs both use the 1,952/33,720 graph with frozen core, 256-hidden-unit MLP adapters, `triton_fused`, 12,288 environments, horizon/sequence length 16, physical training microbatch 49,152, FP32 core and AMP PPO. Main trainer GPU allocations reported by NVIDIA were approximately 13,023 and 12,550 MiB respectively; these are live allocations, not controlled peak measurements.
+
+The following are shape-derived component sizes, not measurements of a launched 262 policy. Both candidates retain 48 sensory, two existing descending and 31 motor ports, with the same robot observation split and MLP hidden width:
+
+| Component | Current 1,952 | 262 / 9,483 edges | 262 / 3,194 edges |
+| --- | ---: | ---: | ---: |
+| Directed edges | 33,720 | 9,483 | 3,194 |
+| One live FP32 recurrent state, MiB | 91.50 | 12.28 | 12.28 |
+| Full 16-step rollout state buffer, MiB | 1,464.0 | 196.5 | 196.5 |
+| Three core saved tensors over 49,152 training samples, MiB | 1,098.0 | 147.375 | 147.375 |
+| Learned input/output MLP parameters | 224,797 | 72,477 | 72,477 |
+| Forward CSR row chunks of 32 edges | 2,161 | 433 | 252 |
+| Transpose/backward CSR row chunks of 32 edges | 2,144 | 429 | 251 |
+
+Memory formulas follow `rl_games/rl_games/common/a2c_common.py::play_steps` and `rl_games/rl_games/algos_torch/connectome_triton.py::_Step`: live state is `B*N*4` bytes; rollout storage adds horizon 16; three saved core tensors are hidden input, recurrence and preactivation. These rows are separate components with different lifetimes and must not be blindly added into a total GPU peak. The rollout extras are replaced before PPO training, although the CUDA allocator can retain released storage. Additional activations, gradients, batch copies and workspaces are excluded.
+
+Both alternatives reduce neuron-sized buffers by 86.6%. Frozen sparse graph storage is small compared with these batched tensors, and no recurrent-edge parameter gradient is needed. Restoring weak pairs therefore does not triple state memory. Edge visits fall to 28.1% or 9.5% of current, but this is not a wall-clock forecast: the implementation uses per-neuron programs, padded 32-edge chunks, dense adapters and additional backward work. Between the two small variants, actual edges differ by 2.97x but forward/backward chunk counts by about 1.71x, neither a measured runtime ratio. Physics, the privileged critic and general PPO overhead remain. Existing environment-step timing lacks GPU synchronization and cannot establish a clean simulator fraction or speedup bound. No candidate model benchmark or training was launched; total peak memory, FPS, time to a fixed frame budget and time to a target score remain unmeasured.
+
 ## Acceptance criteria
 
 First test tracking in both directions and recovery from perturbations, then contact retention, coordinated finger motion and the actual object-manipulation objective on held-out conditions. Compare equally trained biological and rewired/random frozen graphs with matched interfaces, graph statistics and training budgets. Report performance versus frames and wall time. Do not accept a count because it is small, a graph because it is connected, or a controller because it only generates movement. Further pruning should follow measured loss of useful behavior and interpretable pathway coverage, not a size quota.
