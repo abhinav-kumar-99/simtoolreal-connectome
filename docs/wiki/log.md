@@ -100,6 +100,12 @@ All five revised runs completed and passed optimizer/checkpoint/deployment verif
 
 The final checkpoints each recorded 983,040 frames and 40 actor Adam updates. Training wall times ranged from 29.492 to 31.405 seconds; final raw mean episode rewards ranged from 52.913 to 52.947 and every training success ratio was zero. Thirty closed-loop evaluations completed, with zero Task Progress at both thresholds. Fifteen requested videos were verified as nonempty 100-frame, 10-second simulator recordings.
 
+## [2026-09-13] query | Audit author-provided training curves
+
+Audited every tracked Git object and the current tips of the author study branches. The repository contains three exact seed-0 reward CSVs; the newest evaluation-member check-in export has 60,277 rows, seven series, and an RL-Games LSTM curve through 1.255 billion frames. The plotting source establishes restart merging, duplicate-step handling, a trailing 25-million-frame mean, and block-5 comparison semantics. No tracked TensorBoard events, W&B histories, ten-run CSV, or raw five-seed Figure 8 values were found.
+
+Compared the two live old-timing gains actors with the study LSTM at matched frame coordinates using the same smoothing. Their smoothed dense rewards were higher at the captured frames, but this is not a controlled actor comparison because the study uses seed 0 and an easier 654-cuboid-only distribution. Recorded separately that deterministic deployment-member Task Progress remains flat at 0.7407% for the available 4,310-neuron milestones.
+
 ## [2026-09-13] initialize | MaleCNS connectome actor
 
 Initialized the repository wiki and recorded the front-leg circuit identity, actor boundary, and YAML-driven experiment workflow. Added pinned source configuration and reproducible graph preparation machinery.
