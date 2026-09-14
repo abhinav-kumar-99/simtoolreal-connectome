@@ -24,7 +24,7 @@ Related: [Overview](overview.md), [Log](log.md)
 ## Workflows
 
 - [Experiment workflow](workflows/connectome-experiments.md) — Preparation, profiling, smoke testing, and training. Last updated 2026-09-13.
-- [Eligibility training](workflows/eligibility-training.md) — Implemented approximate online trainer, YAML usage, checkpoint/TensorBoard/video validation and long-run contract. Last updated 2026-09-14.
+- [Eligibility training](workflows/eligibility-training.md) — Approximate online trainer, YAML and video contracts, and early live-curve audit showing negligible effective gain adaptation. Last updated 2026-09-14.
 
 ## Analyses
 

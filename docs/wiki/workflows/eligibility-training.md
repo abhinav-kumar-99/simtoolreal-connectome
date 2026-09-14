@@ -29,6 +29,18 @@ This trainer instead bootstraps every fresh transition with a mandatory critic: 
 
 Persistent trace tensors alone cost about 0.594 MiB per environment: approximately 228 MiB at 384 environments, or 7.125 GiB at 12,288, before intermediate tensors, simulator and model state. This implementation favors transparent equations and validation; it is not a demonstrated throughput improvement over PPO.
 
+## Early live behavior audit: 2026-09-14 07:54 EDT
+
+Read the active (not `_log4096_stopped_*`) TensorBoard event trees under `train_dir/connectome/adaptation_100b_gains_update_timing/{eligibility_1952_100b,eligibility_1952_adapters_100b}/00_*/rl_runs/*/summaries`. The snapshot reached 20,054,016 frames for CUDA-0 adapters+gains and 23,003,136 for CUDA-1 adapters-only. All inspected reward, critic, trace, update, clipping, saturation and success series were finite.
+
+Comparing matched frame windows, mean `rewards/step` changed from 24.48 (1–5M) to 21.78 (15–18M) for gains, and 21.38 to 25.39 for adapters-only. Corresponding raw per-transition means were 0.05432 to 0.04545 and 0.04983 to 0.05517. These are noisy single-seed exploratory training measurements, not evidence that either mode is superior. Success readings were overwhelmingly zero with occasional isolated successes; closest-keypoint distance remained approximately 0.394 after startup. There is no convincing task-learning trend yet.
+
+TD absolute error declined from approximately 0.0091 initially to 0.0024/0.0023 at the snapshot; critic Huber loss stayed around 1e-4. Credit-trace RMS stayed near 0.66/0.68, action clipping near 0.086%, and hidden-state saturation near 0.17%. Stable traces and falling prediction error are compatible with predicting a poor policy well; they do not establish policy improvement. Raw early episode-return growth is also confounded by completed episode lengths increasing from 207 to approximately 470. `rewards/step` averages only episodes completed in each logging chunk, which contributes to its noise.
+
+The strongest concern is negligible effective gain adaptation. At both runs' saved frame-15,728,640 `nn/last.pth`, the gains run's incoming/outgoing raw-vector norms were 3.014e-7/3.390e-7. Reconstructing the source's bounded exponential/sigmoid gain transform on CPU in float32 changed only one incoming and one outgoing effective gain relative to initialization, each by 1.1921e-7 (2 of 3,904 total); GPU rounding may differ at this scale. The adapters-only raw vectors remained exactly zero. Thus gains were functionally almost fixed, despite nonzero logged proposed updates of approximately 5e-10 per group per vector step. Those logs measure `change.norm()` before considering representational rounding, not measured effective-gain change. Readout biases were nonzero, confirming some actor updates accumulated.
+
+The resolved configuration scales rewards by 0.01 and uses direct actor ascent (not Adam) with adapter/readout/gain rates 1e-5/1e-4/1e-6. Together with approximate credit and small observed gradients, this is a plausible explanation for weak adaptation, not an isolated causal diagnosis. Before treating a 100B run as a useful algorithm comparison, validate effective parameter/action change and learning sensitivity in a controlled short experiment. No training process or configuration was changed by this audit; no scheduled 250M video milestone had yet been reached.
+
 ## Run from the repository root
 
 Short from-scratch integration test (96 environments, 32 transitions per environment, 3,072 total frames):
