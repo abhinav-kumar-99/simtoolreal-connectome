@@ -1,0 +1,62 @@
+# Full-geometry two-epoch gate for the matched 262-neuron policy pair.
+schema_version: 1
+name: ppo_262_pair_smoke
+stages: [prepare, train]
+output_directory: train_dir/connectome/ppo_262_pair_smoke
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+preparation:
+  config: configs/connectome/malecns_262_distal_leg.yaml
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - name: clipped_kl004
+      train_profile: SimToolRealConnectome262AdaptersMLPSAPG
+      overrides: {train.params.config.kl_threshold: 0.004}
+    - name: tanh_kl016
+      train_profile: SimToolRealConnectome262AdaptersMLPTanhSAPG
+      overrides: {train.params.config.kl_threshold: 0.016}
+  seeds: [42]
+  gpu_assignments: [0, 1]
+  max_parallel: 2
+  num_envs: 12288
+  sapg_block_size: 2048
+  epochs: 2
+  max_frames: 393216
+  minibatch_size: 49152
+  central_critic_minibatch_size: 49152
+  rollout_accumulation_steps: 1
+  actor_microbatch_size: 49152
+  central_critic_microbatch_size: 49152
+  inference_checkpoint_interval_frames: 196608
+  save_frequency: 1
+  save_best_after: 0
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: ppo_262_pair_smoke
+    tags: [malecns, distal-front-leg-262, adapters-only, interface-mlp, smoke]
+  overrides:
+    train.params.config.max_lr: 0.01
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    train.params.config.expl_reward_coef_scale: 0.005
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

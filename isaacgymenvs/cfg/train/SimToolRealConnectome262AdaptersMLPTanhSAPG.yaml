@@ -1,0 +1,10 @@
+defaults:
+  - SimToolRealConnectome262AdaptersMLPSAPG
+  - _self_
+
+params:
+  model:
+    name: continuous_a2c_tanh_logstd
+    entropy_samples: 1
+  config:
+    name: ${resolve_default:SimToolRealConnectome262AdaptersMLPTanhSAPG,${....experiment}}

@@ -1,4 +1,4 @@
-"""Prepare the approved path-plus-sensory-premotor circuit, without a size quota.
+"""Prepare approved compact MaleCNS circuits, without a size quota.
 
 Imported by prepare_malecns_connectome.py; all inputs and policies are YAML-owned.
 """
@@ -90,6 +90,90 @@ def select_compact(neurons, reference, selection):
     return body_ids, kept, indices, stats, membership
 
 
+def select_distal_leg(neurons, reference, selection):
+    """Select the fixed-threshold proprioceptive-to-distal-motor motif circuit."""
+    if not neurons.bodyId.is_unique:
+        raise ValueError('Duplicate neuron IDs')
+    if reference.duplicated(['source', 'destination']).any():
+        raise ValueError('Reference pairs must be aggregated before thresholding')
+    threshold = int(selection['minimum_synapses'])
+    if threshold < 1:
+        raise ValueError('minimum_synapses must be positive')
+    ids = set(neurons.bodyId.astype(int))
+    edges = reference[
+        (reference.synapses >= threshold)
+        & reference.source.isin(ids)
+        & reference.destination.isin(ids)
+    ].copy()
+
+    sensory_group = group_union(neurons, [selection['sensory_group']])
+    motor_group = group_union(neurons, [selection['motor_group']])
+    sensory = sensory_group & set(neurons.loc[
+        neurons[selection['sensory_side_column']].eq(selection['sensory_side']),
+        'bodyId',
+    ].astype(int))
+    motor = motor_group & set(neurons.loc[
+        neurons[selection['motor_side_column']].eq(selection['motor_side'])
+        & neurons[selection['motor_type_column']].isin(selection['motor_types']),
+        'bodyId',
+    ].astype(int))
+    intermediary = (
+        set(edges.loc[edges.source.isin(sensory), 'destination'].astype(int))
+        & set(edges.loc[edges.destination.isin(motor), 'source'].astype(int))
+    ) - sensory - motor
+    initial = sensory | motor | intermediary
+    induced = edges[
+        edges.source.isin(initial) & edges.destination.isin(initial)
+    ].copy()
+
+    def reachable(starts, sources, destinations):
+        adjacency = {}
+        for source, destination in zip(sources, destinations):
+            adjacency.setdefault(int(source), []).append(int(destination))
+        reached = set(starts)
+        pending = list(starts)
+        while pending:
+            for destination in adjacency.get(pending.pop(), ()):
+                if destination not in reached:
+                    reached.add(destination)
+                    pending.append(destination)
+        return reached
+
+    retained = (
+        initial
+        & reachable(sensory, induced.source, induced.destination)
+        & reachable(motor, induced.destination, induced.source)
+    )
+    body_ids = np.asarray(sorted(retained), dtype=np.int64)
+    kept = induced[
+        induced.source.isin(retained) & induced.destination.isin(retained)
+    ].sort_values(['source', 'destination']).reset_index(drop=True)
+    descending = group_union(neurons, selection['descending_groups']) & retained
+    populations = {
+        'sensory': sensory & retained,
+        'descending': descending,
+        'motor': motor & retained,
+    }
+    indices = {
+        name: np.flatnonzero(np.isin(body_ids, sorted(members))).astype(np.int64)
+        for name, members in populations.items()
+    }
+    stats = {
+        'initial_neurons': len(initial),
+        'route_pruned_neurons': len(initial - retained),
+        'intermediary_neurons': len(intermediary & retained),
+        'body_ids_sha256': hashlib.sha256(
+            body_ids.astype('<i8').tobytes()
+        ).hexdigest(),
+    }
+    membership = neurons[neurons.bodyId.isin(retained)].copy().sort_values('bodyId')
+    membership['compact_sensory'] = membership.bodyId.isin(sensory)
+    membership['compact_motor'] = membership.bodyId.isin(motor)
+    membership['compact_intermediary'] = membership.bodyId.isin(intermediary)
+    membership['compact_descending_port'] = membership.bodyId.isin(descending)
+    return body_ids, kept, indices, stats, membership
+
+
 def source_signs(body_ids, transmitters, policy):
     """Preserve the original model convention; uncertainty is explicit, not biology."""
     if not transmitters.body.is_unique:
@@ -104,7 +188,10 @@ def source_signs(body_ids, transmitters, policy):
 
 def prepare_compact_connectome(config_path: Path, repository_root: Path):
     config = load_yaml(config_path)
-    if config.get('schema_version') != 1 or config.get('preparation_kind') != 'compact_paths':
+    kind = config.get('preparation_kind')
+    if config.get('schema_version') != 1 or kind not in {
+        'compact_paths', 'compact_distal_leg'
+    }:
         raise ValueError('Unsupported compact preparation contract')
     paths = {}
     provenance = {}
@@ -116,7 +203,8 @@ def prepare_compact_connectome(config_path: Path, repository_root: Path):
         provenance[name] = spec
     neurons = pd.read_csv(paths['neurons']).fillna('')
     reference = pd.read_csv(paths['edges'])
-    ids, edges, populations, selection, membership = select_compact(
+    selector = select_compact if kind == 'compact_paths' else select_distal_leg
+    ids, edges, populations, selection, membership = selector(
         neurons, reference, config['selection'])
     observed = {'neurons': len(ids), 'edges': len(edges), **{
         f'{name}_neurons': len(indices) for name, indices in populations.items()}}
@@ -148,12 +236,20 @@ def prepare_compact_connectome(config_path: Path, repository_root: Path):
     membership['consensus_nt'] = labels.to_numpy()
     membership.to_csv(output / 'neurons.csv', index=False)
     edges.to_csv(output / 'edges.csv.gz', index=False)
+    interface = (
+        config['selection']['population_groups']
+        if kind == 'compact_paths'
+        else {
+            name: [int(ids[index]) for index in indices]
+            for name, indices in populations.items()
+        }
+    )
     manifest = {
         'schema_version': 1, 'observed': observed, 'selection': selection,
         'sources': provenance, 'config': str(config_path),
         'config_sha256': sha256_file(config_path), 'scipy_version': scipy.__version__,
         'orientation': 'CSR rows postsynaptic; columns presynaptic',
-        'interface': config['selection']['population_groups'],
+        'interface': interface,
         'transmitter_counts': {str(k): int(v) for k, v in labels.value_counts().items()},
         'transmitter_signs': config['transmitter_signs'],
         'sign_caveat': 'Non-ACh negative, including unclear/missing, is a model assumption.',

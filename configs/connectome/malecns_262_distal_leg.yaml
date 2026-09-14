@@ -1,0 +1,40 @@
+schema_version: 1
+preparation_kind: compact_distal_leg
+output_directory: data/connectomes/processed/malecns_262_distal_leg
+sources:
+  neurons:
+    path: profiles/connectome/front_leg_coverage/candidate_neurons.csv
+    sha256: 4486dd46e3bcee4b3f87e10e0716b6232d44d95fb887a4a4169490fee99ee862
+  edges:
+    path: profiles/connectome/front_leg_coverage/reference_incoming_edges.csv.gz
+    sha256: d2e59372049b061c11450e013d9424d15ff369179839ab657ed6f0144de1aa3a
+  neurotransmitters:
+    path: data/connectomes/raw/malecns_v1_audit/neurotransmitters.feather
+    sha256: 95c9289220663abeb3409f3ad9e5a7f8a53f8093f5139d15502cd08da8879621
+selection:
+  minimum_synapses: 5
+  sensory_group: front_proprioceptors
+  sensory_side_column: rootSide
+  sensory_side: L
+  motor_group: front_motors
+  motor_side_column: somaSide
+  motor_side: L
+  motor_type_column: type
+  motor_types:
+    - Ti flexor MN
+    - Acc. ti flexor MN
+    - Ti extensor MN
+    - Ta depressor MN
+    - Ta levator MN
+    - ltm MN
+    - ltm1-tibia MN
+    - ltm2-femur MN
+  descending_groups: [grooming_dn_type_candidates, front_specific_descending]
+expected: {neurons: 262, edges: 3194, sensory_neurons: 48, descending_neurons: 2, motor_neurons: 31}
+expected_selection:
+  initial_neurons: 272
+  route_pruned_neurons: 10
+  intermediary_neurons: 183
+  body_ids_sha256: e29e16914c7ba14c4839621c4c667cf9bd7eeaf4bba9cef899f84690ca183097
+transmitter_signs: {acetylcholine: 1, gaba: -1, glutamate: -1, unclear: -1, missing: -1}
+normalization: {target: 1.0}

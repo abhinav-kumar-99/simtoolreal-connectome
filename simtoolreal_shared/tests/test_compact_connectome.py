@@ -5,7 +5,11 @@ import pandas as pd
 import pytest
 import yaml
 
-from simtoolreal_shared.compact_connectome import select_compact, source_signs
+from simtoolreal_shared.compact_connectome import (
+    select_compact,
+    select_distal_leg,
+    source_signs,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -72,6 +76,29 @@ def test_approved_local_graph_identity_and_signed_csr():
         reconstructed.sort_values(['source', 'destination']).reset_index(drop=True),
         edges[['source', 'destination', 'synapses']], check_dtype=False)
     assert np.isfinite(saved['values']).all()
+
+
+def test_approved_distal_leg_graph_identity_and_ports():
+    from simtoolreal_shared.connectome_data import load_artifact
+    config = yaml.safe_load(
+        (ROOT / 'configs/connectome/malecns_262_distal_leg.yaml').read_text()
+    )
+    source = ROOT / config['sources']['neurons']['path']
+    artifact = ROOT / config['output_directory'] / 'biological.npz'
+    if not source.exists() or not artifact.exists():
+        pytest.skip('Pinned local audit/artifact not installed')
+    ids, edges, ports, stats, _ = select_distal_leg(
+        pd.read_csv(source).fillna(''),
+        pd.read_csv(ROOT / config['sources']['edges']['path']),
+        config['selection'],
+    )
+    assert stats == config['expected_selection']
+    assert len(ids) == 262 and len(edges) == 3194
+    saved = load_artifact(artifact)
+    np.testing.assert_array_equal(ids, saved['body_ids'])
+    for name, indices in ports.items():
+        np.testing.assert_array_equal(indices, saved[name + '_indices'])
+    assert ids[ports['descending']].tolist() == [220203, 909558]
 
 
 def test_compact_profile_and_suite_resolve_old_timing(tmp_path):

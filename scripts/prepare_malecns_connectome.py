@@ -19,7 +19,7 @@ def main() -> None:
         args.config if args.config.is_absolute() else repository_root / args.config
     )
     kind = load_yaml(config_path).get('preparation_kind', 'original_csv')
-    if kind == 'compact_paths':
+    if kind in {'compact_paths', 'compact_distal_leg'}:
         from simtoolreal_shared.compact_connectome import prepare_compact_connectome
         manifest = prepare_compact_connectome(config_path, repository_root)
     elif kind == 'original_csv':

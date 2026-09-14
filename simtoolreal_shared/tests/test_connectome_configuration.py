@@ -128,6 +128,38 @@ def test_compact_profiles_compose_with_explicit_adaptation_modes() -> None:
                 assert "log_std_bounds" not in config.train.params.model
 
 
+def test_distal_leg_profiles_compose_with_matched_policy_distributions() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    import isaacgymenvs  # noqa: F401 - registers OmegaConf resolvers
+
+    profiles = {
+        "SimToolRealConnectome262AdaptersMLPSAPG": "continuous_a2c_logstd",
+        "SimToolRealConnectome262AdaptersMLPTanhSAPG": (
+            "continuous_a2c_tanh_logstd"
+        ),
+    }
+    with initialize_config_dir(
+        version_base="1.1", config_dir=str(repository_root / "isaacgymenvs/cfg")
+    ):
+        for profile, expected_model in profiles.items():
+            config = compose(
+                config_name="config",
+                overrides=["task=SimToolRealLSTMAsymmetric", f"train={profile}"],
+            )
+            graph = config.train.params.network.connectome
+            assert dict(graph.expected) == {
+                "neurons": 262,
+                "edges": 3194,
+                "sensory_neurons": 48,
+                "descending_neurons": 2,
+                "motor_neurons": 31,
+            }
+            assert graph.adaptation.weight_mode == "adapters_only"
+            assert graph.adaptation.learn_dynamics is False
+            assert graph.interface_projections.architecture == "mlp"
+            assert config.train.params.model.name == expected_model
+
+
 def test_suite_contracts_own_required_execution_settings() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     suite_directory = repository_root / "configs/connectome/suites"
