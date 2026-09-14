@@ -1,6 +1,6 @@
 # Approved 1,952-neuron training runs
 
-The exact path-plus-sensory-premotor candidate uses matched neuron-gains and adapters-only policies with old optimizer timing; failed histories are preserved and a fresh stable-KL restart contract is available.
+The exact path-plus-sensory-premotor candidate uses old optimizer timing; stopped/failed histories are preserved, the gains PPO policy remains live, and its linear adapters-only counterpart has been replaced by a fresh MLP-interface policy.
 
 Last updated: 2026-09-14
 
@@ -100,6 +100,34 @@ An early increase is directly encouraged by the configured SAPG objective. Six b
 Continual unbounded growth is not a desirable convergence property. Gaussian differential entropy has no maximum here, action log standard deviations are unconstrained, and simulator actions are clipped after sampling. Large variance can therefore improve the entropy term while adding little useful executed exploration. The repaired KL only measures local policy change and makes invalid measurements reduce LR; it does not constrain accumulated drift from the initial policy. The current standard-schedule pattern also commonly observes high KL in mini-epoch 0 and low KL in mini-epoch 1, so a divide-by-1.5 followed by multiply-by-1.5 can cancel within a phase. At this snapshot, aggregate logged LR was 0.0003375 for both policies and neither had logged the 0.01 ceiling, so the ongoing entropy drift is not evidence that the actor is currently stuck at max LR.
 
 The proper interpretation is therefore: rising entropy is expected early for the rewarded exploration members, but a persistent monotonic rise without stabilization is a warning because this exact unconstrained quantity drove the previous long-run failures. Reward also rose during this early window, so the logs do not yet establish that current exploration is harmful. Monitor block-specific entropy/log standard deviation, action clipping or saturation, reward/success, and invalid-KL/applied-step telemetry; stable KL alone is insufficient.
+
+### MLP adapters-only replacement
+
+At the user's direction on 2026-09-14, only the stable-KL linear adapters-only child PID 3454786 was interrupted. Its final TensorBoard coordinate is epoch 2,926/frame 575,078,400 with finite reward, actor loss, KL, LR and entropy. The latest finite named checkpoint is epoch 2,902/frame 570,556,416 with 23,206 applied actor Adam steps; the regular recovery checkpoint is epoch 2,800/frame 550,502,400 with 22,390 steps. Its 250M and 500M inference checkpoints and all six high-resolution mean-action videos remain intact. No directory was removed. The stable-KL gains PPO child PID 3454787 and both eligibility trainers were not signaled.
+
+The replacement starts fresh rather than loading the linear policy. `ppo_1952_mlp_adapters_kl004_100b.yaml` changes only the policy profile and single-policy run identity relative to the stopped case: `SimToolRealConnectome1952AdaptersMLPSAPG` uses bias-free `128 -> 256 -> 384` and `44 -> 256 -> 157` input MLPs plus a biased `135 -> 256 -> 29` action-mean MLP. It preserves seed 42, adapters-only/frozen recurrence, Triton, 12,288 environments, horizon 16, one-rollout update timing, 49,152 logical and physical actor/critic minibatches, two mini-epochs, KL target 0.004, LR ceiling 0.01, perturbations, exploration, 100B cap, recovery frequency and 250M milestone cadence.
+
+The full-geometry MLP smoke completed 393,216 frames in 25.89 seconds of child training and 27.23 seconds total while sharing GPU 1 with eligibility. It used no microbatch reduction, applied all 16 scheduled actor optimizer steps, saved only finite model tensors and reloaded to a finite `(1, 29)` deployment action. This establishes execution and memory fit, not task learning.
+
+The fresh MLP suite launched in tmux `connectome-ppo-mlp-adapters`: coordinator PID 3502131 and trainer PID 3502258 on physical GPU 1. Its independent mean-action milestone watcher is PID 3502135 in `connectome-ppo-mlp-adapters-eval`. Initial live telemetry was finite through frame 3,735,552. The original combined watcher was replaced by gains-only continuation PID 3502127 in `connectome-ppo-kl004-lr01-eval`; it reuses the existing status/output tree, retaining both completed linear-policy milestones while continuing only future gains evaluations. TensorBoard 6008 watches the common parent and discovers the MLP run automatically.
+
+Run the replacement contracts from the repository root:
+
+```bash
+# Full-batch two-phase execution/reload gate. Do not rerun into its populated output.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_mlp_adapters_kl004_smoke.yaml
+
+# Fresh 100B adapters-only MLP training.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_mlp_adapters_kl004_100b.yaml
+
+# Three high-resolution deterministic videos at every 250M-frame MLP milestone.
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_mlp_adapters_kl004_milestones.yaml
+
+# Continue future videos for the surviving gains policy only.
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_kl004_gains_milestones.yaml
+```
+
+The suite entrypoint owns preparation, exact training overrides, GPU isolation, timing and checkpoint reload validation. The milestone helper owns checkpoint polling, mean-action evaluation and three object/task videos; it should be launched separately so training never waits on rendering. The key suite fields are `train_profiles`, `gpu_assignments`, `num_envs`, `sapg_block_size`, rollout accumulation, logical/physical minibatches, `epochs`, `max_frames`, KL/LR overrides and checkpoint cadence. The key evaluation fields are suite/run paths, policy GPU, milestone interval, `action_selection: mean`, camera reduction factor and eval cases.
 
 ### Interpretation of KL and the baseline comparison
 

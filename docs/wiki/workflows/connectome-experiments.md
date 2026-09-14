@@ -22,6 +22,16 @@ Run the compact two-policy MLP projection smoke gate from the repository root:
 
 This YAML runs the 1,952-cell adapters-only and adapters-plus-gains MLP profiles concurrently, one per GPU, for two short epochs. The important settings are `train_profiles`, `interface_projections` inherited from each profile, `gpu_assignments`, `max_parallel`, `num_envs`, both minibatch sizes, `epochs`, and `max_frames`. `on_existing: fail` prevents accidental reuse of a prior smoke directory. The suite was added as a reproducible gate but was not launched while the long-running jobs occupied both GPUs. For a longer YAML-owned experiment, select `SimToolRealConnectome1952AdaptersMLPSAPG` or `SimToolRealConnectome1952GainsMLPSAPG` as `train_profile`; no architecture CLI argument is required.
 
+The active full-size adapters-only MLP replacement uses a single-policy gate and long-run contract:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_mlp_adapters_kl004_smoke.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_mlp_adapters_kl004_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_mlp_adapters_kl004_milestones.yaml
+```
+
+The smoke and long-run YAMLs use the same 12,288-environment, 49,152-minibatch geometry, seed, KL/LR feedback, task perturbations and exploration settings; only their frame budget/save cadence differ. The evaluator uses mean actions and three high-resolution object/task videos every 250M frames. `ppo_1952_kl004_gains_milestones.yaml` is the separate watcher for the surviving gains policy and deliberately reuses its original evaluation state tree.
+
 Old timing is now the connectome profile default: one rollout and 49,152-sample actor/critic minibatches, with physical batches following the logical size. Historical suites can explicitly override this. The approved compact gains run pins 12,288 environments and the complete old geometry; see [1,952-cell preparation, smoke, launch and monitoring commands](../analyses/compact-1952-training.md). Its exact body-ID set is validated, not padded to a size target.
 
 Run the matched custom-kernel benchmark from the repository root:
