@@ -155,3 +155,7 @@ Measured the union of explicitly selected functional candidate groups without pr
 ## [2026-09-13] query | Origin and meaning of five-synapse cutoff
 
 Verified the cutoff in Pugliese's extraction methods and the production NPZ: minimum raw magnitude 5; 17,791 edges exactly at 5; none below 5. Documented anatomical cell-pair contact count versus firing/weight thresholds, explicit reuse in the audit YAML, and the paper's absence of this cutoff for FANC/BANC. Highlighted that same-node threshold changes must be distinguished from unrestricted node expansion. No runtime setting was changed.
+
+## [2026-09-13] query | Evidence-led compact additions without padding
+
+Updated the pathway analysis and index to supersede a fixed approximately 2,000-cell target at the user's direction. Recomputed a 1,596-cell shortest-path footprint and screened excluded cells against explicit directed sensory-motor and GABA feedback motifs. Found 276 proprioceptive-premotor and 119 tactile-premotor candidates, 356 unique (338 VNC intrinsic), plus a broader overlapping 672-cell descending-premotor pool. Recorded actual IN08A006 and IN19A076 connectivity, exact input denominators, source hashes and reproducible traversal semantics. Anatomical candidates are not demonstrated robot-control necessities; neither shortest-path selection nor motif unions constitute a chosen compact controller. This query changed documentation only and launched no training.

@@ -93,6 +93,32 @@ Within the same public reference at >=5 synapses, that 1,285-cell induced graph 
 
 The [Pugliese preprint](https://pmc.ncbi.nlm.nih.gov/articles/PMC13142387/) describes an 803-neuron FANC front-left motor/local-premotor/DNg100 simulation and a much smaller isolated rhythm-generating motif. Those findings concern motor rhythms, not dexterous arm/hand transfer, and do not establish a minimum for our task. Reduction acceptance should measure fine tracking, perturbation response, coordinated multi-joint/contact behavior, and anatomical input-to-output paths; locomotor oscillation or reward alone is insufficient evidence of preserving the intended computations. No compact extraction or training experiment was launched for this question.
 
+## Evidence-led additions, not a 2,000-cell quota
+
+The user explicitly rejected filling a neuron budget. The approximately 2,000 target above is **superseded as a selection objective**: neuron count must follow justified pathway inclusion. No compact training has been launched and no compact actor artifact has been deployed.
+
+A preliminary structural screen starts with the 1,285 seeds and the 4,778-cell public-reference universe, retaining directed pairs with >=5 contacts. With IDs sorted, build a source-row/destination-column CSR graph; run SciPy `csgraph.dijkstra` with `unweighted=True`, `min_only=True`, and `return_predecessors=True`, first from all proprioceptor/tactile/selected-descending inputs, then from front motors on the transposed graph. Trace the predecessor chain of every reachable seed in both traversals. Union those paths with all seeds. This yields 1,596 cells, 18,663 induced edges and 44 isolated cells. It is one shortest-path footprint, not a minimum or sufficient circuit; equal-hop alternatives and inhibitory feedback need separate consideration.
+
+Screening cells **outside that 1,596 set** gives the following independently counted anatomical motifs. Every link obeys the same >=5-contact rule; membership does not imply physiological necessity.
+
+| Motif | Additional cells | Of these, VNC intrinsic neurons |
+| --- | ---: | ---: |
+| Front proprioceptor -> cell -> front motor | 276 | 262 |
+| Front tactile afferent -> cell -> front motor | 119 | 111 |
+| Union of those two sensory-to-motor motifs | 356 | 338 |
+| Selected descending neuron -> cell -> front motor | 672 | 600 |
+
+The proprioceptive and tactile sets overlap by 39 cells. The other 18 cells in their union are 15 ascending, two descending and one sensory neuron; do not describe all 356 as local interneurons. The 276 proprioceptive candidates make 1,682 directed connections totaling 49,702 contacts onto 112 front motors: 19.32% of all >=5-contact input onto the 135 front motors **from within the 4,778 reference**, not of whole-CNS motor input. This is synapse mass, not percent behavioral contribution. Adding the full sensory-motif union would produce 1,952 cells and 33,720 edges, still with 44 isolated cells; this is an illustrative set calculation, not a chosen profile. The larger descending set is a review pool, not an automatic inclusion list.
+
+Concrete omitted examples, already present in the original 4,310-cell inventory:
+
+- `IN08A006`, bodies 800561 (left T1) and 801437 (right T1), has public consensus GABA labels. The left cell receives 253 contacts from front proprioceptors and 182 from the selected descending group, and sends 698 contacts to seven front motors. The right receives 87 and 155 respectively, and sends 802 contacts to eight front motors. These are explicit command/sensory-convergence and premotor candidates, not generic high-degree padding.
+- `IN19A076`, body 817443 (left T1), is GABA-labelled, receives 130 contacts from front proprioceptors and 72 from selected descending cells, and sends 242 contacts back to nine front proprioceptors. It has no retained direct front-motor output. It is a candidate sensory-feedback regulator, not a physiologically identified gating cell. Nine excluded GABA-labelled cells have output to front proprioceptors plus input from proprioceptors or selected descending cells.
+
+These observations justify investigating hundreds of additional cells, but not claiming that exactly 400 cells are necessary, that every candidate should be kept, or that the unvalidated 1,285 seeds are irreducible. Shortest paths alone preserve reachability while potentially losing parallel computations and feedback. The [FeCO circuit study](https://www.nature.com/articles/s41467-025-59302-3) supports inspecting local sensory-motor feedback; the [motor-module study](https://pmc.ncbi.nlm.nih.gov/articles/PMC11356479/) supports inspecting structured premotor input rather than treating all alternate routes as redundant. Neither establishes the roles of these exact MaleCNS body IDs in robot control. Tactile motifs also remain conditional on the robot interface, which currently lacks explicit tactile channels.
+
+Evidence: `profiles/connectome/front_leg_coverage/candidate_neurons.csv` (SHA256 `4486dd46e3bcee4b3f87e10e0716b6232d44d95fb887a4a4169490fee99ee862`), `reference_incoming_edges.csv.gz` (`d2e59372049b061c11450e013d9424d15ff369179839ab657ed6f0144de1aa3a`), and public `data/connectomes/raw/malecns_v1_audit/neurotransmitters.feather` (`95c9289220663abeb3409f3ad9e5a7f8a53f8093f5139d15502cd08da8879621`). Group masks and edge provenance are owned by `configs/connectome/audits/front_leg_coverage.yaml` and `scripts/audit_front_leg_coverage.py`. Counts were recomputed from these files, not inferred from papers.
+
 ## Unrestricted upstream completion boundary
 
 A follow-up request to add everything missing was checked before changing the actor. Starting from the 4,778-cell coordination-and-touch candidate, recursively add every presynaptic partner among public `status: Traced` neurons plus the original IDs. Use the same explicit VNC primary-post ROI list and confidence >=0.5 as the audit, retaining all positive connection counts (minimum one synaptic contact, rather than the candidate table's five). This is a structural incoming-closure test, not a functional pathway identification.
