@@ -199,3 +199,7 @@ Extended the online-learning analysis with random adapter/readout initialization
 ## [2026-09-13] query | Eligibility trainer infrastructure compatibility
 
 Inspected the actual Isaac Gym entrypoint, algorithm/player factories, GPU observer, suite overrides/budget checks, checkpoint verification, inference export, deployment conditioning and video/milestone loaders. Documented workflow-compatible integration versus a non-drop-in PPO optimizer replacement, including algorithm-aware validation, recovery trace state, frozen evaluation and comparable TensorBoard axes. Preserved the separate trainer/YAML proposal and listed end-to-end acceptance gates. No trainer implementation, executable eligibility config, runtime mutation or new training was performed.
+
+## [2026-09-13] query | Existing RL traces and connectome-specific eligibility hypotheses
+
+Verified the current GAE recurrence and live resolved gamma 0.99, lambda 0.95 and 16-step unroll. Clarified that replacing BPTT with local parameter traces is distinct from the temporal credit already present in PPO. Compared primary GAE/PPO/e-prop evidence with this actor's 3,904 gain parameters, 56,060 adapter weights and restricted motor readout. Documented numerical/credit/hardware tradeoffs, shared benefits to PPO, and a proposed algorithm-by-topology comparison to test a genuinely connectome-specific advantage. Documentation only; no runtime changes or launches.
