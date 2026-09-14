@@ -17,6 +17,19 @@ Related: [Billion-step adaptation run](../../analyses/adaptation-1b-run.md), [Ex
 
 Paper Figure 8 plots episode reward against 0--9 billion environment steps for SAPG plus asymmetric critic, PPO plus asymmetric critic, and SAPG plus symmetric critic. Curves and uncertainty bands are averages across five seeds. The paper and main branch do not provide the underlying per-seed values, TensorBoard event files, or a public W&B run identifier, so numerical values from this figure would require plot digitization and should be labeled approximate.
 
+### Figure 8 pixel calibration
+
+The arXiv v2 source contains a 1,915 x 1,041 PNG for Figure 8. Its plotting area spans approximately pixels 255--1,883 over 0--9 billion environment steps and pixels 820.5--59 over rewards 0--8,000. One horizontal pixel is therefore about 5.53 million frames and one vertical pixel about 10.5 reward. The teal mean stroke is approximately 11--12 pixels thick, or roughly 115--125 reward from lower to upper edge; extracting the stroke midpoint makes estimates to tens, rather than hundreds, of reward reasonable, but does not recover the source data.
+
+At the 2026-09-13 21:01 EDT live snapshots, the 1,952-neuron run was at 249,888,768 frames and the 4,310-neuron run at 681,443,328 frames. These map to horizontal pixels 300.3 and 378.4. The teal stroke midpoints map to paper mean rewards of approximately 92 and 292, respectively; report these as about 95 and 295 with approximately +/-20 digitization uncertainty. The full visible stroke envelope is a more conservative approximately +/-60 reward.
+
+| Actor | Matched frame | Current trailing-25M reward | Digitized Figure 8 mean | Current / paper estimate |
+| --- | ---: | ---: | ---: | ---: |
+| 1,952-neuron gains, old timing | 249,888,768 | 87.497 | about 95 | about 0.92x |
+| 4,310-neuron gains, old timing | 681,443,328 | 228.383 | about 295 | about 0.77x |
+
+The compact policy is indistinguishable from the paper mean at this precision. The 4,310-neuron policy is likely below the paper mean at the matched frame, although the plotted stroke width prevents a precise gap estimate. Unlike the easier-cuboid study CSV comparison below, Figure 8 is the paper's five-seed full-method curve and is the more relevant visual reference. It remains an approximate visual comparison: the image does not reveal its numerical smoothing procedure, per-seed values, or exact plotted samples.
+
 The upstream transformer-study branch contains three exact numerical CSV exports. The newest and most useful comparison file is `reward_curves_eval_policy_seed0_20260812_checkin.csv`: 60,277 data rows covering seven seed-0 series. Its `rlgames-lstm-sapg-seed0` `rewards/step` series has 12,769 points through frame 1,255,145,472, ending at raw reward 371.404 and trailing-25-million-frame mean 374.783. The earlier non-check-in export has 41,615 data rows and five series; its LSTM curve ends at frame 874,217,472. `reward_curves_seed0_20260812.csv` is the all-policy aggregate rather than the evaluation-member comparison.
 
 `study/plot_reward_curves.py` documents how these values were made. It merges restarted TensorBoard event files, keeps the newest event at duplicate steps, and applies a trailing 25,000,000-frame mean. With evaluation-block mode, simple-RL runs use `block_rewards/block_5`, while the RL-Games LSTM uses `rewards/step`, which its logger already filters to block 5. These are therefore curves for the study's zero-entropy exploitation member, not the ID-50/block-0 deployment member used for deterministic videos.
