@@ -242,6 +242,10 @@ At the user's direction, stopped only the newly launched CUDA-0/CUDA-1 eligibili
 
 Relaunched adapter+gains on CUDA 0 and adapters-only on CUDA 1 at 07:28 EDT. Coordinators/trainers are PIDs 3431537/3431649 and 3431540/3431650; milestone watchers are 3431831 and 3431834. TensorBoard 6008 discovered both new event paths. Early points were finite and exactly 196,608 frames apart; watcher manifests report no failures and expect 400 targets with three videos each. Both GPU jobs and watchers remained live at handoff.
 
+## [2026-09-14] query | Eligibility traces versus REINFORCE
+
+Traced the implemented actor and critic updates. Documented that the critic uses one-step bootstrapped TD targets and an ordinary Huber loss, while the actor has no autograd loss and applies reward-prediction errors to fading approximate action-credit traces. Distinguished this from Monte Carlo REINFORCE's sampled returns and exact policy score, including the optional-baseline, variance/bias, online timing and recurrent-gradient differences. Corrected the superseded statement that no long eligibility run had launched. No runtime process or configuration changed.
+
 ## [2026-09-14] query | Audit live compact-training status
 
 Checked tmux, process ownership, both RTX 4090s, training logs, recovery and inference checkpoints, TensorBoard scalars, and milestone manifests. The 1,952-cell gains trainer failed at 2,275,344,384 logged frames because its learned coefficient-conditioned action standard deviation became negative; its last recovery checkpoint is frame 2,241,331,200 with 91,164 applied actor Adam steps. Nine milestones and 27 mean-action videos are complete.

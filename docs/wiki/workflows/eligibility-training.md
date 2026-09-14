@@ -21,6 +21,12 @@ The online loop, for each fresh transition:
 
 This is approximate rate-network eligibility, not exact e-prop, an unbiased full recurrent policy gradient, or a literal dopamine circuit. Trace clipping, changing parameters and online observation statistics introduce additional approximations. There is no actor autograd history, PPO replay, central PPO critic, intrinsic exploration reward, learned sigma, or new anatomical edge. The compatibility actor value head is unused/frozen; the separate learned critic is training-only.
 
+## Relation to REINFORCE
+
+Plain REINFORCE waits for a sampled return (usually episode return or reward-to-go) and multiplies it by the exact policy score, `G_t * grad(log pi(a_t | history_t))`. A learned value baseline is optional; the return itself is Monte Carlo and does not bootstrap. For this recurrent actor, computing the exact score for adapters/gains would ordinarily require backpropagation through the recurrent history.
+
+This trainer instead bootstraps every fresh transition with a mandatory critic: `delta_t = 0.01*r_t + gamma*V(next) - V(current)`, with terminal bootstrap zero. It accumulates `Z_t = gamma*lambda*Z_(t-1) + qhat_t` and applies `mean_env(delta_t * Z_t)` immediately. The readout portion of `qhat` is the exact instantaneous Gaussian score derivative, but hidden adapters/gains use local temporal derivatives and fixed random spatial feedback rather than the exact full recurrent score. Therefore it trades Monte Carlo return variance and delayed episode updates for critic bias plus an additional gradient approximation. If `qhat` were exact and lambda approached one under compatible episode handling, the update would move toward an online eligibility-trace form of policy gradient related to REINFORCE; the implemented rule is not algebraically identical to it.
+
 Persistent trace tensors alone cost about 0.594 MiB per environment: approximately 228 MiB at 384 environments, or 7.125 GiB at 12,288, before intermediate tensors, simulator and model state. This implementation favors transparent equations and validation; it is not a demonstrated throughput improvement over PPO.
 
 ## Run from the repository root
@@ -117,4 +123,4 @@ The video YAML owns checkpoint discovery, output root, GPU, task cases, mean act
 - Isaac Gym smoke finished at epoch 2/frame 3,072/update 32; continuation finished at epoch 3/frame 4,608/update 48. Each suite's `verification.json` confirms finite `[1, 29]` deployment output and `timing.json` is complete. Logs/artifacts are under the two default smoke output roots.
 - Comparing smoke and resumed checkpoints confirmed changes in both input adapters, readout/bias and both raw gain vectors, with identical base graph, leak, recurrent bias, embedding and sigma. Gain changes are intentionally very small at these untuned defaults.
 - `evals/connectome/eligibility_smoke/milestone_status.json` is complete with two videos. Both are 800x450, 30 frames/1.5 seconds; a frame was visually inspected. Both short `sharpie_marker/write_c` evaluations report 0% task progress.
-- No long eligibility job was launched, no existing PPO process was stopped/reconfigured, and no advantage in learning quality, sample efficiency or time-to-success has been established. The wiki's earlier PPO timing snapshot is not a matched benchmark of this new trainer.
+- The matched long eligibility jobs were launched later as documented above. No advantage in learning quality, sample efficiency or time-to-success has been established. The wiki's earlier PPO timing snapshot is not a matched benchmark of this new trainer.
