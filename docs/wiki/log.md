@@ -100,6 +100,10 @@ All five revised runs completed and passed optimizer/checkpoint/deployment verif
 
 The final checkpoints each recorded 983,040 frames and 40 actor Adam updates. Training wall times ranged from 29.492 to 31.405 seconds; final raw mean episode rewards ranged from 52.913 to 52.947 and every training success ratio was zero. Thirty closed-loop evaluations completed, with zero Task Progress at both thresholds. Fifteen requested videos were verified as nonempty 100-frame, 10-second simulator recordings.
 
+## [2026-09-13] query | Trace TensorBoard true objective
+
+Traced `true_objective` from the environment formula through reset state and the RL-Games observer. It is a curriculum/PBT ranking diagnostic over current-episode success counts, not reward, success rate, or Task Progress. Documented its piecewise tolerance-progress formula, all-environment mean/max aggregation, difference from completed-episode success tags, and the fact that current PBT-disabled runs remain at initial tolerance so the value is simply `0.01 * current successes`.
+
 ## [2026-09-13] experiment | Replace large gains run with compact adapters-only
 
 Stopped the 4,310-cell old-timing trainer and its dedicated milestone watcher without deleting artifacts. Its log reached frame 928,579,584; the latest full recovery checkpoint is frame 904,396,800 and the latest inference milestone is 750,059,520. Added a YAML-owned 1,952-cell adapters-only Triton profile, matched 100B old-timing GPU-1 suite, and deterministic three-video-per-250M milestone evaluator. Twenty-two focused configuration/compact-graph tests passed.

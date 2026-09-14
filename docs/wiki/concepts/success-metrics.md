@@ -43,7 +43,24 @@ The observer filters the ordinary `successes` tensor to block 5 but computes `su
 
 Every `/frame`, `/iter`, and `/time` suffix is an alias written with the same scalar value and the same environment-frame `global_step`. The suffix does not select a different x-axis. TensorBoard's Step, Wall, and Relative controls determine whether the display uses environment frames or elapsed time.
 
-`true_objective_mean` and `true_objective_max` are related curriculum/PBT scores, not success rates. Before the tolerance reaches its target, the score prioritizes normalized tolerance progress and adds `0.01 * successes`; after reaching the target it uses successes plus the completed-curriculum offset.
+### `true_objective`
+
+`true_objective_mean` and `true_objective_max` are curriculum/PBT ranking diagnostics. They are not the environment reward, PPO objective, success rate, or deterministic Task Progress. PBT is disabled in the current suites, so the value is logged but does not select or replace policies.
+
+For current success tolerance `tau`, initial tolerance `tau_0`, target tolerance `tau_*`, and current-episode goal count `s`, the active configuration computes
+
+```text
+progress = (tau_0 - tau) / (tau_0 - tau_*)
+
+true_objective = progress + 0.01 * s   if tau > tau_*
+                 1 + s                 if tau <= tau_*
+```
+
+Here `tau_0=0.075` and `tau_*=0.01`. The design makes stricter curriculum stages dominate the score while using a small success-count term to distinguish policies before the target tolerance. Once the target is reached, success count becomes the primary unit. This uses the unscaled tolerance; the separate `keypointScale=1.5` affects the actual geometric success test but not this interpolation.
+
+The `s` in this formula is `self.successes`: each environment's in-progress episode count. This differs from the ordinary `successes`, `mean_successes`, and `success_ratio` TensorBoard summaries, which use `prev_episode_successes` from the last completed episode. `true_objective_mean` averages the current score over all 12,288 environments and `true_objective_max` takes their maximum. Consequently, `successes_max` can be nonzero while `true_objective_max` is zero if a previous episode succeeded but no current episode has yet succeeded.
+
+The tolerance curriculum is eligible to reduce `tau` by multiplying it by 0.9 every 3,000 vector-environment control steps, but only when mean completed-episode successes is at least three. Both live compact policies still logged `tau=0.075` at inspection, so `progress=0` and `true_objective=0.01*s`. At frame 653,918,208 the gains run logged mean `0.000004883` and max `0.01`, meaning some current environment had one success; at frame 102,039,552 the adapters-only run logged both as zero even though its previous-episode `successes_max` was one.
 
 ## Deterministic trajectory evaluation
 
