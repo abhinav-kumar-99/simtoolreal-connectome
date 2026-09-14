@@ -28,7 +28,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Analyses
 
-- [Minimal dexterity circuits](analyses/minimal-dexterity-circuit.md) — Exact 86/262/408-cell candidates, five-contact noise-filter rationale, conservative weak-edge recommendation and resource estimates; no candidate training or minimum-size validation. Last updated 2026-09-14.
+- [Minimal dexterity circuits](analyses/minimal-dexterity-circuit.md) — Exact 86/262/408-cell candidates, threshold rationale, resource estimates, and active matched 262-policy experiment; no task-performance or minimum-size validation. Last updated 2026-09-14.
 - [Dopamine-inspired online learning](analyses/dopamine-inspired-learning.md) — Eligibility rationale, historical design, implementation link and unproven learning/cost hypotheses. Last updated 2026-09-13.
 - [Approved 1,952-neuron training](analyses/compact-1952-training.md) — Exact graph, action-entropy failure audit, and the unclamped tanh-squashed KL-0.016 replacement. Last updated 2026-09-14.
 - [Front-leg pathway coverage](analyses/front-leg-pathway-coverage.md) — Public-reference audit, 4,353/4,589/4,778-cell candidates, and evidence-led compact sensory-motor/feedback additions without a size quota. Last updated 2026-09-13.

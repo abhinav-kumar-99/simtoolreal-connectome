@@ -375,3 +375,9 @@ Verified the active frozen-core 1,952-neuron MLP PPO jobs and recomputed fixed-2
 ## [2026-09-14] query | Clarify threshold motivation and uncertain wiring
 
 Updated the minimal-circuit analysis and index after checking CPG, BANC influence and descending-network methods. Distinguished weak-edge pruning from calibrated reconstruction-error rejection, and fixed wiring uncertainty from stochastic forward-pass noise. Given the user's preference to avoid uncertain connections, recommended the 262/3,194 candidate as the initial experiment rather than indiscriminate weak-edge restoration; exceptions require additional evidence. No graph, configuration or process changed.
+
+## [2026-09-14] implementation | Launch matched 262-neuron PPO policies
+
+Added a YAML-owned 262/3,194 selector, pinned preparation contract, ordinary/tanh MLP profiles, full-geometry smoke, long-run suites, milestone evaluators and identity/configuration tests. The exact graph exposes 48 sensory, two descending-command and 31 motor ports. Twenty-seven preparation/configuration tests and 107 broader focused tests passed; both smoke cases completed 393,216 frames with finite checkpoint reload actions.
+
+Initially and incorrectly stopped the two existing 1,952 jobs after interpreting GPU placement as replacement authorization. Preserved their checkpoints, attempted restoration after the user objected, and stopped pursuing restoration when directed to run only the 262 jobs. An initial 262 pair was also interrupted during that correction. Per final direction, launched a clean frame-zero pair: clipped Gaussian actor KL 0.004 on GPU 0 and tanh-squashed actor KL 0.016 on GPU 1, both at the original 12,288-environment geometry. Verified 171 populated TensorBoard scalar tags through steps 10,027,008 and 9,830,400 and started both 250M milestone video watchers. Prior artifacts remain preserved; no 1,952 trainer is active.

@@ -56,6 +56,26 @@ The clipped-Gaussian KL-0.016 job above was stopped after its executed-action en
 
 `SimToolRealConnectome1952AdaptersMLPTanhSAPG.yaml` inherits the same compact adapters-only MLP actor and changes `params.model.name` to `continuous_a2c_tanh_logstd`. `entropy_samples: 1` selects one reparameterized Monte Carlo sample per state for transformed-entropy optimization; the large training batch supplies the averaging. There is deliberately no `log_std_bounds` setting or latent clamp. The suite YAML retains seed 42, 12,288 environments, horizon 16, 49,152 actor/critic minibatches, two mini-epochs, KL target 0.016, LR ceiling 0.01, SAPG coefficients, perturbations and 250M checkpoint cadence. Change experiment identity, budgets or geometry in the YAML rather than appending Hydra overrides to the command.
 
+The 262-neuron distal-front-leg comparison uses:
+
+```bash
+# Rebuild and identity-check the 262/3,194 artifact.
+.venv/bin/python scripts/prepare_malecns_connectome.py --config configs/connectome/malecns_262_distal_leg.yaml
+
+# Optional matched full-geometry, two-epoch gate on both GPUs.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_262_pair_smoke.yaml
+
+# Long runs: clipped KL 0.004 on GPU 0 and tanh KL 0.016 on GPU 1.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_262_mlp_adapters_kl004_100b.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_262_mlp_adapters_tanh_kl016_100b.yaml
+
+# Restartable 250M-frame video watchers.
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_262_mlp_adapters_kl004_milestones.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_262_mlp_adapters_tanh_kl016_milestones.yaml
+```
+
+The preparation helper pins source hashes, the five-contact floor, proprioceptor/motor masks, route pruning, expected counts and body-ID hash. The suite helper composes the chosen train profile and owns GPU, policy distribution, KL target, batch geometry, frame budget, TensorBoard directory and checkpoint cadence. The evaluator helper polls inference-only checkpoints and produces the three YAML-listed mean-action videos. The important circuit parameters are `minimum_synapses`, `motor_types`, `expected`, `expected_selection`, transmitter signs and spectral normalization target; the important run parameters are `train_profiles`, `gpu_assignments`, `num_envs`, `sapg_block_size`, minibatch/microbatch sizes, `epochs`, `max_frames`, `kl_threshold` and `inference_checkpoint_interval_frames`. The active fresh directories include `_fresh`; the prior interrupted attempts remain preserved and should not be mixed into the comparison.
+
 The suite entrypoint prepares and verifies the graph, isolates the requested GPU, builds the Hydra child command, records resolved configuration/timing and reload-verifies the terminal checkpoint. The milestone-evaluation helper independently polls the run directory and dispatches the three YAML-owned mean-action cases, so video rendering does not block training. The imported model helper applies `tanh`, evaluates the log-Jacobian-corrected likelihood and transformed entropy, and returns latent actions/means for rollout-buffer PPO and KL bookkeeping; it is not a separate script.
 
 Old timing is now the connectome profile default: one rollout and 49,152-sample actor/critic minibatches, with physical batches following the logical size. Historical suites can explicitly override this. The approved compact gains run pins 12,288 environments and the complete old geometry; see [1,952-cell preparation, smoke, launch and monitoring commands](../analyses/compact-1952-training.md). Its exact body-ID set is validated, not padded to a size target.

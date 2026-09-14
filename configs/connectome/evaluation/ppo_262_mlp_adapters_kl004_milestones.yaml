@@ -1,7 +1,7 @@
 schema_version: 1
-training_suite_name: ppo_262_mlp_adapters_kl004_lr01_100b
-training_suite_directory: train_dir/connectome/ppo_262_mlp_adapters_kl004_lr01_100b
-output_directory: evals/connectome/ppo_262_mlp_adapters_kl004_lr01_100b_milestones
+training_suite_name: ppo_262_mlp_adapters_kl004_lr01_100b_fresh
+training_suite_directory: train_dir/connectome/ppo_262_mlp_adapters_kl004_lr01_100b_fresh
+output_directory: evals/connectome/ppo_262_mlp_adapters_kl004_lr01_100b_fresh_milestones
 max_frames: 100000000000
 milestone_interval_frames: 250000000
 poll_interval_seconds: 30
@@ -10,7 +10,7 @@ policies:
   - name: adapters_mlp
     seed: 42
     gpu: 0
-    policy_config_path: train_dir/connectome/ppo_262_mlp_adapters_kl004_lr01_100b/00_ppo_262_mlp_adapters_kl004_lr01_100b_adapters_mlp_seed42/resolved_config.yaml
+    policy_config_path: train_dir/connectome/ppo_262_mlp_adapters_kl004_lr01_100b_fresh/00_ppo_262_mlp_adapters_kl004_lr01_100b_fresh_adapters_mlp_seed42/resolved_config.yaml
 evaluation:
   runtime_environment:
     CC: /usr/bin/gcc

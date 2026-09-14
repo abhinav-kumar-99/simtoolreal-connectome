@@ -1,8 +1,8 @@
 # Frozen 262-neuron distal-front-leg circuit with a tanh-squashed Gaussian.
 schema_version: 1
-name: ppo_262_mlp_adapters_tanh_kl016_lr01_100b
+name: ppo_262_mlp_adapters_tanh_kl016_lr01_100b_fresh
 stages: [prepare, train]
-output_directory: train_dir/connectome/ppo_262_mlp_adapters_tanh_kl016_lr01_100b
+output_directory: train_dir/connectome/ppo_262_mlp_adapters_tanh_kl016_lr01_100b_fresh
 runtime_environment:
   CC: /usr/bin/gcc
   CXX: /usr/bin/g++
@@ -36,7 +36,7 @@ training:
     enabled: false
     project: simtoolreal-connectome
     entity: ''
-    group: ppo_262_mlp_adapters_tanh_kl016_lr01_100b
+    group: ppo_262_mlp_adapters_tanh_kl016_lr01_100b_fresh
     tags: [malecns, distal-front-leg-262, adapters-only, interface-mlp, tanh-squashed, kl-0.016, one-hundred-billion-cap, old-timing]
   overrides:
     train.params.config.kl_threshold: 0.016
