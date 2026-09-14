@@ -66,6 +66,14 @@ Mixed-precision `GradScaler` prevented many corrupt gradients from being applied
 
 ## Commands and configuration ownership
 
+### Interpretation of KL and the baseline comparison
+
+KL measures the conditional action distributions, summed over the same 29 action dimensions and averaged over training samples; it is not divided by actor parameter count. Architecture changes the parameter-to-distribution Jacobian, gradients, state visitation and the adaptive learning-rate trajectory, but does not change KL units. A restricted mean actor with the same freely learned 6-by-29 log-standard-deviation table can have a different balance between task and entropy gradients. Whether this balance caused the initial divergence needs gradient measurements or a matched intervention; the checkpoints alone do not establish it.
+
+The environment clamps sampled actions to [-1, 1] before rescaling, while the entropy bonus uses the unclipped Gaussian. At large variance the executed commands approach endpoint saturation, so further variance growth can keep increasing the entropy bonus while adding little useful exploration. KL constrains local distribution changes only: increasing every log standard deviation by 0.01 yields approximately 0.002881 exact KL across 29 dimensions irrespective of its starting magnitude. Repeating such small changes does not bound total variance. A CPU reproduction of the actual `policy_kl` arithmetic returns NaN for log standard deviations 45 and 45.01 because it squares their exponentials, despite that small exact KL. The adaptive scheduler compares KL against thresholds with no non-finite handling, so NaN leaves its current LR unchanged.
+
+The release's successful endpoint does not establish that the authors never encountered instability, and available artifacts do not provide their per-block sigma/gradient history. The claim that smaller parameter count or doubled update density definitively caused the runaway is therefore too strong. The observed variance growth and numerical failure are established; architecture-dependent gradient balance, action clipping, entropy pressure and update density provide plausible interacting causes. A controlled comparison needs the same graph, initialization and task with only update timing changed, plus per-block log standard deviation, clipping fraction, stable KL, entropy/task gradient contributions and applied optimizer-step telemetry.
+
 Run from the repository root. Both compact processes are stopped: **do not rerun either launch command into its populated output directory**. `on_existing: fail` protects those directories; a repaired experiment needs a new suite name and output directory or an explicit, validated resume contract.
 
 ```bash
