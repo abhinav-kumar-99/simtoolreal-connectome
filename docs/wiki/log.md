@@ -100,6 +100,10 @@ All five revised runs completed and passed optimizer/checkpoint/deployment verif
 
 The final checkpoints each recorded 983,040 frames and 40 actor Adam updates. Training wall times ranged from 29.492 to 31.405 seconds; final raw mean episode rewards ranged from 52.913 to 52.947 and every training success ratio was zero. Thirty closed-loop evaluations completed, with zero Task Progress at both thresholds. Fifteen requested videos were verified as nonempty 100-frame, 10-second simulator recordings.
 
+## [2026-09-13] query | Explain active training curricula
+
+Traced both environment curriculum mechanisms through the resolved compact-run configurations. The active goal-tolerance curriculum requires mean completed-episode successes of at least three before each 0.9 tightening step, with a 3,000-control-step minimum interval; it needs 20 advances and at least 737.28 million frames to move from configured 0.075 to 0.01. Both policies remain at the easiest stage. The separate Tyler scale requires success ratio above 0.6 and five wall-clock minutes per 0.01 increment, but all observation-removal switches and final controller targets are disabled, so it currently has no behavioral effect. Distinguished both from fixed SAPG exploration blocks, randomization, rewards, and optimizer timing.
+
 ## [2026-09-13] query | Trace TensorBoard true objective
 
 Traced `true_objective` from the environment formula through reset state and the RL-Games observer. It is a curriculum/PBT ranking diagnostic over current-episode success counts, not reward, success rate, or Task Progress. Documented its piecewise tolerance-progress formula, all-environment mean/max aggregation, difference from completed-episode success tags, and the fact that current PBT-disabled runs remain at initial tolerance so the value is simply `0.01 * current successes`.

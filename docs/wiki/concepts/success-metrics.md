@@ -12,6 +12,28 @@ For each environment, the task computes the Euclidean distance between correspon
 
 The active suites require ten consecutive near-goal control steps for one success. A success increments the environment's counter and advances to another random goal without ending the whole episode. At a full environment reset, that counter is copied to `prev_episode_successes` and then cleared. Most training curves therefore describe the last completed episode retained in each environment slot; they are not a count of new successes during the current update phase.
 
+## Training curricula
+
+### Goal-tolerance curriculum: active but not yet advancing
+
+This is the only curriculum that can currently change task difficulty. It starts with unscaled tolerance `0.075` and targets `0.01`. Every 3,000 vector-environment control steps, it is eligible to multiply the current tolerance by `0.9`, clipped at the target, but only if `prev_episode_successes.mean() >= 3` across all 12,288 environments. If the performance gate fails, the code keeps checking on later control steps and does not move the last-update marker.
+
+The sequence begins `0.075 -> 0.0675 -> 0.06075 -> 0.054675 -> ... -> 0.0101314 -> 0.01`, requiring 20 successful advances. Because the geometric threshold is `tolerance * keypointScale` and `keypointScale=1.5`, this corresponds to tightening the maximum corresponding-keypoint distance from 0.1125 m to 0.015 m. Ten consecutive control steps inside that threshold produce one goal success and a new random goal; the environment episode can accumulate up to 50 goals.
+
+With 12,288 environments, 3,000 control steps correspond to 36,864,000 environment frames. Even if the performance gate passed continuously from startup, reaching the target would therefore require at least 737,280,000 frames. In practice both compact runs still log tolerance `0.075` because their mean completed-episode successes remain far below three. Thus they are still training entirely at the easiest tolerance stage.
+
+The dense reward coefficients do not form a stage schedule. Tightening tolerance primarily changes the success/goal-advance condition and associated success bonus; the continuous lifting, fingertip, keypoint, and action terms remain configured throughout training. Full recovery environment state includes current tolerance and its last-update control step, so a stateful resume can preserve this curriculum.
+
+### Tyler curriculum: counter present, effective behavior disabled
+
+`tyler_curriculum_scale` is a second, wall-clock/performance-gated mechanism intended to move from easy (`0`) to hard (`1`). It increments by `0.01` only when all-environment mean completed successes divided by 50 is strictly greater than `0.6`--that is, mean successes is greater than 30--and more than five wall-clock minutes have elapsed since the previous increment. At uninterrupted qualifying performance, 100 increments would require at least 500 minutes.
+
+Depending on configuration, this scale can progressively remove object velocity, palm velocity, or extra privileged actor observations, either by deterministic scaling or dropout. It can also interpolate arm/hand moving averages and DOF speed toward configured final values. In both live compact resolved configurations, every `turn_off_*` and `turn_off_*_slowly` flag is false, `use_obs_dropout` is false, and all three final controller values are null. Therefore the logged scale currently has no effect even if it were to advance; it remains zero because success ratio is also far below 0.6. Unlike the goal-tolerance state, the Tyler scale is not included in `get_env_state` and initializes from `init_tyler_curriculum_scale` on construction, currently zero.
+
+### Fixed mechanisms that are not curricula
+
+The six SAPG blocks use different fixed entropy-loss coefficients throughout training; they are a simultaneous exploration population, not successive stages. Object/pose randomization, released force perturbations, reward coefficients, network plasticity mode, and optimizer/update timing are also fixed by the run YAML rather than advanced by performance. Milestone deterministic evaluation does not feed results back into either curriculum.
+
 ## SAPG block layout
 
 The current 100-billion-frame jobs partition 12,288 environments into six contiguous blocks of 2,048. Every block uses the same simulator, extrinsic task reward, success tolerance, ten-step success rule, and 50-goal episode ceiling. The blocks differ in the scalar coefficient supplied to the policy and in the coefficient multiplying policy entropy in the PPO loss. With the released-checkpoint-matched `expl_reward_coef_scale: 0.005`, the exact layout is:
