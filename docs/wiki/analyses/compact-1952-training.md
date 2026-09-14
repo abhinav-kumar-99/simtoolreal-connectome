@@ -1,6 +1,6 @@
 # Approved 1,952-neuron training runs
 
-The exact path-plus-sensory-premotor candidate was launched as matched neuron-gains and adapters-only policies with old optimizer timing; the gains process has failed and the surviving adapters process is not producing valid actor updates.
+The exact path-plus-sensory-premotor candidate was launched as matched neuron-gains and adapters-only policies with old optimizer timing; gains failed numerically and adapters-only was stopped after its actor updates became invalid.
 
 Last updated: 2026-09-14
 
@@ -48,13 +48,13 @@ The fresh adapters-only replacement started in tmux `connectome-1952-adapters`: 
 
 The gains trainer exited nonzero after 11,574 phases and 2,275,344,384 logged frames. The immediate exception was `RuntimeError: normal expects all elements of std >= 0.0` while sampling the rollout action. Its last complete recovery checkpoint is epoch 11,400/frame 2,241,331,200 with 91,164 applied actor Adam steps; the last inference milestone is 2,250,178,560 and all nine available milestones have their three mean-action videos. The standard SAPG configuration uses an identity `sigma_activation`, so its coefficient-conditioned action standard deviations are not positivity constrained. Several learned sigma entries had crossed below zero before the exception.
 
-The adapters-only trainer remains process-alive on GPU 1. At the status snapshot it had logged about 3.32 billion frames, but `losses/a_loss` and `info/kl` had remained `NaN` since approximately frame 3.19 billion. Its epoch-16,800/frame-3,303,014,400 recovery checkpoint contains 129,745 applied actor steps versus 134,400 scheduled calls, showing 4,655 mixed-precision-suppressed calls. The actor is therefore no longer learning even though simulation and critic updates continue. Its first 13 milestones through 3,250,126,848 have all 39 requested mean-action videos. This is an unhealthy run, not valid progress toward the 100-billion cap.
+The adapters-only trainer remained process-alive on GPU 1 after `losses/a_loss` and `info/kl` became `NaN` at approximately frame 3.19 billion. At the user's direction, its trainer and dedicated watcher were interrupted at 2026-09-14 07:20 EDT. The final log coordinate is epoch 17,066/frame 3,355,115,520. Its last complete recovery checkpoint is epoch 17,000/frame 3,342,336,000 with 129,745 applied actor steps versus 136,000 scheduled calls, showing 6,255 mixed-precision-suppressed calls. The applied count had not increased since the earlier epoch-16,800 checkpoint. Its first 13 milestones through 3,250,126,848 have all 39 requested mean-action videos. All artifacts are preserved.
 
-TensorBoard remains on port 6008. GPU 0 is idle apart from desktop processes, the failed gains watcher remains alive waiting for checkpoints that will not arrive, and the adapters watcher remains active. No process was stopped or restarted during this status audit.
+TensorBoard remains on port 6008. Both compact trainers are stopped; the failed gains watcher remains alive waiting for checkpoints that will not arrive, while the adapters watcher is stopped. A separately launched eligibility trainer appeared on physical GPU 0 after the status audit and was not touched by the adapters shutdown.
 
 ## Commands and configuration ownership
 
-Run from the repository root. The adapters process is still running but numerically unhealthy, and the gains process has failed: **do not rerun either launch command into its populated output directory**. `on_existing: fail` protects those directories; a repaired experiment needs a new suite name and output directory or an explicit, validated resume contract.
+Run from the repository root. Both compact processes are stopped: **do not rerun either launch command into its populated output directory**. `on_existing: fail` protects those directories; a repaired experiment needs a new suite name and output directory or an explicit, validated resume contract.
 
 ```bash
 # Prepare/verify the exact graph only (does not train).
@@ -69,7 +69,7 @@ Run from the repository root. The adapters process is still running but numerica
 # Persistent gains milestone evaluator, already launched separately.
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/adaptation_1952_milestones.yaml
 
-# Historical adapters-only launch command; its process remains alive but unhealthy on GPU 1.
+# Historical adapters-only launch command; the recorded process was stopped after invalid updates.
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/adaptation_1952_adapters_100b.yaml
 
 # Persistent adapters-only milestone evaluator, already launched separately.
