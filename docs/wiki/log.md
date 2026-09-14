@@ -187,3 +187,7 @@ Launched a fresh 100B-capped seed-42 job in `connectome-1952` on GPU 0, confirme
 ## [2026-09-13] query | Dopamine-inspired learning and training cost
 
 Checked primary fly dopamine/plasticity and e-prop papers, current actor recurrence and the live compact run's timing definitions/logs. Documented absent biochemical/online plasticity machinery, reward-versus-credit-assignment semantics, and a proposed frozen-feature/readout eligibility-trace experiment. A 100-phase snapshot averaged 2.40101 seconds rollout plus 0.55143 seconds updates, limiting update-only savings at unchanged exposure to about 18.7% of timed epoch cost. Added the linked online-learning analysis with explicit sample-efficiency, trace-memory, cross-species and implementation limitations. Documentation only; no training process, runtime config or policy was changed.
+
+## [2026-09-13] query | Eligibility learning from scratch
+
+Extended the online-learning analysis with random adapter/readout initialization, identity gains, learnable input interfaces, per-environment local and delayed-reward traces, Gaussian action credit, approximate neuron-specific feedback, and bounded shared-gain aggregation. Distinguished a proposed rate-network actor-critic from exact e-prop/BPTT and the previous readout-only warm start. Recorded reward/exploration, GPU update cadence, reset masks and future YAML requirements without presenting an untested implementation as ready. Rechecked actual actor step/population configuration and the primary e-prop paper. Documentation only; current runs unchanged.
