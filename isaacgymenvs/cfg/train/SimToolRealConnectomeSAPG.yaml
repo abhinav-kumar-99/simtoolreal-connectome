@@ -40,3 +40,10 @@ params:
 
   config:
     name: ${resolve_default:SimToolRealConnectomeSAPG,${....experiment}}
+    # Old timing is the connectome default. Suites may explicitly override it.
+    rollout_accumulation_steps: 1
+    minibatch_size: 49152
+    microbatch_size: ${.minibatch_size}
+    central_value_config:
+      minibatch_size: 49152
+      microbatch_size: ${.minibatch_size}
