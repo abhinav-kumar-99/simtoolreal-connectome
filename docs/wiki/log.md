@@ -100,6 +100,10 @@ All five revised runs completed and passed optimizer/checkpoint/deployment verif
 
 The final checkpoints each recorded 983,040 frames and 40 actor Adam updates. Training wall times ranged from 29.492 to 31.405 seconds; final raw mean episode rewards ranged from 52.913 to 52.947 and every training success ratio was zero. Thirty closed-loop evaluations completed, with zero Task Progress at both thresholds. Fifteen requested videos were verified as nonempty 100-frame, 10-second simulator recordings.
 
+## [2026-09-13] query | Audit biological attribution of gains actors
+
+Traced the exact frozen/trainable boundary from graph preparation, active gains profiles, actor execution, and stable milestone checkpoints. The policies retain exact prepared edge buffers, support, direction, sign, population masks, and source-derived base magnitudes, but execute diagonally gain-reweighted operators behind fully learned cross-species interfaces and non-biological rate dynamics. At 750.060 million frames the 4,310-cell effective edge array had relative L2 change 0.697 from base with only 10.5% of edges within +/-10%; at 250.085 million frames the 1,952-cell values were 0.604 and 20.0%. Documented why the defensible claim is a MaleCNS-derived recurrent scaffold and why topology attribution still requires matched adapters-only, rewired, and random controls.
+
 ## [2026-09-13] query | Digitize paper reward at live training stages
 
 Calibrated the original 1,915 x 1,041 arXiv Figure 8 PNG against its axis ticks and extracted the midpoint of the teal SAPG plus asymmetric-critic mean stroke. At live snapshots of 249.889 million and 681.443 million frames, the plotted paper means are approximately 95 and 295 reward, with approximately +/-20 centerline digitization uncertainty and a more conservative approximately +/-60 full-stroke envelope. The 1,952-neuron actor's trailing-25-million reward of 87.497 is visually tied at this precision; the 4,310-neuron actor's 228.383 is about 77% of the plotted paper mean. Preserved the absence of raw five-seed values and unknown paper-plot smoothing as explicit evidence limits.
