@@ -6,6 +6,10 @@ Last updated: 2026-09-13
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
+## Eligibility alternative
+
+The separately selected `connectome_eligibility` trainer now supports the compact gains actor, online local traces, a small TD critic and the existing TensorBoard/checkpoint/video interfaces. See the [eligibility runbook](eligibility-training.md) for smoke, continuation and prepared-pilot commands and the approximation/finite-horizon limits. Existing PPO profiles and jobs remain unchanged; useful task learning has not been demonstrated for eligibility.
+
 ## Adaptation and custom-kernel suites
 
 The primary actor now defaults to adapters-only with frozen leaks/biases and the measured-fastest `triton_fused` recurrent backend. See [adaptation controls](../concepts/connectome-adaptation.md) for all modes, parameter counts and legacy compatibility.

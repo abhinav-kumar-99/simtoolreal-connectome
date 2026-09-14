@@ -1,0 +1,38 @@
+schema_version: 1
+name: eligibility_smoke
+stages: [prepare, train]
+output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/eligibility_smoke
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+preparation:
+  config: configs/connectome/malecns_1952.yaml
+training:
+  algorithm: connectome_eligibility
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - {name: local_td, train_profile: SimToolRealConnectome1952Eligibility}
+  seeds: [42]
+  gpu_assignments: [0]
+  max_parallel: 1
+  num_envs: 96
+  sapg_block_size: 16  # Existing task/player layout only; no SAPG experience mixing.
+  epochs: 2
+  max_frames: 3072
+  inference_checkpoint_interval_frames: 1536
+  save_frequency: 1
+  save_best_after: 0
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: eligibility_smoke
+    tags: [malecns, eligibility, smoke]
+  overrides:
+    ++task.env.useSparseReward: false
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

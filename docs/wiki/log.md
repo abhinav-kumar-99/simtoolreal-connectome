@@ -221,3 +221,11 @@ Inspected the actual Isaac Gym entrypoint, algorithm/player factories, GPU obser
 ## [2026-09-13] query | Existing RL traces and connectome-specific eligibility hypotheses
 
 Verified the current GAE recurrence and live resolved gamma 0.99, lambda 0.95 and 16-step unroll. Clarified that replacing BPTT with local parameter traces is distinct from the temporal credit already present in PPO. Compared primary GAE/PPO/e-prop evidence with this actor's 3,904 gain parameters, 56,060 adapter weights and restricted motor readout. Documented numerical/credit/hardware tradeoffs, shared benefits to PPO, and a proposed algorithm-by-topology comparison to test a genuinely connectome-specific advantage. Documentation only; no runtime changes or launches.
+
+## [2026-09-13] implement | Local eligibility trainer and infrastructure
+
+Added separate local-sensitivity/action-credit engine and online TD actor-critic, registered trainer/player, compact eligibility Hydra profile, YAML smoke/continuation/prepared-pilot/evaluation contracts, and algorithm-aware suite completion checks. Learned adapters/readout/bounded gains preserve the base graph; fixed random feedback and omitted cross-neuron temporal derivatives are explicit approximations. Per-environment terminal/time-limit credit handling, fresh-episode resume, fixed exploration, small detached-feature critic and atomic inference snapshots are documented in the new workflow page. Updated index, overview, experiment workflow and historical proposal status.
+
+Validated the real simulator through 3,072 frames/32 updates then continuation to 4,608/48; deployment reloads produced finite 29-actions, both runs appeared on TensorBoard 6008, and two 30-frame 800x450 mean-action videos completed. Both short task-progress evaluations were zero. Checkpoint deltas confirm intended parameter groups changed and graph/dynamics/embedding/sigma stayed fixed. No long eligibility job or changes to the existing PPO processes. Integration success is not evidence of faster or better learning.
+
+Final focused regression run passed 98 actor, eligibility, configuration, compact-circuit and milestone tests. CPU checkpoint tests also verify identical inference means and feedback after restore. Existing compact gains/adapters-only PPO PIDs 3211659 and 3248466 remained live at handoff.

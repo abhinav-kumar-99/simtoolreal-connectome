@@ -1,0 +1,37 @@
+defaults:
+  - SimToolRealConnectome1952GainsSAPG
+  - _self_
+
+params:
+  algo:
+    name: connectome_eligibility
+  config:
+    name: ${resolve_default:SimToolRealConnectome1952Eligibility,${....experiment}}
+    normalize_value: false
+    ppo: false
+    mixed_precision: false
+    normalize_advantage: false
+    lr_schedule: constant
+    seq_length: 1
+    central_value_config: null
+    rollout_accumulation_steps: 1
+    use_others_experience: null
+    off_policy_ratio: 0.0
+    expl_reward_coef_scale: 0.0
+    horizon_length: 16  # Logging/checkpoint chunk only; learning is every step.
+    eligibility:
+      gamma: 0.99
+      trace_lambda: 0.95
+      adapter_lr: 0.00001
+      readout_lr: 0.0001
+      gain_lr: 0.000001
+      critic_lr: 0.0003
+      critic_width: 64
+      sigma: 0.3  # Fixed Gaussian std, shared by all six compatibility rows.
+      feedback_seed: 123
+      feedback_scale: 0.1
+      trace_clip: 10.0
+      td_clip: 10.0
+      max_grad_norm: 1.0
+      # All done transitions, including timeouts, terminate this finite-horizon objective.
+      bootstrap_timeouts: false

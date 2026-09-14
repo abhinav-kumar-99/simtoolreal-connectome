@@ -16,6 +16,11 @@ from rl_games.algos_torch import sac_agent
 from rl_games.algos_torch import torch_ext
 
 
+def _eligibility_agent(**kwargs):
+    from rl_games.algos_torch.connectome_eligibility_agent import ConnectomeEligibilityAgent
+    return ConnectomeEligibilityAgent(**kwargs)
+
+
 def _restore(agent, args):
     if 'checkpoint' in args and args['checkpoint'] is not None and args['checkpoint'] !='':
         load_mode = args.get('checkpoint_load_mode', 'resume')
@@ -58,12 +63,14 @@ class Runner:
 
     def __init__(self, algo_observer=None):
         self.algo_factory = object_factory.ObjectFactory()
+        self.algo_factory.register_builder('connectome_eligibility', _eligibility_agent)
         self.algo_factory.register_builder('a2c_continuous', lambda **kwargs : a2c_continuous.A2CAgent(**kwargs))
         self.algo_factory.register_builder('a2c_discrete', lambda **kwargs : a2c_discrete.DiscreteA2CAgent(**kwargs)) 
         self.algo_factory.register_builder('sac', lambda **kwargs: sac_agent.SACAgent(**kwargs))
         #self.algo_factory.register_builder('dqn', lambda **kwargs : dqnagent.DQNAgent(**kwargs))
 
         self.player_factory = object_factory.ObjectFactory()
+        self.player_factory.register_builder('connectome_eligibility', lambda **kwargs: players.PpoPlayerContinuous(**kwargs))
         self.player_factory.register_builder('a2c_continuous', lambda **kwargs : players.PpoPlayerContinuous(**kwargs))
         self.player_factory.register_builder('a2c_discrete', lambda **kwargs : players.PpoPlayerDiscrete(**kwargs))
         self.player_factory.register_builder('sac', lambda **kwargs : players.SACPlayer(**kwargs))

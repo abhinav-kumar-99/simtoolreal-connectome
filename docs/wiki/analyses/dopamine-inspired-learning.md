@@ -6,13 +6,19 @@ Last updated: 2026-09-13
 
 Related: [Adaptation mechanisms](../concepts/connectome-adaptation.md), [Approved compact run](compact-1952-training.md), [Actor](../concepts/connectome-actor.md)
 
+## Implemented status
+
+The requested from-scratch rate-network eligibility trainer is now implemented as `connectome_eligibility`, with YAML selection, deployment reload, TensorBoard 6008 logging, checkpoint continuation and milestone video smoke validation. See the [eligibility training runbook](../workflows/eligibility-training.md) for exact equations/approximations, settings, commands, helper responsibilities and evidence. The existing PPO jobs remain unchanged. This validates integration, not learning quality or reduced training cost.
+
+The proposal and integration checklist below are preserved as historical design context; their pre-implementation status statements are superseded by the runbook. The readout-only warm-start experiment remains a separate unimplemented variant.
+
 ## Biological evidence and boundary
 
 In fly mushroom-body learning, dopaminergic signals modulate plasticity at specific circuit sites; dopamine is not a uniform command to increase every active connection. Different pathways mediate appetitive and aversive reinforcement, and timing matters. [Felsenberg et al., Nature 2017](https://www.nature.com/articles/nature21716) demonstrate reward-memory re-evaluation involving distinct reinforcing dopamine populations and describe reward-associated depression of Kenyon-cell output to avoidance pathways. [Ueno et al., eLife 2017](https://pmc.ncbi.nlm.nih.gov/articles/PMC5262376/) examine coincident activity, dopamine release and mushroom-body plasticity. These are biological associative-learning results, not demonstrations of cheap dexterous robot learning.
 
 [Bellec et al., Nature Communications 2020](https://pmc.ncbi.nlm.nih.gov/articles/PMC7367848/) derive eligibility propagation (e-prop): forward-computed local traces combined with learning signals approximate recurrent-network learning without backpropagation through time. Reward-based versions exist. Approximate neuron-specific credit signals are important; simply multiplying arbitrary Hebbian coactivity by positive reward is not equivalent to a policy gradient. The cited work concerns spiking networks (with additional derivations for other recurrent models), not this exact sparse tanh/gain/SAPG actor, and does not establish better sample efficiency here.
 
-## Current implementation
+## Original PPO-only setup
 
 `rl_games/rl_games/algos_torch/connectome_network_builder.py::_step` computes adapter drives, fixed signed recurrence with bounded learned gains, leak and tanh. It has no dopamine concentration, receptor dynamics, eligibility state, or online synaptic update. Parameter changes come from the PPO optimizer between rollouts. The compact manifest has no dopamine-labelled cells, although 53 labels are unclear and four missing; absence of a label alone is not proof about every cell's physiology. More importantly, chemical learning machinery and a mushroom-body learning circuit were not implemented. Adding a neuron labelled dopamine or stimulating current cells would not by itself enable learning.
 
@@ -28,7 +34,7 @@ Because the recurrent feature generator is fixed, readout gradients require no b
 
 A later, riskier variant could update gains or adapters through derived rate-network eligibility traces and approximate feedback signals. Keep support/sign/gain constraints and benchmark stability. This is substantially more implementation work than changing a reward coefficient. Direct edge plasticity is not required for the first experiment. At 12,288 environments, even one FP32 trace per 33,720 edges occupies about 1.54 GiB before adapter traces and other state; local learning is not automatically cheap on a GPU.
 
-## From-scratch eligibility design, not implemented
+## From-scratch eligibility design (historical proposal)
 
 The user also asked about starting without a trained checkpoint. This is a distinct proposal from the readout-only warm start: initialize sensory/descending adapters and the motor readout with small nonzero random weights, neuron gains at one, recurrent state/traces at zero, and a small value predictor from scratch. Preserve the 1,952 IDs, 33,720 base connections, sign constraints and fixed leak/bias settings. The wiring is the prior; there is no initial robot skill to assume. Learning only the output of randomly frozen adapters would be a restricted reservoir baseline, not an equivalent replacement for current adapters-plus-gains training.
 
@@ -46,7 +52,7 @@ This is an **e-prop-inspired rate-network actor-critic design**, not a derived e
 
 For instance, a sampled finger action might improve object alignment. Positive TD error reinforces signed traces associated with making that action more likely in the current context; it does not increase all weights or gains. When the motion worsens the outcome relative to expectation, the sign reverses. Useful improvement from scratch still needs exploration and informative rewards. Start with the existing shaped task reward for comparability, not terminal success alone; a trace cannot learn an undiscovered successful behavior without experience. Trace decay, feedback estimator, per-group learning rates, exploration scale, update cadence, clipping, value architecture and reset semantics need explicit future YAML settings and gradient/ablation tests. No numeric setting or performance claim is validated yet.
 
-## SimToolReal infrastructure integration, proposed
+## SimToolReal infrastructure integration (historical checklist)
 
 An eligibility trainer can be workflow-compatible but is not a drop-in replacement for PPO's `calc_gradients`. The current collect-then-replay PPO phase must be replaced with a loop that computes local/action eligibility during interaction and updates from fresh transitions. Keep the actor's forward architecture and graph identity separate from the learning algorithm. No such trainer is implemented yet.
 

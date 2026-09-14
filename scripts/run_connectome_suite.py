@@ -98,11 +98,18 @@ def _verify_checkpoint(
     else:
         state = checkpoint
     optimizer_state = state.get("optimizer", {}).get("state", {})
-    if not optimizer_state:
+    resolved = OmegaConf.load(resolved_config_path)
+    algorithm = str(OmegaConf.select(resolved, "train.params.algo.name", default="a2c_continuous"))
+    eligibility = algorithm == "connectome_eligibility"
+    trainer = state.get("trainer_state", {})
+    eligibility_updates = int(trainer.get("eligibility", {}).get("updates", 0))
+    if eligibility and (trainer.get("algorithm") != "connectome_eligibility" or eligibility_updates <= 0
+                        or not trainer.get("critic_optimizer", {}).get("state", {})):
+        raise RuntimeError("Checkpoint has no completed eligibility/critic updates")
+    if not eligibility and not optimizer_state:
         raise RuntimeError(
             "Checkpoint has no optimizer state; no completed update was recorded"
         )
-    resolved = OmegaConf.load(resolved_config_path)
     expected_epoch = int(resolved.train.params.config.max_epochs)
     requested_max_frames = int(resolved.train.params.config.get("max_frames", -1))
     checkpoint_epoch = int(state.get("epoch", -1))
@@ -133,6 +140,8 @@ def _verify_checkpoint(
     return {
         "checkpoint": str(checkpoint_path),
         "optimizer_state_entries": len(optimizer_state),
+        "eligibility_updates": eligibility_updates,
+        "algorithm": algorithm,
         "checkpoint_epoch": checkpoint_epoch,
         "checkpoint_frame": checkpoint_frame,
         "requested_epochs": expected_epoch,
@@ -159,11 +168,6 @@ def _training_overrides(
         f"task.env.numEnvs={int(training['num_envs'])}",
         f"train.params.config.expl_coef_block_size={int(training['sapg_block_size'])}",
         f"train.params.config.max_epochs={int(training['epochs'])}",
-        f"train.params.config.minibatch_size={int(training['minibatch_size'])}",
-        (
-            "train.params.config.central_value_config.minibatch_size="
-            f"{int(training['central_critic_minibatch_size'])}"
-        ),
         f"++train.params.config.train_dir={run_directory / 'rl_runs'}",
         f"train.params.config.save_frequency={int(training['save_frequency'])}",
         f"train.params.config.save_best_after={int(training['save_best_after'])}",
@@ -176,6 +180,12 @@ def _training_overrides(
         f"wandb_group={training['wandb']['group']}",
         f"wandb_tags={_hydra_value(training['wandb']['tags'])}",
     ]
+    if training.get("algorithm", "a2c_continuous") != "connectome_eligibility":
+        overrides.extend([
+            f"train.params.config.minibatch_size={int(training['minibatch_size'])}",
+            "train.params.config.central_value_config.minibatch_size="
+            f"{int(training['central_critic_minibatch_size'])}",
+        ])
     if "max_frames" in training:
         overrides.append(
             f"train.params.config.max_frames={int(training['max_frames'])}"
@@ -361,6 +371,8 @@ def _run_training(
             case_training, profile, seed, run_name, run_directory.resolve()
         )
         resolved = _compose_resolved(overrides)
+        if training.get("algorithm", "a2c_continuous") != str(resolved.train.params.algo.name):
+            raise ValueError("training.algorithm must agree with the selected train profile")
         steps_per_epoch = int(resolved.train.params.config.num_actors) * int(
             resolved.train.params.config.horizon_length
         )

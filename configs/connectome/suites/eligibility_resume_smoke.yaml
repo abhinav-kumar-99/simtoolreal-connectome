@@ -1,0 +1,39 @@
+# Run eligibility_smoke.yaml first. Resume counters at 3,072, with fresh episodes.
+schema_version: 1
+name: eligibility_resume_smoke
+stages: [train]
+output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/eligibility_resume_smoke
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+training:
+  algorithm: connectome_eligibility
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - {name: local_td, train_profile: SimToolRealConnectome1952Eligibility}
+  seeds: [42]
+  gpu_assignments: [0]
+  max_parallel: 1
+  num_envs: 96
+  sapg_block_size: 16
+  epochs: 3
+  max_frames: 4608
+  inference_checkpoint_interval_frames: 1536
+  save_frequency: 1
+  save_best_after: 0
+  on_existing: fail
+  checkpoint:
+    mode: resume
+    path: train_dir/connectome/adaptation_100b_gains_update_timing/eligibility_smoke/00_eligibility_smoke_local_td_seed42/rl_runs/00_eligibility_smoke_local_td_seed42/nn/last.pth
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: eligibility_resume_smoke
+    tags: [malecns, eligibility, smoke, resume]
+  overrides:
+    ++task.env.useSparseReward: false
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0
