@@ -187,6 +187,7 @@ def run(config: dict) -> dict:
         "object_name": config["object_name"],
         "task_name": config["task_name"],
         "action_selection": config["action_selection"],
+        "neural_updates": getattr(policy.player.model.a2c_network, "neural_updates", None),
         "episodes": episode_results,
         "mean_raw_reward": float(np.mean([x["raw_reward"] for x in episode_results])),
         "mean_shaped_reward": float(

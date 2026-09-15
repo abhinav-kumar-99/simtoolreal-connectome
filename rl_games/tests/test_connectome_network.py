@@ -766,17 +766,21 @@ def test_tanh_policy_rejects_invalid_entropy_sample_count(
         )
 
 
+@pytest.mark.parametrize('updates', [1, 4, 8])
+@pytest.mark.parametrize('distribution', ['gaussian', 'beta'])
 def test_deployment_rl_player_loads_connectome_checkpoint(
-    artifact_path, tmp_path
+    artifact_path, tmp_path, updates, distribution
 ) -> None:
     pytest.importorskip("gym")
     from deployment.rl_player import RlPlayer
 
     network_params = _network_params(artifact_path)
+    network_params['connectome']['dynamics']['neural_updates'] = updates
+    network_params['space']['continuous']['distribution'] = distribution
     params = {
         "seed": 5,
         "algo": {"name": "a2c_continuous"},
-        "model": {"name": "continuous_a2c_logstd"},
+        "model": {"name": "continuous_a2c_beta" if distribution == 'beta' else "continuous_a2c_logstd"},
         "network": network_params,
         "config": {
             "env_name": "rlgpu",
@@ -811,6 +815,7 @@ def test_deployment_rl_player_loads_connectome_checkpoint(
     torch.save({"model": model.state_dict()}, checkpoint_path)
     config_path = tmp_path / "deployment.yaml"
     config_path.write_text(yaml.safe_dump({"train": {"params": params}}))
+    (tmp_path / 'resolved_config.yaml').write_text(config_path.read_text())
 
     player = RlPlayer(
         num_observations=5,
@@ -820,6 +825,19 @@ def test_deployment_rl_player_loads_connectome_checkpoint(
         device="cpu",
         num_envs=1,
     )
-    action = player.get_normalized_action(torch.zeros(1, 5), deterministic_actions=True)
+    from unittest.mock import patch
+    net = player.player.model.a2c_network
+    assert net.neural_updates == updates
+    with patch.object(net, '_recurrent_multiply', wraps=net._recurrent_multiply) as multiply:
+        action = player.get_normalized_action(torch.zeros(1, 5), deterministic_actions=True)
+        assert multiply.call_count == updates
     assert action.shape == (1, 2)
     assert torch.isfinite(action).all()
+    player.reset()
+    torch.testing.assert_close(
+        player.get_normalized_action(torch.zeros(1, 5), deterministic_actions=True), action
+    )
+    params['network']['connectome']['dynamics']['neural_updates'] = updates + 1
+    config_path.write_text(yaml.safe_dump({'train': {'params': params}}))
+    with pytest.raises(ValueError, match='differs from training'):
+        RlPlayer(5, 2, str(config_path), str(checkpoint_path), 'cpu')
