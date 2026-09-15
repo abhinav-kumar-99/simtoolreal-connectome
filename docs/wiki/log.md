@@ -459,3 +459,7 @@ Traced normal and milestone evaluation through the saved policy config, worker, 
 ## [2026-09-15] configure | Add video watchers for both four-update policies
 
 Added separate YAML-owned milestone video jobs for the active Beta/Gaussian 100B training runs. Each polls its matching inference-checkpoint directory every 30 seconds, evaluates every 250M-frame target through the near-cap final target on the corresponding training GPU, and renders deterministic mean-action videos for the three standard high-resolution task cases. Both policy paths select the active run's saved resolved configuration, enforcing K=4. Added composition tests for suite identity, GPU mapping, milestone budget/cadence, evaluation cases, rendering settings and resolved K; two focused tests passed. Launch evidence follows after process verification. Existing trainers and unrelated tmp/ remain untouched.
+
+## [2026-09-15] launch | Start Beta and Gaussian milestone video jobs
+
+Launched independent restartable watchers in tmux sessions `connectome-4update-beta-videos` and `connectome-4update-gaussian-videos`, with watcher PIDs 3990852 and 3990855. Both consumed the target-250M checkpoint saved at actual frame 250,085,376 / epoch 1,272 and completed all three nonempty videos with no recorded failures. Each case JSON reports `neural_updates: 4`; both milestone status files report one of 400 targets complete and remain `running` for future checkpoints. Training PIDs 3968541/3968542 remained active throughout. Generated evaluation artifacts are ignored and were not committed.
