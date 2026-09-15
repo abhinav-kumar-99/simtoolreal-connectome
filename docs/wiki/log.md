@@ -6,6 +6,10 @@ Last updated: 2026-09-15
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-15] query | Correct SAPG embedding gradients in the actor comparison
+
+Corrected the connectome-versus-LSTM auxiliary-value comparison after tracing both `extra_param` builders. Both actors own learned `6 x 32` SAPG embedding tables upstream of their recurrent representations, so the auxiliary value loss updates both embeddings when `use_experimental_cv` is true. Each privileged critic independently owns another `6 x 32` embedding trained by the central-value optimizer. The architecture-specific discrepancy is the value/action readout scope—all recurrent cells versus motor cells for the connectome—not whether SAPG conditioning receives auxiliary gradients.
+
 ## [2026-09-15] query | Compare the auxiliary actor value path across connectome and LSTM policies
 
 Traced rollout storage, GAE construction, clipped value loss, both actor forwards, and the active YAML inheritance. For both actors, the privileged central critic supplies stored values, bootstrapping, returns, and advantages. `use_experimental_cv: true` additionally fits the actor model's observation-side value head to those returns with a `2 * c_loss` objective contribution under `critic_coef: 4`; clipping is anchored to the stored privileged-critic prediction. The LSTM loss updates its shared LSTM and post-LSTM MLP, whereas the connectome loss reads all recurrent cells and updates its dense value head plus whichever adapters, conditioning, and circuit parameters are trainable. The connectome action head reads only motor cells, making the all-cell-value versus motor-only-action split architecture-specific.
