@@ -92,6 +92,14 @@ PPO does not differentiate through the simulator or through a freshly sampled ac
 
 The recommendation is a distribution consistent with actuator bounds, not tanh at every layer. A rescaled [Beta policy](https://proceedings.mlr.press/v70/chou17a.html) is an alternative bounded family; it is not implemented or validated here and does not repair internal saturation. Calibrating sensory/descending drive scale and checking goal sensitivity remain separate requirements. The proposed 1B suite isolates training-objective issues only; it must not be described as an implemented input-saturation or neural-timing fix.
 
+### Proposed Beta-policy parameters
+
+A first Beta-policy experiment could initialize every action dimension with alpha=beta=2, then **learn both as state-conditioned outputs**, not keep two fixed global constants. For each of 29 actions, sample x_i ~ Beta(alpha_i, beta_i), then send a_i=2*x_i-1. The rescaled mean is (alpha-beta)/(alpha+beta), and variance is 4*alpha*beta/((alpha+beta)^2*(alpha+beta+1)). Initial Beta(2,2) therefore gives action mean zero and standard deviation sqrt(0.2), approximately 0.447. This is a proposed initialization, not an empirically selected setting for this task; Beta(1,1) would instead be uniform with standard deviation approximately 0.577.
+
+Following the parameterization in [Chou et al.](https://proceedings.mlr.press/v70/chou17a/chou17a.pdf), two motor-readout heads can output alpha=1+softplus(u) and beta=1+softplus(v). This constrains shapes above one, favoring an interior mode and avoiding singular endpoint densities; it is a deliberate family restriction, not a mathematical requirement of Beta distributions. Small final weights and bias inverse_softplus(1)=log(exp(1)-1), approximately 0.5413, initialize near (2,2). Both heads and upstream trainable interfaces would receive PPO likelihood/entropy gradients; the frozen recurrent graph can remain frozen. SAPG conditioning may feed these heads through the circuit, but shape parameters are distinct from the entropy-loss coefficient. Beta likelihood, analytic entropy and Beta KL must replace the Gaussian calculations consistently, including the affine log-density correction for a=2*x-1. No Beta implementation or YAML profile was added.
+
+The ratio alpha/(alpha+beta) controls the mean, while their sum controls concentration when that ratio is held fixed. Positive shapes below one would allow endpoint-peaked/U-shaped policies if later justified by control requirements. Even with bounded actions, learned concentration can become excessive and exploration can collapse; Beta is not an automatic optimizer-stability or internal-neuron-saturation fix.
+
 ## Finding 2: scheduler KL mixes different policies, even with no update
 
 This **weakens the earlier interpretation that large first-mini-epoch KL directly measures aggressive optimizer movement**. The relevant seams are:
