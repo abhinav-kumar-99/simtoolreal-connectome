@@ -2,9 +2,15 @@
 
 A read-only structural screen identifies 86-, 262-, and 408-neuron front-leg candidates, while a cross-system literature comparison separates useful small modules from unproven full-task controllers.
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 Related: [Existing selection audit](front-leg-pathway-coverage.md), [Current 1,952-cell graph](compact-1952-training.md), [Actor and attribution](../concepts/connectome-actor.md)
+
+## 2026-09-15 training and functional-audit update
+
+The earlier recommendation to try 262 as the first full-task candidate is **weakened** by the [current end-to-end audit](system-audit-2026-09-15.md). The fresh 262 tanh run reached 4.593B reward frames with trailing return 378.30, versus 386.27 for 1,952 tanh at 2.378B, and was slower at matched early frame coordinates. Both remain mostly lifting solutions with almost flat deterministic Task Progress. This does not isolate graph size from every training confound, but provides no observed sample-efficiency advantage for 262.
+
+The two descending ports are both left-sided DNge061 cells. Goal and SAPG features are compressed into two scalar drives, and the checkpoint probe found 99.09% of their preactivations beyond absolute value three. The selected graph retains 15.45% of its cells' observed incoming contacts and 25.38% of motor incoming contacts within the audited VNC scope. These are contact fractions, not fractions of preserved computation. Treat 262 primarily as a local feedback-module experiment until its task-relevant responses and command interface are validated. The structural screen and initial-launch evidence below are historical, not a current completion claim.
 
 ## Conclusion and evidence boundary
 

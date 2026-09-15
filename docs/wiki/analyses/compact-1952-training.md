@@ -1,10 +1,18 @@
 # Approved 1,952-neuron training runs
 
-The exact path-plus-sensory-premotor candidate uses old optimizer timing; stopped histories are preserved, and a YAML-driven matched-reward handoff is currently catching the tanh policy up to the non-tanh policy's exposure before selecting one continuation.
+The exact path-plus-sensory-premotor candidate uses old optimizer timing; the matched-reward handoff selected the clipped policy, whose stronger training results coexist with pathological exploration.
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 Related: [Selection evidence](front-leg-pathway-coverage.md), [Timing comparison](adaptation-100b-update-timing.md), [Experiment workflow](../workflows/connectome-experiments.md)
+
+## 2026-09-15 audit update
+
+The [end-to-end audit](system-audit-2026-09-15.md) supersedes earlier live-status descriptions below. The original matched 100-point handoff window favored clipped 449.79814 over tanh 386.26710, and the clipped continuation is the active trainer. At the 07:12 EDT event snapshot its return was 560.42 over the last 100 points at 4.436B reward frames, but block-0 raw Gaussian entropy was still increasing. Tanh controlled latent scales without progressing beyond a mostly lifting solution; none of these runs had advanced the tolerance curriculum.
+
+**Weakened interpretation:** first-mini-epoch KL is not a clean measure of optimizer movement. SAPG relabels copied observations to a different exploration ID but retains the behavior Gaussian and source recurrent state; a checkpoint probe produces KL as high as 101.862 without any weight update. Updating the dataset's mean/scale references after each minibatch further changes the comparison for mini-epoch two. Thus the observed high/low KL alternation includes a policy-conditioning/reference confound, not only an LR-controller problem. The new audit also identifies heavily saturated input neurons and an auxiliary actor-value loss despite the separate central critic.
+
+The proposed tanh/on-policy/no-auxiliary-value 1B suite is configuration-validated but unlaunched. It does not alter the existing continuation or establish a better learned policy. Earlier chronological launch, stop and numerical records below remain historical evidence.
 
 ## Exact circuit and interfaces
 

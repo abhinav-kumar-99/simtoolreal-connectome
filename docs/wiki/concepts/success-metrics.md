@@ -2,7 +2,7 @@
 
 TensorBoard training-success tags summarize the most recently completed random-goal episodes, while deterministic trajectory Task Progress is a separate post-training evaluation metric.
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 Related: [Billion-step adaptation run](../analyses/adaptation-1b-run.md), [Experiment workflow](../workflows/connectome-experiments.md)
 
@@ -93,6 +93,8 @@ The tolerance curriculum is eligible to reduce `tau` by multiplying it by 0.9 ev
 Milestone evaluation is not currently written into the training TensorBoard event files. It is stored under `evals/connectome/` as per-case `eval.json` and aggregate `summary.json` files. The evaluator runs the Gaussian mean action, counts demonstrated trajectory waypoints reached, and reports `task_progress_pct = 100 * successful_waypoints / total_waypoints`.
 
 The current deployment contract is coefficient ID 50, the block-0 conditioned policy. This is inherited from the official SimToolReal `deployment/rl_player.py`, and both real deployment and this repository's video evaluator pass through the same local `RlPlayer`; videos therefore already show the deterministic mean of the currently deployable policy member. If a different coefficient ID is selected later, it must be changed as one shared deployment/evaluation contract rather than only in video generation. Selection among IDs should use a validation cohort, leaving the final evaluation-object cohort for unbiased reporting.
+
+The [2026-09-15 system audit](../analyses/system-audit-2026-09-15.md) makes this distinction experimentally important: the strongest training-return run has zero block-0 completed goals in its recent tail, while ordinary return describes block 5. Across 17 clipped-policy milestones through 4.25B, mean deterministic Task Progress was 0.74074% except for 1.48148% at 2.75B. The nine 1,952-tanh and 18 fresh 262-tanh milestones were all 0.74074%. Evaluate all six IDs on the same validation cohort before concluding that ID-0 training improvements cannot transfer to deterministic control; current artifacts do not establish that another ID succeeds. None of the main histories had advanced the initial tolerance curriculum at that snapshot.
 
 The evaluation YAML's `success_tolerance_m` is passed to the environment as the unscaled base tolerance. With the inherited `keypointScale: 1.5`, configured values 0.02 and 0.01 produce implemented maximum-keypoint thresholds of 0.03 m and 0.015 m respectively. Existing artifact labels call these the paper 2 cm and repository 1 cm settings because those are their configured base tolerances; consumers should record the 1.5 scale when reporting the actual threshold used by code.
 

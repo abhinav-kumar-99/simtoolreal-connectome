@@ -2,7 +2,7 @@
 
 The actor is a sparse rate RNN whose recurrent support and base weights come from MaleCNS.
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 Related: [Overview](../overview.md), [Source](../sources/summaries/malecns-front-leg-circuit.md), [Workflow](../workflows/connectome-experiments.md), [Sparse backends](../analyses/sparse-backends.md)
 
@@ -33,6 +33,10 @@ What is biological is the selected cell identity and source-derived wiring. What
 System observations enter sensory neurons, goal and SAPG exploration conditioning enter descending neurons, and only motor-neuron state is decoded into 29 robot actions. These three interface projections can use the backward-compatible linear layers or an optional one-hidden-layer MLP. The default remains linear and learns adapters and heads only. Optional weight adaptation and learned leaks/biases are independent; see [adaptation controls](connectome-adaptation.md). The dynamics and parameter accounting below describe the preserved gains-plus-dynamics control.
 
 For PPO, the privileged asymmetric critic remains the standard SimToolReal MLP and never consumes connectome state. The separate eligibility trainer instead uses a critic on observations plus detached recurrent activity; see [eligibility training](../workflows/eligibility-training.md).
+
+The [2026-09-15 audit](../analyses/system-audit-2026-09-15.md) clarifies that PPO also defaults to an **auxiliary actor-side value loss**: `use_experimental_cv: true` leaves the actor's all-neuron value head training through its input interfaces even though the separate central critic supplies rollout values. This is distinct from the privileged critic architecture. The existing false override disables that auxiliary objective, not the central critic.
+
+The same audit verifies that disjoint input/motor ports and one synchronous update impose an exact current-observation-to-current-action-mean delay. It finds severe sensory/descending preactivation saturation in both tanh-policy checkpoints. Frozen weights therefore do not imply a preserved functional operating regime. Source-derived adjacency, signed scalar tanh dynamics and the upstream physiological rate model must also be distinguished; the current actor does not reproduce the upstream executable simulation merely by importing its graph.
 
 ## Interface projection architectures
 
