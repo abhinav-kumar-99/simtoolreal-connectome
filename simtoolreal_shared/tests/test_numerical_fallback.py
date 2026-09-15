@@ -65,7 +65,8 @@ def test_unrestricted_beta_fallback_contract_composes() -> None:
     assert resolved.train.params.network.connectome.dynamics.neural_updates == 4
     assert config.kl_threshold == 0.004 and config.max_lr == 0.001
     assert config.use_experimental_cv is True
-    assert config.use_others_experience == 'none'
+    assert config.use_others_experience == 'lf'
+    assert config.off_policy_ratio == 1.0
     assert training['gpu_assignments'] == [1]
     assert training['max_frames'] == 100_000_000_000
 
