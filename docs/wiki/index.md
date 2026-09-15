@@ -28,7 +28,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Analyses
 
-- [End-to-end system audit](analyses/system-audit-2026-09-15.md) — All 71 local event histories, raw-source reproduction, cross-member KL, input saturation, circuit/function mismatch and an unlaunched diagnostic YAML. Last updated 2026-09-15.
+- [End-to-end system audit](analyses/system-audit-2026-09-15.md) — All 71 event histories, raw-source reproduction, cross-member KL, internal versus action saturation, and proposed multi-rate neural timing. Last updated 2026-09-15.
 - [Minimal dexterity circuits](analyses/minimal-dexterity-circuit.md) — Exact 86/262/408-cell candidates, threshold rationale, and 262 training evidence weakening its full-task recommendation. Last updated 2026-09-15.
 - [Dopamine-inspired online learning](analyses/dopamine-inspired-learning.md) — Eligibility rationale, historical design, implementation link and unproven learning/cost hypotheses. Last updated 2026-09-13.
 - [Approved 1,952-neuron training](analyses/compact-1952-training.md) — Exact graph, historical launches, clipped-policy handoff and corrected interpretation of scheduler KL. Last updated 2026-09-15.

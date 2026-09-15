@@ -40,6 +40,8 @@ With `use_experimental_cv: false` and the standard asymmetric `central_value_con
 
 The same audit verifies that disjoint input/motor ports and one synchronous update impose an exact current-observation-to-current-action-mean delay. It finds severe sensory/descending preactivation saturation in both tanh-policy checkpoints. Frozen weights therefore do not imply a preserved functional operating regime. Source-derived adjacency, signed scalar tanh dynamics and the upstream physiological rate model must also be distinguished; the current actor does not reproduce the upstream executable simulation merely by importing its graph.
 
+The audit's [timing proposal](../analyses/system-audit-2026-09-15.md#neural-timing-and-body-interface) tests four/eight internal updates with one held observation per control decision, matching substep leak to the original passive decay. This is not a sequence-length increase or an implemented runtime option. It also distinguishes output-action squashing from internal-neuron saturation: consistent bounded-action entropy addresses the former distribution objective, while calibrated input drives and functional sensitivity checks address the latter operating regime.
+
 ## Interface projection architectures
 
 `params.network.connectome.interface_projections.architecture` selects one shared architecture for the sensory input projection, goal-plus-conditioning projection, and motor-state action-mean projection:
