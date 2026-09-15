@@ -53,6 +53,30 @@ def test_four_update_beta_gaussian_suites_preserve_requested_contract():
                 assert actor.space.continuous.fixed_sigma == 'coef_cond'
 
 
+def test_four_update_video_watchers_match_training_timing_and_gpu() -> None:
+    root = Path(__file__).resolve().parents[2]
+    base = root / 'configs/connectome/evaluation'
+    expected = {'beta': 0, 'gaussian': 1}
+    for name, gpu in expected.items():
+        config = yaml.safe_load((base / f'ppo_1952_4update_{name}_100b_milestones.yaml').read_text())
+        policy = config['policies'][0]
+        assert config['training_suite_name'] == 'ppo_1952_4update_beta_gaussian_100b'
+        assert config['max_frames'] == 100_000_000_000
+        assert config['milestone_interval_frames'] == 250_000_000
+        assert config['watch_until_complete'] is True
+        assert policy['name'] == name and policy['gpu'] == gpu
+        assert policy['policy_config_path'].endswith(
+            f'00_ppo_1952_4update_beta_gaussian_100b_{name}_seed42/resolved_config.yaml'
+        )
+        resolved = yaml.safe_load((root / policy['policy_config_path']).read_text())
+        assert resolved['train']['params']['network']['connectome']['dynamics']['neural_updates'] == 4
+        evaluation = config['evaluation']
+        assert evaluation['action_selection'] == 'mean'
+        assert evaluation['episodes_per_case'] == 1
+        assert len(evaluation['eval_cases']) == 3
+        assert evaluation['videos']['camera_resolution_reduction_factor'] == 2
+
+
 def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     import isaacgymenvs  # noqa: F401 - registers OmegaConf resolvers

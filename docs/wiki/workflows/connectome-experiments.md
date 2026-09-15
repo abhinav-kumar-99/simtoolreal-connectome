@@ -45,6 +45,15 @@ The player now rejects a K mismatch against the checkpoint's nearest `resolved_c
 
 Validated Beta and Gaussian deployment loading at K=1/4/8, counted exactly K recurrent multiplications per action, verified reset parity, and tested mismatch rejection. Also loaded both actual 100B resolved configs and their 1,966,080-frame resume-source checkpoints through RlPlayer: both executed exactly four updates with finite actions and reset parity. That actual-checkpoint probe used native CSR on CPU to avoid allocating evaluation environments on the training GPUs; it was not a full simulator task evaluation. No training restart or new evaluation watcher was needed for this timing fix.
 
+The two active 100B policies have independent restartable video watchers:
+
+```bash
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_4update_beta_100b_milestones.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_4update_gaussian_100b_milestones.yaml
+```
+
+Each watcher polls every 30 seconds for inference-only checkpoints at 250M-frame targets through the near-cap 100B target, evaluates on the model's corresponding physical GPU, and resumes from `milestone_status.json`. Each target produces three deterministic mean-action, high-resolution videos: Sharpie `write_c`, eraser `wipe_smile`, and spatula `flip_over`, one episode each with the paper Task Progress tolerance of .02 m. Beta outputs go under `evals/connectome/ppo_1952_4update_beta_100b_milestones`; Gaussian outputs use the parallel `_gaussian_` directory. The YAMLs point at the active `_100b_training_state` run's `resolved_config.yaml`, so RlPlayer enforces K=4. The watcher helper discovers checkpoints and manages target/retry state; the evaluation helper expands YAML cases and schedules workers; the worker runs Isaac Gym and writes result JSON/video. These helper files are imported by the entrypoint and have no separate operator command.
+
 ## Eligibility alternative
 
 The separately selected `connectome_eligibility` trainer now supports the compact gains actor, online local traces, a small TD critic and the existing TensorBoard/checkpoint/video interfaces. See the [eligibility runbook](eligibility-training.md) for smoke, continuation and prepared-pilot commands and the approximation/finite-horizon limits. Existing PPO profiles and jobs remain unchanged; useful task learning has not been demonstrated for eligibility.
