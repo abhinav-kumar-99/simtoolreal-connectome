@@ -1,8 +1,8 @@
 # SimToolReal Training References
 
-SimToolReal provides a published five-seed reward curve, a later upstream seed-0 numerical export, and a terminal pretrained checkpoint, but no raw five-seed paper history.
+SimToolReal provides a published five-seed reward curve, a later upstream seed-0 numerical export, and a terminal pretrained checkpoint, but no raw five-seed paper history. The paper directly supports the privileged asymmetric critic, while the released code's additional actor-side value loss is not described or ablated in the paper.
 
-Last updated: 2026-09-13
+Last updated: 2026-09-15
 
 Related: [Billion-step adaptation run](../../analyses/adaptation-1b-run.md), [Experiment workflow](../../workflows/connectome-experiments.md)
 
@@ -12,6 +12,19 @@ Related: [Billion-step adaptation run](../../analyses/adaptation-1b-run.md), [Ex
 - Main repository README and `download_pretrained_policy.py`
 - Upstream branch `2026-08-12_SimToolReal_Transformer_Study`, commit `b34781b4ba36f05b7089a041530b62f186726d02`, especially `study/README.md`, `study/plot_reward_curves.py`, and `study/results/reward_curves_eval_policy_seed0_20260812_checkin.csv`
 - Released archive: `https://download.cs.stanford.edu/juno/simtoolreal/pretrained_policy.zip`, last modified 2026-02-17 at inspection
+
+## Paper critic contract versus released implementation
+
+The main paper describes a conventional asymmetric actor-critic division: the recurrent actor receives the restricted, deployment-available observation, including noisy and delayed signals, while a separate critic receives exact, instantaneous, noise-free simulator state plus privileged velocities, reward/progress features, and object pose. Appendix Table I lists an `LSTM[1024] + MLP[1024,1024,512,512]` actor and an `MLP[1024,1024,512,512]` critic.
+
+Figure 8 isolates the value-input asymmetry over five random seeds. Its `SAPG + Symmetric Critic` ablation forces the critic to use the same partial observations as the actor and performs substantially worse than `SAPG + Asymmetric Critic`. This supports retaining `central_value_config` and its clean privileged input. It does not test whether the actor network should simultaneously fit another value function.
+
+The paper contains no description of `use_experimental_cv`, an auxiliary actor-side value head, two concurrent value losses, or a target for such a second value function. Absence from the paper is not proof that this path was inactive: the released code inherits `use_experimental_cv: true` from `rl_games`, so exact code reproduction retains it. The evidence therefore separates two notions of fidelity:
+
+- Released-code fidelity uses `use_experimental_cv: true` and trains both the privileged critic and the actor model's value head.
+- The paper's stated algorithm only establishes the separate privileged critic. Setting `use_experimental_cv: false` while retaining `central_value_config` preserves that paper-backed mechanism and removes an undocumented auxiliary loss.
+
+No published ablation determines whether the inherited auxiliary actor-value objective helps or hurts SimToolReal. A matched true-versus-false run with identical privileged critic inputs is required to answer that question.
 
 ## Available comparison data
 

@@ -2,9 +2,13 @@
 
 Append-only record of durable repository work.
 
-Last updated: 2026-09-13
+Last updated: 2026-09-15
 
 Related: [Index](index.md), [Overview](overview.md)
+
+## [2026-09-15] ingest | Separate the paper critic claim from the auxiliary value loss
+
+Read the complete SimToolReal paper sections describing RL training, the five-seed Figure 8 ablation, the appendix critic state, and Table I. The paper supports a separate privileged critic on clean simulator state: forcing that critic to use the actor's partial observations severely hinders learning. It does not describe or ablate `use_experimental_cv` or the simultaneous actor-side value loss inherited by the released code. Documented that `false` keeps the paper-backed asymmetric critic but differs from exact released-code behavior, while no published result resolves whether the auxiliary objective is beneficial.
 
 ## [2026-09-13] query | Align videos with deployed SAPG member
 
