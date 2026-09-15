@@ -23,7 +23,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Workflows
 
-- [Experiment workflow](workflows/connectome-experiments.md) — Four-update Beta/Gaussian training, milestone videos, and the guarded unrestricted-Beta numerical fallback. Last updated 2026-09-15.
+- [Experiment workflow](workflows/connectome-experiments.md) — Four-update Beta training, milestone videos, the stopped unrestricted fallback, and its restricted-Beta LF replacement. Last updated 2026-09-15.
 - [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, early gain audit, and stopped-run status. Last updated 2026-09-14.
 
 ## Analyses

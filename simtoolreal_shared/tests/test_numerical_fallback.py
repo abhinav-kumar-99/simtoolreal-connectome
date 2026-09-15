@@ -79,3 +79,44 @@ def test_unrestricted_beta_fallback_contract_composes() -> None:
     assert video['policies'][0]['name'] == 'unrestricted_beta'
     assert video['policies'][0]['gpu'] == 1
     assert video['milestone_interval_frames'] == 250_000_000
+
+
+def test_restricted_beta_lf_replacement_contract_composes() -> None:
+    from scripts.run_connectome_suite import _compose_resolved, _training_overrides
+
+    root = Path(__file__).resolve().parents[2]
+    suite_path = (
+        root
+        / 'configs/connectome/suites/ppo_1952_4update_restricted_beta_lf_100b.yaml'
+    )
+    suite = yaml.safe_load(suite_path.read_text())
+    training = suite['training']
+    profile = training['train_profiles'][0]
+    resolved = _compose_resolved(_training_overrides(
+        training, profile['train_profile'], 42, profile['name'],
+        root / suite['output_directory'],
+    ))
+    continuous = resolved.train.params.network.space.continuous
+    config = resolved.train.params.config
+    assert resolved.train.params.model.name == 'continuous_a2c_beta'
+    assert continuous.distribution == 'beta'
+    assert continuous.beta_min_shape == 1.0
+    assert continuous.beta_initial_shape == 2.0
+    assert resolved.train.params.network.connectome.dynamics.neural_updates == 4
+    assert config.kl_threshold == 0.004 and config.max_lr == 0.001
+    assert config.use_experimental_cv is True
+    assert config.use_others_experience == 'lf'
+    assert config.off_policy_ratio == 1.0
+    assert training['gpu_assignments'] == [1]
+    assert training['max_frames'] == 100_000_000_000
+
+    video_path = (
+        root
+        / 'configs/connectome/evaluation/'
+        'ppo_1952_4update_restricted_beta_lf_100b_milestones.yaml'
+    )
+    video = yaml.safe_load(video_path.read_text())
+    assert video['training_suite_name'] == suite['name']
+    assert video['policies'][0]['name'] == 'restricted_beta_lf'
+    assert video['policies'][0]['gpu'] == 1
+    assert video['milestone_interval_frames'] == 250_000_000

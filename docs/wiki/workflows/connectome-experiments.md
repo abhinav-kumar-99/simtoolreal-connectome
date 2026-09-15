@@ -108,6 +108,17 @@ The standard Beta profile remains `alpha,beta = 1 + softplus(raw)`. The fallback
 
 The user-triggered replacement launched on 2026-09-15 after Gaussian PID 3968542 was terminated. The guard stopped the matching Gaussian watcher PID 3990855, then launched suite PID 4088170, unrestricted-Beta trainer PID 4088218 and replacement video watcher PID 4088221. The saved `resolved_config.yaml` confirms `continuous_a2c_beta`, minimum shape .0001, initialization 2.0, K=4, auxiliary actor value loss, `lf`/1.0 experience reuse, KL .004 and the 100B cap. By frame 1,769,472, entropy 16.49099, aggregate KL .00089783, both scheduler KLs, actor/value losses and reward were finite; this is launch health, not learning evidence. The restricted-Beta PID 3968541 continued unchanged on GPU 0.
 
+That unrestricted run was superseded and stopped at the user's next decision. Its last logged frame was 193,462,272, where Beta entropy had fallen to -14,694.9385 and aggregate KL had risen to 3,916.8435; the last saved recovery checkpoint is epoch 800. These finite but extreme values are evidence of severe distribution/concentration instability, not a NaN trigger. Its suite PID 4088170, trainer PID 4088218 and watcher PID 4088221 exited, and its artifacts were preserved.
+
+The active GPU-1 replacement restores the restricted parameterization `alpha,beta = 1 + softplus(raw)` while retaining LF/1.0, KL .004, K=4, auxiliary actor value loss and the fresh 100B contract. It has a separate experiment and artifact identity. Launch or restart its YAML-owned training and milestone watcher from the repository root with:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_restricted_beta_lf_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_4update_restricted_beta_lf_100b_milestones.yaml
+```
+
+`ppo_1952_4update_restricted_beta_lf_100b.yaml` owns the Beta floor/initialization, LF population reuse, KL/LR rules, K, auxiliary value loss, GPU, task, checkpoint cadence and budget. The evaluation YAML owns the matching resolved policy path, GPU, 250M-frame cadence and three deterministic video cases. The suite entrypoint prepares the pinned graph and launches the trainer; the watcher discovers inference checkpoints and calls the shared evaluation worker. The first launch used suite/trainer PIDs 4102855/4102915 and watcher PID 4103035. Its saved resolved config confirms minimum shape 1.0 and initialization 2.0. At frame 1,376,256, entropy 16.48605, aggregate KL .00147602, both scheduler KLs, actor/value losses and reward were finite. This is launch health only. The original restricted-Beta on-policy trainer PID 3968541 remains active on GPU 0, so the active comparison is now restricted Beta with `none` versus restricted Beta with `lf`, although their starts are not frame-matched.
+
 ## Eligibility alternative
 
 The separately selected `connectome_eligibility` trainer now supports the compact gains actor, online local traces, a small TD critic and the existing TensorBoard/checkpoint/video interfaces. See the [eligibility runbook](eligibility-training.md) for smoke, continuation and prepared-pilot commands and the approximation/finite-horizon limits. Existing PPO profiles and jobs remain unchanged; useful task learning has not been demonstrated for eligibility.
