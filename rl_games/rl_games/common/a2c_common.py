@@ -705,6 +705,7 @@ class A2CBase(BaseAlgorithm):
 
         if self.has_central_value:
             state['assymetric_vf_nets'] = self.central_value_net.state_dict()
+            state['central_value_optimizer'] = self.central_value_net.optimizer.state_dict()
 
         # This is actually the best reward ever achieved. last_mean_rewards is perhaps not the best variable name
         # We save it to the checkpoint to prevent overriding the "best ever" checkpoint upon experiment restart
@@ -772,7 +773,12 @@ class A2CBase(BaseAlgorithm):
             return
         self.save_inference_milestone(self.max_frames, current_frame)
 
-    def set_full_state_weights(self, weights, set_epoch=True):
+    def set_full_state_weights(
+        self,
+        weights,
+        set_epoch=True,
+        restore_environment=True,
+    ):
 
         self.set_weights(weights)
         if set_epoch:
@@ -781,6 +787,15 @@ class A2CBase(BaseAlgorithm):
 
         if self.has_central_value:
             self.central_value_net.load_state_dict(weights['assymetric_vf_nets'])
+            if 'central_value_optimizer' in weights:
+                self.central_value_net.optimizer.load_state_dict(
+                    weights['central_value_optimizer']
+                )
+            else:
+                print(
+                    "Checkpoint has no central-value optimizer state; "
+                    "the restored critic weights will use a fresh optimizer"
+                )
 
         self.optimizer.load_state_dict(weights['optimizer'])
         self.last_lr = weights['optimizer']['param_groups'][0]['lr']
@@ -799,7 +814,7 @@ class A2CBase(BaseAlgorithm):
             self.game_shaped_rewards.load_state_dict(weights['trackers']['game_shaped_rewards'], strict=False)
             self.game_lengths.load_state_dict(weights['trackers']['game_lengths'], strict=False)
         
-        if self.vec_env is not None:
+        if restore_environment and self.vec_env is not None:
             env_state = weights.get('env_state', None)
             self.vec_env.set_env_state(env_state)
 
@@ -809,10 +824,16 @@ class A2CBase(BaseAlgorithm):
             print("Skipping loading of many things in a2c_common.set_full_state_weights because the shapes don't match")
             print(f"self.num_actors = {self.num_actors}, weights['current_rewards'].shape = {weights['current_rewards'].shape if 'current_rewards' in weights else 'not in weights'}")
 
-        for key in ['rnn_states', 'dones', 'obs', 'current_rewards', 'current_shaped_rewards', 'current_lengths']:
-            if key in weights:
-                if not SKIP:
-                    setattr(self, key, weights[key])
+        if restore_environment:
+            for key in ['rnn_states', 'dones', 'obs', 'current_rewards', 'current_shaped_rewards', 'current_lengths']:
+                if key in weights:
+                    if not SKIP:
+                        setattr(self, key, weights[key])
+        else:
+            print(
+                "Skipping checkpoint simulator, recurrent rollout, and partial-episode "
+                "state; the environment will reset before collection"
+            )
         
         if self.intr_reward_model is not None:
             if 'intr_reward_model' in weights:
@@ -1395,6 +1416,14 @@ class DiscreteA2CBase(A2CBase):
                     print('MAX FRAMES NUM!')
                     should_exit = True
 
+                if should_exit:
+                    torch_ext.safe_filesystem_op(
+                        os.makedirs,
+                        os.path.join(self.experiment_dir, 'last'),
+                        exist_ok=True,
+                    )
+                    self.save(os.path.join(self.experiment_dir, 'last', 'model'))
+
                 update_time = 0
 
             if self.multi_gpu:
@@ -1879,6 +1908,17 @@ class ContinuousA2CBase(A2CBase):
                         + '_rew_' + str(mean_rewards).replace('[', '_').replace(']', '_')), all_state_dict)
                     print('MAX FRAMES NUM!')
                     should_exit = True
+
+                if should_exit:
+                    torch_ext.safe_filesystem_op(
+                        os.makedirs,
+                        os.path.join(self.experiment_dir, 'last'),
+                        exist_ok=True,
+                    )
+                    self.save(
+                        os.path.join(self.experiment_dir, 'last', 'model'),
+                        all_state_dict,
+                    )
 
                 update_time = 0
             else:

@@ -158,6 +158,18 @@ def _training_overrides(
     run_name: str,
     run_directory: Path,
 ) -> list[str]:
+    artifact_target = training.get("artifact_target", {})
+    train_directory = Path(
+        artifact_target.get("train_directory", run_directory / "rl_runs")
+    )
+    hydra_directory = Path(
+        artifact_target.get("hydra_directory", run_directory / "hydra")
+    )
+    experiment_name = str(artifact_target.get("experiment_name", run_name))
+    if not train_directory.is_absolute():
+        train_directory = REPOSITORY_ROOT / train_directory
+    if not hydra_directory.is_absolute():
+        hydra_directory = REPOSITORY_ROOT / hydra_directory
     overrides = [
         f"task={training['task_profile']}",
         f"train={profile}",
@@ -168,12 +180,12 @@ def _training_overrides(
         f"task.env.numEnvs={int(training['num_envs'])}",
         f"train.params.config.expl_coef_block_size={int(training['sapg_block_size'])}",
         f"train.params.config.max_epochs={int(training['epochs'])}",
-        f"++train.params.config.train_dir={run_directory / 'rl_runs'}",
+        f"++train.params.config.train_dir={train_directory.resolve()}",
         f"train.params.config.save_frequency={int(training['save_frequency'])}",
         f"train.params.config.save_best_after={int(training['save_best_after'])}",
         f"seed={seed}",
-        f"experiment={run_name}",
-        f"hydra.run.dir={run_directory / 'hydra'}",
+        f"experiment={experiment_name}",
+        f"hydra.run.dir={hydra_directory.resolve()}",
         f"wandb_activate={str(bool(training['wandb']['enabled'])).lower()}",
         f"wandb_project={training['wandb']['project']}",
         f"wandb_entity={training['wandb']['entity']}",
@@ -233,6 +245,18 @@ def _run_training_case(case: dict[str, Any]) -> dict[str, Any]:
     resolved = case["resolved"]
     resolved_config_path = run_directory / "resolved_config.yaml"
     verification_device = f"cuda:{gpu}" if gpu is not None else "cpu"
+    artifact_target = training.get("artifact_target", {})
+    train_directory = Path(
+        artifact_target.get("train_directory", run_directory / "rl_runs")
+    )
+    if not train_directory.is_absolute():
+        train_directory = REPOSITORY_ROOT / train_directory
+    experiment_name = str(artifact_target.get("experiment_name", run_name))
+    training_log = Path(
+        artifact_target.get("training_log", run_directory / "train.log")
+    )
+    if not training_log.is_absolute():
+        training_log = REPOSITORY_ROOT / training_log
 
     if run_directory.exists() and any(run_directory.iterdir()):
         if training["on_existing"] != "skip":
@@ -276,7 +300,7 @@ def _run_training_case(case: dict[str, Any]) -> dict[str, Any]:
         _run_streaming(
             command,
             environment,
-            run_directory / "train.log",
+            training_log,
             label=f"gpu{gpu}:{case_name}",
         )
     except Exception as error:
@@ -302,7 +326,7 @@ def _run_training_case(case: dict[str, Any]) -> dict[str, Any]:
         json.dumps(training_timing, indent=2, sort_keys=True) + "\n"
     )
 
-    checkpoint_directory = run_directory / "rl_runs" / run_name / "nn"
+    checkpoint_directory = train_directory / experiment_name / "nn"
     checkpoints = sorted(
         checkpoint_directory.glob("*.pth"), key=lambda path: path.stat().st_mtime
     )

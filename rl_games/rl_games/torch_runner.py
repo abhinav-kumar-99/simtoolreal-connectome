@@ -26,6 +26,25 @@ def _restore(agent, args):
         load_mode = args.get('checkpoint_load_mode', 'resume')
         if load_mode == 'resume':
             agent.restore(args['checkpoint'])
+        elif load_mode == 'resume_training_state':
+            weights = _load_checkpoint_weights(agent, args['checkpoint'])
+            required = {'model', 'optimizer', 'epoch', 'frame'}
+            missing = sorted(required.difference(weights))
+            if missing:
+                raise KeyError(
+                    f"Training-state checkpoint is missing required keys: {missing}"
+                )
+            agent.set_full_state_weights(
+                weights,
+                set_epoch=True,
+                restore_environment=False,
+            )
+            optimizer_entries = len(weights['optimizer'].get('state', {}))
+            print(
+                f"=> resumed model and actor optimizer from '{args['checkpoint']}' "
+                f"at epoch={int(weights['epoch'])}, frame={int(weights['frame'])}, "
+                f"optimizer_states={optimizer_entries}; started a fresh simulator rollout"
+            )
         elif load_mode == 'weights':
             weights = _load_checkpoint_weights(agent, args['checkpoint'])
             agent.set_weights(weights)
@@ -36,7 +55,10 @@ def _restore(agent, args):
                     print(f"Skipping central value checkpoint weights: {exc}")
             print(f"=> initialized model weights from '{args['checkpoint']}'")
         else:
-            raise ValueError(f"checkpoint_load_mode must be resume/weights, got {load_mode!r}")
+            raise ValueError(
+                "checkpoint_load_mode must be resume/resume_training_state/weights, "
+                f"got {load_mode!r}"
+            )
 
 
 def _load_checkpoint_weights(agent, checkpoint_path):

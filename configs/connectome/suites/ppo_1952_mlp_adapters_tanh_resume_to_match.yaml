@@ -1,0 +1,66 @@
+# Resume the stopped tanh policy until it reaches the non-tanh run's last reward step.
+schema_version: 1
+name: ppo_1952_mlp_adapters_tanh_resume_to_match
+stages: [prepare, train]
+output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/resume_handoff_tanh_catchup
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+preparation:
+  config: configs/connectome/malecns_1952.yaml
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - {name: adapters_mlp_tanh, train_profile: SimToolRealConnectome1952AdaptersMLPTanhSAPG}
+  seeds: [42]
+  gpu_assignments: [0]
+  max_parallel: 1
+  num_envs: 12288
+  sapg_block_size: 2048
+  # Epoch 12,098 writes reward at the baseline's last logged step, 2,378,366,976,
+  # then exits with 2,378,563,584 collected frames in its terminal checkpoint.
+  epochs: 12098
+  max_frames: 2378563584
+  minibatch_size: 49152
+  central_critic_minibatch_size: 49152
+  rollout_accumulation_steps: 1
+  actor_microbatch_size: 49152
+  central_critic_microbatch_size: 49152
+  inference_checkpoint_interval_frames: 250000000
+  save_frequency: 3000
+  save_best_after: 100
+  on_existing: fail
+  checkpoint:
+    mode: resume_training_state
+    path: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_mlp_adapters_tanh_kl016_lr01_100b/00_ppo_1952_mlp_adapters_tanh_kl016_lr01_100b_adapters_mlp_tanh_seed42/rl_runs/00_ppo_1952_mlp_adapters_tanh_kl016_lr01_100b_adapters_mlp_tanh_seed42/last/model.pth
+  # Reuse the original experiment path so TensorBoard sees one tanh run.
+  artifact_target:
+    train_directory: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_mlp_adapters_tanh_kl016_lr01_100b/00_ppo_1952_mlp_adapters_tanh_kl016_lr01_100b_adapters_mlp_tanh_seed42/rl_runs
+    experiment_name: 00_ppo_1952_mlp_adapters_tanh_kl016_lr01_100b_adapters_mlp_tanh_seed42
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: ppo_1952_mlp_adapters_tanh_kl016_lr01_100b
+    tags: [malecns, compact-1952, adapters-only, interface-mlp, tanh-squashed, kl-0.016, resumed, matched-reward-handoff]
+  overrides:
+    train.params.config.kl_threshold: 0.016
+    train.params.config.max_lr: 0.01
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    train.params.config.expl_reward_coef_scale: 0.005
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0
