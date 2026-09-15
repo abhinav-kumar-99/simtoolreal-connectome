@@ -17,7 +17,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Concepts
 
-- [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics, interfaces, auxiliary actor-value objective, propagation delay and saturation boundaries. Last updated 2026-09-15.
+- [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics, interfaces, exact central-critic inputs, auxiliary actor-value objective, propagation delay and saturation boundaries. Last updated 2026-09-15.
 - [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, adapters-only default, and GPU implementation. Last updated 2026-09-14.
 - [Training and evaluation success metrics](concepts/success-metrics.md) — TensorBoard populations, tolerance scaling, policy-ID mismatch and milestone Task Progress. Last updated 2026-09-15.
 
