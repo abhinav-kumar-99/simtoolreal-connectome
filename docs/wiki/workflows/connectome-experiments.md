@@ -121,7 +121,22 @@ The active GPU-1 replacement restores the restricted parameterization `alpha,bet
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_4update_restricted_beta_lf_100b_milestones.yaml
 ```
 
-`ppo_1952_4update_restricted_beta_lf_100b.yaml` owns the Beta floor/initialization, LF population reuse, KL/LR rules, K, auxiliary value loss, GPU, task, checkpoint cadence and budget. The evaluation YAML owns the matching resolved policy path, GPU, 250M-frame cadence and three deterministic video cases. The suite entrypoint prepares the pinned graph and launches the trainer; the watcher discovers inference checkpoints and calls the shared evaluation worker. The first launch used suite/trainer PIDs 4102855/4102915 and watcher PID 4103035. Its saved resolved config confirms minimum shape 1.0 and initialization 2.0. At frame 1,376,256, entropy 16.48605, aggregate KL .00147602, both scheduler KLs, actor/value losses and reward were finite. This is launch health only. The original restricted-Beta on-policy trainer PID 3968541 remains active on GPU 0, so the active comparison is now restricted Beta with `none` versus restricted Beta with `lf`, although their starts are not frame-matched.
+`ppo_1952_4update_restricted_beta_lf_100b.yaml` owns the Beta floor/initialization, LF population reuse, KL/LR rules, K, auxiliary value loss, GPU, task, checkpoint cadence and budget. The evaluation YAML owns the matching resolved policy path, GPU, 250M-frame cadence and three deterministic video cases. The suite entrypoint prepares the pinned graph and launches the trainer; the watcher discovers inference checkpoints and calls the shared evaluation worker. The first launch used suite/trainer PIDs 4102855/4102915 and watcher PID 4103035. Its saved resolved config confirms minimum shape 1.0 and initialization 2.0. At frame 1,376,256, entropy 16.48605, aggregate KL .00147602, both scheduler KLs, actor/value losses and reward were finite. This was launch health only. At that time the original restricted-Beta on-policy trainer PID 3968541 remained active on GPU 0, yielding a temporary `none`-versus-`lf` comparison; the later replacement below supersedes that live-status description.
+
+### Fivefold-entropy LF replacement on GPU 0
+
+At the user's direction later on 2026-09-15, the longer-running non-LF trainer PID 3968541, its suite PID 3968492 and matching video watcher PID 3990852 were stopped; the GPU-1 LF trainer/watcher PIDs 4102915/4103035 were explicitly preserved. The stopped on-policy job's last complete rolling checkpoint is epoch 16,400/frame 3,224,371,200. Its training and evaluation artifacts were not deleted.
+
+The fresh GPU-0 replacement uses the same restricted-Beta actor, seed, 12,288 environments, K=4, auxiliary actor value loss, LF/1.0 experience reuse, KL target .004, LR range `[1e-6,.001]`, 250M inference milestones and 100B cap as the existing LF job. Its only intended optimization-setting difference is `expl_reward_coef_scale: .025`, five times the baseline `.005`. The six original SAPG blocks therefore receive entropy-loss coefficients `[.0125, .0100, .0075, .0050, .0025, 0]`; the extra LF block remains labeled ID 0 and receives zero entropy coefficient. Fivefold applies to the loss weights, not to the entropy values themselves.
+
+Launch or restart the fresh contracts from the repository root with distinct empty output directories:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_restricted_beta_lf_entropy5x_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_4update_restricted_beta_lf_entropy5x_100b_milestones.yaml
+```
+
+The suite YAML owns the entropy scale, LF policy, GPU 0, optimizer/KL settings, K, batch geometry, checkpoint cadence and 100B budget. The evaluation YAML owns the matching saved policy configuration, deterministic mean actions, three high-resolution task cases and 250M cadence. The launcher prepares the pinned compact graph and runs the trainer; the watcher only polls checkpoints and dispatches evaluation jobs. The composition test passed. The first launch uses suite/trainer PIDs 9553/9610 and watcher PID 9904. Its resolved YAML confirms scale .025 and all retained settings; at frame 1,769,472, entropy 16.71017, actor loss .000831, actor auxiliary value loss .17892, KL .001066 and reward 30.4754 were finite. This establishes launch health, not improved learning or long-run entropy stability. The active comparison is now LF scale `.005` on GPU 1 versus fresh LF scale `.025` on GPU 0, with unmatched training ages.
 
 ### Interpreting restricted-Beta entropy
 
