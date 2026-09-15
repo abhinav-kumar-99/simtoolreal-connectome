@@ -302,6 +302,68 @@ class ModelA2CContinuousLogStd(BaseModel):
                 + logstd.sum(dim=-1)
 
 
+class ModelA2CContinuousBeta(BaseModel):
+    """Independent trainable Beta shapes, affinely mapped to [-1, 1].
+
+    Players see actual action means/stds. Generic rollout storage slots retain
+    unit-interval samples and alpha/beta, not Gaussian moments. The trainer must
+    dispatch policy_kl below and apply bounds loss to action_mean, not alpha.
+    """
+
+    def __init__(self, network):
+        super().__init__('a2c')
+        self.network_builder = network
+
+    class Network(BaseModelNetwork):
+        def __init__(self, a2c_network, **kwargs):
+            super().__init__(**kwargs)
+            if getattr(a2c_network, 'action_distribution', None) != 'beta':
+                raise ValueError('Beta model requires continuous.distribution: beta')
+            self.a2c_network = a2c_network
+
+        def is_rnn(self):
+            return self.a2c_network.is_rnn()
+
+        def get_value_layer(self):
+            return self.a2c_network.get_value_layer()
+
+        def get_default_rnn_state(self):
+            return self.a2c_network.get_default_rnn_state()
+
+        @staticmethod
+        def policy_kl(alpha, beta, old_alpha, old_beta, reduce=True):
+            from rl_games.algos_torch.torch_ext import beta_policy_kl
+            return beta_policy_kl(alpha, beta, old_alpha, old_beta, reduce)
+
+        def forward(self, input_dict):
+            is_train = input_dict.get('is_train', True)
+            input_dict['obs'] = self.norm_obs(input_dict['obs'])
+            alpha, beta, value, states = self.a2c_network(input_dict)
+            distribution = torch.distributions.Beta(alpha.float(), beta.float(), validate_args=False)
+            action_mean = 2.0 * distribution.mean - 1.0
+            if is_train:
+                return {
+                    'prev_neglogp': -(distribution.log_prob(input_dict['prev_actions']) - math.log(2.0)).sum(-1),
+                    'values': value,
+                    'entropy': (distribution.entropy() + math.log(2.0)).sum(-1),
+                    'rnn_states': states,
+                    'mus': alpha, 'sigmas': beta,
+                    'action_mean': action_mean,
+                }
+            unit_action = distribution.sample()
+            return {
+                'neglogpacs': -(distribution.log_prob(unit_action) - math.log(2.0)).sum(-1),
+                'values': self.denorm_value(value),
+                'actions': 2.0 * unit_action - 1.0,
+                'mus': action_mean,
+                'sigmas': 2.0 * distribution.stddev,
+                'rnn_states': states,
+                'policy_storage_actions': unit_action,
+                'policy_storage_mus': alpha,
+                'policy_storage_sigmas': beta,
+            }
+
+
 class ModelA2CContinuousTanhLogStd(BaseModel):
     """PPO diagonal Gaussian transformed to the bounded action space by tanh.
 
@@ -633,4 +695,3 @@ class ModelSACContinuous(BaseModel):
             mu, sigma = self.sac_network(input_dict)
             dist = SquashedNormal(mu, sigma)
             return dist
-

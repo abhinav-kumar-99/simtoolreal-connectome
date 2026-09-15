@@ -185,6 +185,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             entropy = res_dict['entropy']
             mu = res_dict['mus']
             sigma = res_dict['sigmas']
+            action_mean = res_dict.get('action_mean', mu)
 
             a_loss = self.actor_loss_func(old_action_log_probs_batch, action_log_probs, advantage, self.ppo, curr_e_clip)
 
@@ -193,9 +194,9 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             else:
                 c_loss = torch.zeros((len(values), 1), device=self.ppo_device)
             if self.bound_loss_type == 'regularisation':
-                b_loss = self.reg_loss(mu)
+                b_loss = self.reg_loss(action_mean)
             elif self.bound_loss_type == 'bound':
-                b_loss = self.bound_loss(mu)
+                b_loss = self.bound_loss(action_mean)
             else:
                 b_loss = torch.zeros(len(mu), device=self.ppo_device)
             
@@ -243,7 +244,8 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
 
         with torch.no_grad():
             reduce_kl = rnn_masks is None
-            kl_dist = torch_ext.policy_kl(mu.detach(), sigma.detach(), old_mu_batch, old_sigma_batch, reduce_kl)
+            policy_kl = getattr(self.model, 'policy_kl', torch_ext.policy_kl)
+            kl_dist = policy_kl(mu.detach(), sigma.detach(), old_mu_batch, old_sigma_batch, reduce_kl)
             if rnn_masks is not None:
                 kl_dist = (kl_dist * rnn_masks).sum() / rnn_masks.numel()  #/ sum_mask
 

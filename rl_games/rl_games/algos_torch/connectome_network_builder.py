@@ -318,6 +318,11 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             )
 
             dynamics = connectome["dynamics"]
+            self.neural_updates = dynamics.get("neural_updates", 1)
+            if isinstance(self.neural_updates, bool) or not isinstance(self.neural_updates, int):
+                raise TypeError("dynamics.neural_updates must be an integer")
+            if self.neural_updates < 1:
+                raise ValueError("dynamics.neural_updates must be positive")
             if dynamics.get("activation") != "tanh":
                 raise ValueError("Connectome recurrent activation must be tanh")
             self.recurrent_gain = float(dynamics["beta"])
@@ -369,12 +374,24 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             )
             self.value = nn.Linear(self.neuron_count, self.value_size)
             continuous = params["space"]["continuous"]
+            self.action_distribution = continuous.get("distribution", "gaussian")
+            if self.action_distribution not in {"gaussian", "beta"}:
+                raise ValueError("continuous.distribution must be gaussian or beta")
             self.mu_act = self.activations_factory.create(continuous["mu_activation"])
             self.sigma_act = self.activations_factory.create(
                 continuous["sigma_activation"]
             )
             self.fixed_sigma = continuous["fixed_sigma"]
-            if self.fixed_sigma == "coef_cond":
+            if self.action_distribution == "beta":
+                self.beta_initial_shape = float(continuous.get("beta_initial_shape", 2.0))
+                if not math.isfinite(self.beta_initial_shape) or self.beta_initial_shape <= 1:
+                    raise ValueError("beta_initial_shape must be finite and greater than one")
+                self.beta_head = _interface_projection(
+                    len(motor_indices), self.actions_num,
+                    self.projection_architecture, self.projection_hidden_size,
+                    self.projection_activation, bias=True,
+                )
+            elif self.fixed_sigma == "coef_cond":
                 if self.net_type != "extra_param":
                     raise ValueError(
                         "coef_cond sigma requires SAPG extra_param construction"
@@ -450,6 +467,16 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     nn.init.zeros_(layer.bias)
             nn.init.uniform_(mu_layers[-1].weight, -1.0e-3, 1.0e-3)
             nn.init.zeros_(mu_layers[-1].bias)
+            if self.action_distribution == "beta":
+                layers = [layer for layer in self.beta_head.modules() if isinstance(layer, nn.Linear)]
+                for layer in layers:
+                    nn.init.xavier_uniform_(layer.weight)
+                    nn.init.zeros_(layer.bias)
+                nn.init.uniform_(layers[-1].weight, -1.0e-3, 1.0e-3)
+                target = self.beta_initial_shape - 1.0
+                initial_raw = target + math.log(-math.expm1(-target))
+                nn.init.constant_(mu_layers[-1].bias, initial_raw)
+                nn.init.constant_(layers[-1].bias, initial_raw)
 
         def incoming_gains(self) -> torch.Tensor:
             log_gain = self.log_gain_min + self.log_gain_span * torch.sigmoid(
@@ -465,6 +492,15 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
 
         def leaks(self) -> torch.Tensor:
             return torch.sigmoid(self.leak_raw)
+
+        def substep_leaks(self) -> torch.Tensor:
+            if self.neural_updates == 1:
+                return self.leaks()
+            # Preserve passive retention over one control interval. Stable even
+            # for learned leak logits, without detaching their gradients.
+            return -torch.expm1(
+                torch.nn.functional.logsigmoid(-self.leak_raw) / self.neural_updates
+            )
 
         def _apply(self, fn, recurse: bool = True):
             # The cached operator is reconstructed from persistent buffers after
@@ -589,34 +625,30 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     )
                 sensory_drive = self.sensory_adapter(sensory)
                 descending_drive = self.descending_adapter(goal)
+                leak = self.substep_leaks()
+                incoming = self.incoming_gains()
                 if self.operator_backend == "triton_fused":
                     from rl_games.algos_torch.connectome_triton import fused_step
 
-                    return fused_step(
-                        self.backend_graph(),
-                        self.effective_values() if values is None else values,
-                        hidden,
-                        self.incoming_gains(),
-                        self.outgoing_gains(),
-                        self.leaks(),
-                        self.recurrent_bias,
-                        sensory_drive,
-                        descending_drive,
-                        self.sensory_indices,
-                        self.descending_indices,
-                        self.recurrent_gain,
-                    )
+                    graph = self.backend_graph()
+                    step_values = self.effective_values() if values is None else values
+                    outgoing = self.outgoing_gains()
+                    for _ in range(self.neural_updates):
+                        hidden = fused_step(
+                            graph, step_values, hidden, incoming, outgoing, leak,
+                            self.recurrent_bias, sensory_drive, descending_drive,
+                            self.sensory_indices, self.descending_indices,
+                            self.recurrent_gain,
+                        )
+                    return hidden
                 drive = hidden.new_zeros(hidden.shape)
                 drive = drive.index_add(1, self.sensory_indices, sensory_drive)
                 drive = drive.index_add(1, self.descending_indices, descending_drive)
-                recurrent = self._recurrent_multiply(hidden, operator, values)
-                preactivation = (
-                    self.recurrent_gain * self.incoming_gains() * recurrent
-                    + drive
-                    + self.recurrent_bias
-                )
-                leak = self.leaks()
-                return (1.0 - leak) * hidden + leak * torch.tanh(preactivation)
+                for _ in range(self.neural_updates):
+                    recurrent = self._recurrent_multiply(hidden, operator, values)
+                    preactivation = self.recurrent_gain * incoming * recurrent + drive + self.recurrent_bias
+                    hidden = (1.0 - leak) * hidden + leak * torch.tanh(preactivation)
+                return hidden
 
         def forward(self, obs_dict: dict[str, Any]):
             observations = obs_dict["obs"]
@@ -668,8 +700,15 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 torch.stack(outputs).transpose(0, 1).reshape(observations.shape[0], -1)
             )
 
-            mu = self.mu_act(self.mu(output[:, self.motor_indices]))
             value = self.value(output)
+            if self.action_distribution == "beta":
+                # Shape heads and special-function inputs stay FP32 under AMP.
+                with torch.autocast(device_type=output.device.type, enabled=False):
+                    motor = output[:, self.motor_indices].float()
+                    alpha = 1.0 + torch.nn.functional.softplus(self.mu(motor))
+                    beta = 1.0 + torch.nn.functional.softplus(self.beta_head(motor))
+                return alpha, beta, value, (hidden.unsqueeze(0),)
+            mu = self.mu_act(self.mu(output[:, self.motor_indices]))
             if self.fixed_sigma == "coef_cond":
                 sigma = self.sigma_act(self.sigma[self._coefficient_rows(observations)])
             else:

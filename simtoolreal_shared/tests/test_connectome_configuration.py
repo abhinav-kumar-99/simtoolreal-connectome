@@ -6,6 +6,48 @@ import yaml
 from hydra import compose, initialize_config_dir
 
 
+def test_four_update_beta_gaussian_suites_preserve_requested_contract():
+    from scripts.run_connectome_suite import _compose_resolved, _training_overrides
+
+    root = Path(__file__).resolve().parents[2]
+    for suffix, epochs, cap in [('smoke', 2, 393216), ('1b', 5086, 1000000000)]:
+        suite = yaml.safe_load((root / f'configs/connectome/suites/ppo_1952_4update_beta_gaussian_{suffix}.yaml').read_text())
+        training = suite['training']
+        assert training['gpu_assignments'] == [0, 1]
+        assert training['max_parallel'] == 2
+        assert training['checkpoint']['mode'] == 'none'
+        assert training['on_existing'] == 'fail'
+        assert [p['name'] for p in training['train_profiles']] == ['beta', 'gaussian']
+        for entry in training['train_profiles']:
+            cfg = _compose_resolved(_training_overrides(training, entry['train_profile'], 42, entry['name'], root / suite['output_directory']))
+            actor = cfg.train.params.network
+            config = cfg.train.params.config
+            assert actor.connectome.dynamics.neural_updates == 4
+            assert actor.connectome.dynamics.initial_leak == .5
+            assert actor.connectome.expected.neurons == 1952
+            assert actor.connectome.adaptation.weight_mode == 'adapters_only'
+            assert actor.connectome.adaptation.learn_dynamics is False
+            assert actor.connectome.interface_projections.architecture == 'mlp'
+            assert config.use_experimental_cv is True
+            assert config.use_others_experience == 'none'
+            assert config.central_value_config is not None
+            assert config.max_lr == .001 and config.kl_threshold == .004
+            assert config.learning_rate == .0001 and config.expl_reward_coef_scale == .005
+            assert config.seq_length == config.horizon_length == 16
+            assert config.mini_epochs == 2
+            assert config.max_epochs == epochs and config.max_frames == cap
+            assert cfg.task.env.numEnvs == 12288
+            assert config.minibatch_size == config.microbatch_size == 49152
+            assert config.central_value_config.minibatch_size == 49152
+            if entry['name'] == 'beta':
+                assert cfg.train.params.model.name == 'continuous_a2c_beta'
+                assert actor.space.continuous.distribution == 'beta'
+                assert actor.space.continuous.beta_initial_shape == 2
+            else:
+                assert cfg.train.params.model.name == 'continuous_a2c_logstd'
+                assert actor.space.continuous.fixed_sigma == 'coef_cond'
+
+
 def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     import isaacgymenvs  # noqa: F401 - registers OmegaConf resolvers

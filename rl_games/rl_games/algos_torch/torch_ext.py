@@ -56,6 +56,21 @@ def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma, reduce=True):
     else:
         return kl
 
+def beta_policy_kl(alpha0, beta0, alpha1, beta1, reduce=True):
+    """KL(Beta0 || Beta1); shared affine action scaling cancels exactly."""
+    shapes = [x.double() for x in (alpha0, beta0, alpha1, beta1)]
+    valid = torch.ones_like(shapes[0], dtype=torch.bool)
+    for shape in shapes:
+        valid = valid & torch.isfinite(shape) & (shape > 0)
+    safe = [torch.where(valid, x, torch.ones_like(x)) for x in shapes]
+    p = torch.distributions.Beta(safe[0], safe[1], validate_args=False)
+    q = torch.distributions.Beta(safe[2], safe[3], validate_args=False)
+    kl = torch.distributions.kl_divergence(p, q).sum(-1)
+    kl = torch.where(valid.all(-1) & torch.isfinite(kl), kl.clamp_min(0), torch.full_like(kl, float('inf')))
+    kl = kl.to(alpha0.dtype)
+    return kl.mean() if reduce else kl
+
+
 def mean_mask(input, mask, sum_mask):
     return (input * rnn_masks).sum() / sum_mask
 

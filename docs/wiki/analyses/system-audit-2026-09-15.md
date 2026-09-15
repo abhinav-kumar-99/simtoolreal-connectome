@@ -8,6 +8,8 @@ Related: [Training history](compact-1952-training.md), [Circuit selection](front
 
 ## Decision
 
+**Implementation follow-up (2026-09-15):** the user subsequently selected a fresh four-neural-update Beta versus clipped-Gaussian pair, keeping auxiliary actor value loss in both. Beta and the timing knob are now implemented and have passed full-geometry smoke tests; the proposal-only statements below describe the earlier audit snapshot. See the [current configuration and execution runbook](../workflows/connectome-experiments.md#four-update-beta-versus-clipped-gaussian-2026-09-15). No improved learning outcome is established yet.
+
 Retain the frozen 1,952-neuron MLP-interface model as the main full-task reference. Its clipped-Gaussian KL-0.004 run has the strongest observed training return and training goal attainment. Its exploration distribution is nevertheless deteriorating; numerical KL repair did not remove the unbounded raw-entropy incentive. The tanh distribution fixes that incentive, but its existing runs have not solved the task.
 
 The next bounded diagnostic is [ppo_1952_tanh_onpolicy_noaux_1b.yaml](../../../configs/connectome/suites/ppo_1952_tanh_onpolicy_noaux_1b.yaml): fresh tanh policy, on-policy samples only, no auxiliary value loss through actor adapters, actor KL target 0.004 and LR ceiling 0.001. This is a proposed bundle of interventions, not a single-factor ablation or empirically established winner. It has passed configuration composition, not a simulator smoke or learning evaluation. No current training configuration or process was changed by this audit.

@@ -2,9 +2,28 @@
 
 Experiments are owned by YAML contracts and proceed through data, profile, smoke, and full-training gates.
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
+
+## Four-update Beta versus clipped Gaussian (2026-09-15)
+
+The user-selected follow-up to the [system audit](../analyses/system-audit-2026-09-15.md) retains auxiliary actor value loss in **both** policies and replaces the proposed tanh/no-aux experiment with this fresh pair:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_beta_gaussian_smoke.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_beta_gaussian_1b.yaml
+```
+
+The long YAML assigns Beta to physical GPU 0 and clipped Gaussian to GPU 1, concurrently. Both use the frozen 1,952-cell MLP actor, seed 42, 12,288 environments, horizon 16, 49,152 logical/physical actor and critic batches, two mini-epochs, on-policy-only samples (`use_others_experience: none`), KL .004, initial LR .0001, maximum LR .001 and SAPG entropy scale .005. `use_experimental_cv: true` retains the actor-side value objective alongside the asymmetric central critic. The 5,086-epoch budget is 999,948,288 frames per policy under the 1B cap; inference checkpoints are due every 250M frames and recovery saves every 200 epochs. `checkpoint.mode: none` starts fresh; `on_existing: fail` prevents rerunning into an existing output tree. Edit the YAML name/output directory to repeat an experiment.
+
+`dynamics.neural_updates: 4` caches observation/goal adapter outputs once per control decision, repeats the recurrence four times, and then reads the motor state. State persists across decisions and resets once at episode boundaries; training differentiates through all four updates. The per-update leak is `1-(1-control_leak)^(1/4)`: base leak .5 becomes approximately .1591036, preserving passive retention over a control interval, not the original nonlinear trajectory. This carries current observations over up to three-edge routes within the same decision; it does not remove all propagation lag or internal saturation.
+
+The Beta profile selects `continuous_a2c_beta`, with two trainable state-conditioned heads `alpha=1+softplus(u)` and `beta=1+softplus(v)`, initialized near (2,2), and maps samples with `a=2*x-1`. It uses exact affine-corrected Beta likelihood/entropy and Beta KL. Rollout storage retains unit-interval samples and shapes, whereas deployment receives actual bounded action means. Gaussian sampling/clipping and its unconstrained log-standard-deviation table remain unchanged; its raw-entropy blowup risk is deliberately not hidden by a new clamp. Equal seeds/configurations do not imply identical shared initial tensors because the Beta model has an additional head.
+
+The entrypoint prepares the pinned graph, launches isolated GPU children, records resolved configurations and TensorBoard events, and verifies final checkpoint reloads. Imported helpers `connectome_network_builder.py` implement substeps and shape heads; `models.py` implements Beta sampling/likelihood/entropy; `torch_ext.py` implements Beta KL; rollout and PPO helpers route stored shapes and the physical mean correctly. These helpers have no separate command. No new automatic video watcher is part of this pair.
+
+Validation: 92 focused tests passed (59 deselected), including native/Triton four-update forward/gradient parity, current-observation sensitivity, reset/sequence equivalence, trainable Beta heads, likelihood round trips, entropy/KL and YAML composition. Both full-geometry smoke jobs completed two epochs / 393,216 frames and checkpoint deployment reloads with finite actions; actor auxiliary value losses were nonzero and entropy/KL finite. Results are in `train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_4update_beta_gaussian_smoke/suite_results.json`. These are execution checks, not evidence of improved learning.
 
 ## Eligibility alternative
 

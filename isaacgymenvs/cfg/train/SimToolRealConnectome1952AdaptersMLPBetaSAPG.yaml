@@ -1,0 +1,15 @@
+defaults:
+  - SimToolRealConnectome1952AdaptersMLPSAPG
+  - _self_
+
+params:
+  model:
+    name: continuous_a2c_beta
+  network:
+    space:
+      continuous:
+        distribution: beta
+        fixed_sigma: state_dependent
+        beta_initial_shape: 2.0
+  config:
+    name: ${resolve_default:SimToolRealConnectome1952AdaptersMLPBetaSAPG,${....experiment}}

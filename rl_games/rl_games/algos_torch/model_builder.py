@@ -47,6 +47,8 @@ class ModelBuilder:
                                             lambda network, **kwargs: models.ModelA2CContinuous(network))
         self.model_factory.register_builder('continuous_a2c_logstd',
                                             lambda network, **kwargs: models.ModelA2CContinuousLogStd(network))
+        self.model_factory.register_builder('continuous_a2c_beta',
+                                            lambda network, **kwargs: models.ModelA2CContinuousBeta(network))
         self.model_factory.register_builder(
             'continuous_a2c_tanh_logstd',
             lambda network, **kwargs: models.ModelA2CContinuousTanhLogStd(

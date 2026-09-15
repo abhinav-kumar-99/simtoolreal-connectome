@@ -979,6 +979,9 @@ class A2CBase(BaseAlgorithm):
                     if storage_key
                     else res_dict[k]
                 )
+                # Non-Gaussian policies supply samples/shapes in the same
+                # fixed-size storage slots; inference moments remain physical.
+                value = res_dict.get('policy_storage_' + k, value)
                 self.experience_buffer.update_data(k, n, value)
             if self.has_central_value:
                 self.experience_buffer.update_data('states', n, self.obs['states'])
