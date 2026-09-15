@@ -137,6 +137,25 @@ Second, the global scalar itself changes population weights. At exact matched st
 
 Third, LF changes more than entropy weighting. The added samples retain follower actions, old likelihoods and recurrent histories but are evaluated as ID 0, use reconstructed one-step returns, and participate in joint advantage normalization. This changes PPO clipping and the normalized advantages for the entire batch. Cross-conditioned KL also drives the adaptive scheduler; the observed LF KL above its upper threshold produces a very different LR trajectory. These effects mean the current comparison demonstrates an LF-associated entropy change, but does not isolate one clean causal term. A proper ablation would retain the same seven-block batch geometry while separately toggling coefficient relabeling, zero-versus-source entropy weight, recurrent reroll, return construction and scheduler-KL inclusion.
 
+### Where the restricted-Beta densities peak
+
+A 2026-09-15 saved-state probe evaluated each checkpoint's 12,288 saved observations and recurrent states for the next policy decision, giving 2,048 environments for each coefficient ID and 29 state-conditioned Beta distributions per environment. The current rolling snapshots were on-policy epoch 14,000/frame 2,752,512,000 and LF epoch 4,600/frame 904,396,800, so their current values are not exposure-matched. The full epoch-3,200 snapshots provide an exact matched checkpoint coordinate of 629,145,600 frames. Loading the same weights with the numerically equivalent CPU native-CSR backend changed no policy parameters.
+
+The formal modes are often near the action bounds and favor the negative side, but mode location substantially overstates how much probability is actually at the bounds:
+
+| snapshot and sharp block | one-state 29-D entropy | median mode | median absolute mode | modes with `abs(mode) >= .8` | negative / positive bound-side modes | probability mass in `[-1,-.8] U [.8,1]` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current on-policy ID 0 | -6.446 | -0.309 | .998 | 75.3% | 42.5% / 32.8% | 38.6% |
+| current LF ID 10 | .423 | -0.182 | .872 | 54.6% | 35.3% / 19.2% | 22.9% |
+| matched on-policy ID 0 | 2.997 | -0.143 | .926 | 59.3% | 39.0% / 20.3% | 24.5% |
+| matched LF ID 10 | 4.307 | -0.207 | .889 | 56.8% | 36.6% / 20.2% | 20.9% |
+
+A uniform action density puts 20% of its mass in that outer-20% region. Thus the current on-policy ID-0 member is genuinely concentrating toward both endpoints, with more negative than positive endpoint pressure: its outer-20% mass is 38.6%, and its outer-10% mass is 24.3% rather than the uniform 10%. The LF ID-10 member's formal modes also tend toward the endpoints, especially `-1`, but its mass is only mildly more endpoint-heavy than uniform: 22.9% in the outer 20% and 12.1% in the outer 10%. At the matched full checkpoint the same qualitative distinction is already present, though weaker.
+
+The apparent contradiction between a near-bound mode and modest bound probability is real. With `alpha` and `beta` close to one, a tiny skew gives an almost-flat Beta density a formal endpoint or near-endpoint maximum. Float32 also weakens the advertised strict-interior guarantee of `1 + softplus(raw)`: in the current on-policy probe, 22.79% of alpha values and 10.47% of beta values rounded exactly to 1.0; LF had .40% and 2.18%, respectively. If one shape equals one and the other exceeds one, the mathematical mode is exactly at one boundary even when the density is shallow. Adding a small representable margin above one would remove exact boundary modes but would not prevent near-bound modes or excessive concentration.
+
+The sharpest individual on-policy ID-0 coordinates show genuine negative endpoint bias: hand actions 8, 19, 9 and 23 had median modes approximately `-1`, `-.995`, `-1` and `-.999`, with 38.5-42.2% outer-20% probability mass. LF ID-10 was milder: arm action 1 had mode `+1` and 32.5% outer mass, while hand actions 10 and 23 had median modes `-.978` and `-.989` with 26.9% and 27.7% outer mass. Indices 0-6 are arm commands and 7-28 are hand commands. Deterministic evaluation executes the Beta mean, not its mode, so a boundary mode does not imply that evaluation videos command an endpoint. The durable telemetry should therefore log per-block physical-action mean and standard deviation, exact-floor frequency, mode, and analytic outer-10%/outer-20% probability mass; entropy or mode alone is insufficient.
+
 ## Eligibility alternative
 
 The separately selected `connectome_eligibility` trainer now supports the compact gains actor, online local traces, a small TD critic and the existing TensorBoard/checkpoint/video interfaces. See the [eligibility runbook](eligibility-training.md) for smoke, continuation and prepared-pilot commands and the approximation/finite-horizon limits. Existing PPO profiles and jobs remain unchanged; useful task learning has not been demonstrated for eligibility.
