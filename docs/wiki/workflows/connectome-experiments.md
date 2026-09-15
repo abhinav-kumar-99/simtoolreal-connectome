@@ -54,6 +54,20 @@ The two active 100B policies have independent restartable video watchers:
 
 Each watcher polls every 30 seconds for inference-only checkpoints at 250M-frame targets through the near-cap 100B target, evaluates on the model's corresponding physical GPU, and resumes from `milestone_status.json`. Each target produces three deterministic mean-action, high-resolution videos: Sharpie `write_c`, eraser `wipe_smile`, and spatula `flip_over`, one episode each with the paper Task Progress tolerance of .02 m. Beta outputs go under `evals/connectome/ppo_1952_4update_beta_100b_milestones`; Gaussian outputs use the parallel `_gaussian_` directory. The YAMLs point at the active `_100b_training_state` run's `resolved_config.yaml`, so RlPlayer enforces K=4. The watcher helper discovers checkpoints and manages target/retry state; the evaluation helper expands YAML cases and schedules workers; the worker runs Isaac Gym and writes result JSON/video. These helper files are imported by the entrypoint and have no separate operator command.
 
+### Guarded Gaussian-to-unrestricted-Beta fallback
+
+Run the one-shot numerical guard from the repository root with:
+
+```bash
+.venv/bin/python scripts/run_connectome_numerical_fallback.py --config configs/connectome/handoffs/ppo_1952_gaussian_to_unrestricted_beta.yaml
+```
+
+The monitor scans complete TensorBoard TFRecords incrementally and validates each newly observed checkpoint's actor, actor optimizer, asymmetric critic and critic optimizer tensors. It replaces the current clipped-Gaussian job only after an unexpected 90-second trainer absence or a non-finite value in action entropy, actor/value/central-value/bounds loss, policy/scheduler KL, reward, or trainable checkpoint state. A high but finite entropy is recorded, not an arbitrary replacement trigger. The known undefined `auxiliary_stats/off_on_grad_similarity` diagnostic is excluded because on-policy-only training has no off-policy gradient to compare. Normal completion at frame 99,999,940,608 stops the guard without fallback.
+
+On a trigger, the guard targets only the exact Gaussian trainer and its old video watcher, waits for their process trees to exit, then launches `ppo_1952_4update_unrestricted_beta_100b.yaml` fresh on GPU 1. It verifies the replacement trainer appears before starting its matching milestone-video watcher and writes the decision/PIDs to `gaussian_to_unrestricted_beta_monitor/status.json`. It never stops the restricted-Beta trainer on GPU 0. The fallback retains K=4, auxiliary actor value loss, on-policy-only batches, KL target .004, LR range 1e-6 to .001, full batch geometry, task settings, 250M checkpoints and a 100B budget.
+
+The standard Beta profile remains `alpha,beta = 1 + softplus(raw)`. The fallback profile alone sets `beta_min_shape: 0.0001`, giving `alpha,beta = 0.0001 + softplus(raw)`: shapes remain numerically positive but can move below one to represent endpoint-peaked and U-shaped policies. It still initializes near Beta(2,2). The lower floor is numerical protection rather than a biological or empirically optimized value, and unrestricted Beta can introduce sharp endpoint densities and difficult gradients. `connectome_network_builder.py` owns this parameterization; the monitor script owns health/process/launch control; the suite and evaluation YAMLs own all fallback experiment and video settings.
+
 ## Eligibility alternative
 
 The separately selected `connectome_eligibility` trainer now supports the compact gains actor, online local traces, a small TD critic and the existing TensorBoard/checkpoint/video interfaces. See the [eligibility runbook](eligibility-training.md) for smoke, continuation and prepared-pilot commands and the approximation/finite-horizon limits. Existing PPO profiles and jobs remain unchanged; useful task learning has not been demonstrated for eligibility.

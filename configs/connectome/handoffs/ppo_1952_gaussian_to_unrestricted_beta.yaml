@@ -1,0 +1,27 @@
+schema_version: 1
+output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/gaussian_to_unrestricted_beta_monitor
+poll_interval_seconds: 30
+shutdown_timeout_seconds: 60
+source:
+  trainer_process_marker: experiment=00_ppo_1952_4update_beta_gaussian_100b_gaussian_seed42
+  event_glob: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_4update_beta_gaussian_100b_training_state/00_ppo_1952_4update_beta_gaussian_100b_gaussian_seed42/rl_runs/00_ppo_1952_4update_beta_gaussian_100b_gaussian_seed42/summaries/events.out.tfevents.*
+  checkpoint_glob: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_4update_beta_gaussian_100b_training_state/00_ppo_1952_4update_beta_gaussian_100b_gaussian_seed42/rl_runs/00_ppo_1952_4update_beta_gaussian_100b_gaussian_seed42/nn/*.pth
+  expected_final_frame: 99999940608
+  missing_process_grace_seconds: 90
+  monitored_scalar_tags:
+    - losses/entropy
+    - losses/a_loss
+    - losses/c_loss
+    - losses/cval_loss
+    - losses/bounds_loss
+    - info/kl
+    - info/scheduler/*/kl
+    - rewards/step
+stop_process_markers:
+  - ppo_1952_4update_gaussian_100b_milestones.yaml
+  - evals/connectome/ppo_1952_4update_gaussian_100b_milestones
+fallback:
+  training_config: configs/connectome/suites/ppo_1952_4update_unrestricted_beta_100b.yaml
+  video_config: configs/connectome/evaluation/ppo_1952_4update_unrestricted_beta_100b_milestones.yaml
+  trainer_process_marker: experiment=00_ppo_1952_4update_unrestricted_beta_100b_unrestricted_beta_seed42
+  startup_timeout_seconds: 120

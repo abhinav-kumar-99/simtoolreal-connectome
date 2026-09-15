@@ -384,8 +384,16 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self.fixed_sigma = continuous["fixed_sigma"]
             if self.action_distribution == "beta":
                 self.beta_initial_shape = float(continuous.get("beta_initial_shape", 2.0))
-                if not math.isfinite(self.beta_initial_shape) or self.beta_initial_shape <= 1:
-                    raise ValueError("beta_initial_shape must be finite and greater than one")
+                self.beta_min_shape = float(continuous.get("beta_min_shape", 1.0))
+                if not math.isfinite(self.beta_min_shape) or self.beta_min_shape <= 0:
+                    raise ValueError("beta_min_shape must be finite and positive")
+                if (
+                    not math.isfinite(self.beta_initial_shape)
+                    or self.beta_initial_shape <= self.beta_min_shape
+                ):
+                    raise ValueError(
+                        "beta_initial_shape must be finite and greater than beta_min_shape"
+                    )
                 self.beta_head = _interface_projection(
                     len(motor_indices), self.actions_num,
                     self.projection_architecture, self.projection_hidden_size,
@@ -473,7 +481,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     nn.init.xavier_uniform_(layer.weight)
                     nn.init.zeros_(layer.bias)
                 nn.init.uniform_(layers[-1].weight, -1.0e-3, 1.0e-3)
-                target = self.beta_initial_shape - 1.0
+                target = self.beta_initial_shape - self.beta_min_shape
                 initial_raw = target + math.log(-math.expm1(-target))
                 nn.init.constant_(mu_layers[-1].bias, initial_raw)
                 nn.init.constant_(layers[-1].bias, initial_raw)
@@ -705,8 +713,8 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 # Shape heads and special-function inputs stay FP32 under AMP.
                 with torch.autocast(device_type=output.device.type, enabled=False):
                     motor = output[:, self.motor_indices].float()
-                    alpha = 1.0 + torch.nn.functional.softplus(self.mu(motor))
-                    beta = 1.0 + torch.nn.functional.softplus(self.beta_head(motor))
+                    alpha = self.beta_min_shape + torch.nn.functional.softplus(self.mu(motor))
+                    beta = self.beta_min_shape + torch.nn.functional.softplus(self.beta_head(motor))
                 return alpha, beta, value, (hidden.unsqueeze(0),)
             mu = self.mu_act(self.mu(output[:, self.motor_indices]))
             if self.fixed_sigma == "coef_cond":

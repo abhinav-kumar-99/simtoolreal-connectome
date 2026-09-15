@@ -9,10 +9,11 @@ from rl_games.algos_torch.torch_ext import beta_policy_kl
 from .test_connectome_network import artifact_path, _network_params, _observations
 
 
-def network(artifact_path, updates=4, distribution='gaussian', backend='native_csr'):
+def network(artifact_path, updates=4, distribution='gaussian', backend='native_csr', beta_min_shape=1.0):
     params = _network_params(artifact_path, 'frozen_core', backend)
     params['connectome']['dynamics']['neural_updates'] = updates
     params['space']['continuous']['distribution'] = distribution
+    params['space']['continuous']['beta_min_shape'] = beta_min_shape
     return ConnectomeBuilder.Network(params, actions_num=2, input_shape=(6,), num_seqs=2,
                                      type='extra_param', coef_ids=torch.tensor([50., 0.]), coef_id_idx=5)
 
@@ -111,6 +112,24 @@ def test_beta_sampling_likelihood_entropy_and_learning(artifact_path):
     restored.load_state_dict(model.state_dict())
     with torch.no_grad():
         torch.testing.assert_close(restored({'obs': obs.clone(), 'is_train': False})['mus'], rollout['mus'])
+
+
+def test_unrestricted_beta_can_learn_shapes_below_one(artifact_path):
+    net = network(artifact_path, distribution='beta', beta_min_shape=1.0e-4)
+    for head in (net.mu, net.beta_head):
+        layers = [layer for layer in head.modules() if isinstance(layer, torch.nn.Linear)]
+        torch.nn.init.zeros_(layers[-1].weight)
+        torch.nn.init.constant_(layers[-1].bias, -2.0)
+    obs = _observations(2)
+    alpha, beta, _, _ = net({'obs': obs, 'rnn_states': None, 'seq_length': 1})
+    assert (alpha > 0).all() and (alpha < 1).all()
+    assert (beta > 0).all() and (beta < 1).all()
+
+
+@pytest.mark.parametrize('minimum', [0, -1, float('nan')])
+def test_invalid_beta_min_shape_rejected(artifact_path, minimum):
+    with pytest.raises(ValueError, match='beta_min_shape'):
+        network(artifact_path, distribution='beta', beta_min_shape=minimum)
 
 
 @pytest.mark.parametrize('scale', [1., 10., 10000.])
