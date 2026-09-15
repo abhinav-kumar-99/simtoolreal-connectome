@@ -23,7 +23,7 @@ def test_four_update_beta_gaussian_suites_preserve_requested_contract():
             case_training['overrides'] = {**training['overrides'], **entry.get('overrides', {})}
             cfg = _compose_resolved(_training_overrides(case_training, entry['train_profile'], 42, entry['name'], root / suite['output_directory']))
             if suffix == '100b':
-                assert cfg.train.params.config.checkpoint_load_mode == 'resume'
+                assert cfg.train.params.config.checkpoint_load_mode == 'resume_training_state'
                 assert f"_1b_{entry['name']}_seed42" in cfg.checkpoint
             actor = cfg.train.params.network
             config = cfg.train.params.config

@@ -2,7 +2,7 @@
 schema_version: 1
 name: ppo_1952_4update_beta_gaussian_100b
 stages: [prepare, train]
-output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_4update_beta_gaussian_100b
+output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_4update_beta_gaussian_100b_training_state
 runtime_environment:
   CC: /usr/bin/gcc
   CXX: /usr/bin/g++
@@ -18,12 +18,12 @@ training:
       train_profile: SimToolRealConnectome1952AdaptersMLPBetaSAPG
       overrides:
         checkpoint: /home/abhinav/Documents/simtoolreal-connectome/train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_4update_beta_gaussian_1b/00_ppo_1952_4update_beta_gaussian_1b_beta_seed42/rl_runs/00_ppo_1952_4update_beta_gaussian_1b_beta_seed42/nn/00_ppo_1952_4update_beta_gaussian_1b_beta_seed42.pth
-        ++train.params.config.checkpoint_load_mode: resume
+        ++train.params.config.checkpoint_load_mode: resume_training_state
     - name: gaussian
       train_profile: SimToolRealConnectome1952AdaptersMLPSAPG
       overrides:
         checkpoint: /home/abhinav/Documents/simtoolreal-connectome/train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_4update_beta_gaussian_1b/00_ppo_1952_4update_beta_gaussian_1b_gaussian_seed42/rl_runs/00_ppo_1952_4update_beta_gaussian_1b_gaussian_seed42/nn/00_ppo_1952_4update_beta_gaussian_1b_gaussian_seed42.pth
-        ++train.params.config.checkpoint_load_mode: resume
+        ++train.params.config.checkpoint_load_mode: resume_training_state
   seeds: [42]
   gpu_assignments: [0, 1]
   max_parallel: 2
