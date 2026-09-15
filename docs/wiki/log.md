@@ -503,3 +503,7 @@ Probed the rolling saved observations/recurrent states and the exact matched epo
 ## [2026-09-15] query | Trace Beta-parameter prediction
 
 Traced the exact restricted-Beta actor path from normalized observations and the learned SAPG-ID embedding through sensory/descending MLPs, four recurrent connectome updates, the 135 motor-neuron slice, and two independent 29-output MLP shape heads. Documented initialization near `(2,2)`, softplus-plus-one conversion, unit-interval rollout storage, affine action mapping, PPO likelihood/entropy/KL gradients, frozen recurrent-core boundary and deterministic mean-action evaluation. Alpha and beta are state- and history-conditioned outputs, not fixed constants or coefficient-block lookup tables. No trainer or configuration changed; untracked `.vscode/` and `tmp/` remained untouched.
+
+## [2026-09-15] query | Explain the Gaussian 41-nat entropy baseline
+
+Revalidated that clipped-Gaussian TensorBoard entropy sums raw unbounded Gaussian differential entropy over all 29 action coordinates before averaging samples. Zero-initialized log standard deviations give sigma one and `29 * .5 * log(2*pi*e) = 41.1492` nats, so a start above 40 is the designed baseline rather than evidence of initial numerical blowup. Recorded the distinction from bounded executed-action entropy and the fact that positive SAPG coefficients can subsequently increase the unbounded raw quantity. The interrupted LF-replacement request was not executed; no trainer or configuration changed, and untracked `.vscode/` and `tmp/` remained untouched.
