@@ -2,7 +2,7 @@
 
 Durable project knowledge for the MaleCNS-constrained SimToolReal actor.
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 Related: [Overview](overview.md), [Log](log.md)
 
@@ -12,7 +12,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Sources
 
-- [MaleCNS front-leg circuit](sources/summaries/malecns-front-leg-circuit.md) — Data identity and provenance. Last updated 2026-09-13.
+- [MaleCNS front-leg circuit](sources/summaries/malecns-front-leg-circuit.md) — Data identity, provenance, and anatomical-data versus executable-dynamics boundary. Last updated 2026-09-15.
 - [SimToolReal training references](sources/summaries/simtoolreal-training-references.md) — Published curve, upstream numerical study export, and released checkpoint metadata. Last updated 2026-09-13.
 
 ## Concepts
