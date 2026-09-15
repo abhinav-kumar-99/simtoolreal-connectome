@@ -6,6 +6,10 @@ Last updated: 2026-09-15
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-15] query | Compare the auxiliary actor value path across connectome and LSTM policies
+
+Traced rollout storage, GAE construction, clipped value loss, both actor forwards, and the active YAML inheritance. For both actors, the privileged central critic supplies stored values, bootstrapping, returns, and advantages. `use_experimental_cv: true` additionally fits the actor model's observation-side value head to those returns with a `2 * c_loss` objective contribution under `critic_coef: 4`; clipping is anchored to the stored privileged-critic prediction. The LSTM loss updates its shared LSTM and post-LSTM MLP, whereas the connectome loss reads all recurrent cells and updates its dense value head plus whichever adapters, conditioning, and circuit parameters are trainable. The connectome action head reads only motor cells, making the all-cell-value versus motor-only-action split architecture-specific.
+
 ## [2026-09-15] ingest | Separate the paper critic claim from the auxiliary value loss
 
 Read the complete SimToolReal paper sections describing RL training, the five-seed Figure 8 ablation, the appendix critic state, and Table I. The paper supports a separate privileged critic on clean simulator state: forcing that critic to use the actor's partial observations severely hinders learning. It does not describe or ablate `use_experimental_cv` or the simultaneous actor-side value loss inherited by the released code. Documented that `false` keeps the paper-backed asymmetric critic but differs from exact released-code behavior, while no published result resolves whether the auxiliary objective is beneficial.
