@@ -37,6 +37,22 @@ The resolved configurations for `ppo_1952_mlp_adapters_kl004_lr01_100b/...adapte
 
 The historical and new clipped policies use raw-Gaussian KL; Beta uses analytic Beta KL, unchanged by the affine action mapping. All sum over action dimensions and average over samples. The historical `use_others_experience: lf` / `off_policy_ratio: 1.0` includes cross-member relabeling; the new `none` setting removes that contribution (the retained ratio value is inactive). Thus equal KL targets do not imply identical KL populations; see the audit's no-update cross-member probe. The dataset also refreshes stored distribution parameters after minibatches, so this is not a strict cumulative KL-to-original-rollout bound. All three separate central critics use constant LR .0001: the inherited critic `kl_threshold: .016` is not an active critic LR control. Auxiliary actor-value gradients, in contrast, share the actor optimizer and its adaptive LR. Sources: each saved `resolved_config.yaml`, `a2c_common.py` scheduler/dataset loop, `a2c_continuous.py` KL dispatch, `torch_ext.py`, `schedulers.py`, and `central_value.py`. This comparison did not change runtime settings.
 
+The current four-update clipped-Gaussian case versus the named historical `ppo_1952_mlp_adapters_kl004_lr01_100b/...adapters_mlp_seed42` case is therefore **not a single-variable K ablation**. A recursive leaf comparison of their saved `resolved_config.yaml` files found only run/provenance fields plus these meaningful settings:
+
+| Setting | Historical named run | Current Gaussian |
+|---|---:|---:|
+| Circuit updates per environment action | 1 (pre-knob behavior) | 4, with held input and rescaled leak |
+| Cross-member reuse | `lf`, one selected relabeled follower block | `none`, rollout members only |
+| Actor maximum LR | .01 | .001 |
+| Actor value auxiliary loss | Implicit default `true` | Explicit `true` |
+| Start provenance | Fresh seed 42 | Fresh seed-42 pair, then training-state resume at epoch 10 / frame 1,966,080 with fresh simulator episodes |
+| Recovery save frequency | 3,000 epochs | 200 epochs |
+| Concurrent suite work | Single configured policy | Paired with Beta on GPU 0; Gaussian remains on GPU 1 |
+
+Both otherwise resolve to `continuous_a2c_logstd` with hard-clipped actions, the same frozen 1,952 graph, adapters-only MLP interfaces, 12,288 environments, horizon/sequence 16, 49,152 actor/critic minibatches and microbatches, two mini-epochs, one rollout per update phase, seed 42, KL .004, initial LR .0001, minimum LR 1e-6, PPO clip .1, critic coefficient 4, SAPG entropy scale .005, central critic, 250M inference checkpoints, 508,626 epochs, 100B cap, reward and perturbation settings. `use_experimental_cv` is absent in the historical YAML but continuous PPO defaults it to true, so both train the actor-side value head as well as the separate central critic. The old leader/follower path adds one 32,768-sample relabeled block to each 196,608-sample rollout; the current path does not. Save cadence and host contention affect operations/throughput rather than the mathematical objective.
+
+At the 2026-09-15 comparison snapshot, the historical run was stopped with its latest rolling checkpoint at epoch 23,140 / frame 4,549,509,120. The current Gaussian was active and had crossed the 1.5B inference milestone. Do not compare their latest rewards as matched-exposure evidence; use a common frame window and remember that K, replay population and LR ceiling all differ.
+
 ### Evaluation preserves neural-update timing
 
 `scripts/run_connectome_evaluation.py --config <evaluation.yaml>` passes each policy's `policy_config_path` unchanged to `dextoolbench/eval_worker_isaacgym.py`; use the run's **resolved_config.yaml**, not the base train profile. The milestone entrypoint `scripts/run_connectome_milestone_evaluation.py --config <milestones.yaml>` likewise forwards each policy's configured path. K is owned by `train.params.network.connectome.dynamics.neural_updates` in that saved configuration; do not add an outer K-fold action loop. The imported `deployment/rl_player.py` constructs the same network, whose single forward call performs K internal updates before the motor readout, with the same substep leak.
