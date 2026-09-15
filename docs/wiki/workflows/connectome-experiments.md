@@ -8,6 +8,12 @@ Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
 ## Four-update Beta versus clipped Gaussian (2026-09-15)
 
+**Budget correction:** the user requested **100 billion total environment frames per job**, not 1B. The initial 1B pair was stopped and its epoch-10 / 1,966,080-frame checkpoints are the per-policy resume sources in `configs/connectome/suites/ppo_1952_4update_beta_gaussian_100b.yaml`. Run that YAML with the same suite entrypoint below. Its `epochs: 508626` reaches 99,999,940,608 frames (the largest whole rollout below `max_frames: 100000000000`), with unchanged neural updates, objectives, GPU assignment and save cadence. Per-profile `overrides.checkpoint` and `checkpoint_load_mode: resume` restore the corresponding training state; the shared `checkpoint.mode: none` merely avoids adding a second shared checkpoint override. Historical 1B artifacts remain preserved. The 100B output tree is separate and appears under the existing TensorBoard port 6008.
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_beta_gaussian_100b.yaml
+```
+
 The user-selected follow-up to the [system audit](../analyses/system-audit-2026-09-15.md) retains auxiliary actor value loss in **both** policies and replaces the proposed tanh/no-aux experiment with this fresh pair:
 
 ```bash
