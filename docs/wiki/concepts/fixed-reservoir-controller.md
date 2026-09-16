@@ -49,3 +49,20 @@ The reservoir trainer used about 6.2 GiB on physical GPU 1 during initialization
 - The current continuous tanh rate model is retained for the first controlled comparison. A spiking implementation should be a separate recurrent backend with an explicit timestep, reset, state and output-rate contract.
 - Camera-to-fly vision is not implemented here. A later visual profile should use a fixed retinotopic mapping and an appropriate visual/CNS artifact, while keeping goal and nonvisual feedback channels explicit.
 - Compare learning curves and task videos against learned structured adapters before attributing any speedup or control quality to the biological circuit.
+
+## Is K=4 enough?
+
+Four updates are structurally sufficient for fresh values from every currently mapped input class to reach every motor cell that is reachable from that class within the same robot-control decision. They are not yet empirically established as sufficient for useful nonlinear computation.
+
+The recurrent matrix convention is `W[target, source]`, and current input is injected into its target population after the recurrent multiply has read the old hidden state. A directed input-to-motor path with `L` recurrent edges therefore first affects the motor state on update `L+1`. An exact breadth-first search over `biological.npz` gives:
+
+| Fixed source population | Distance 1 | Distance 2 | Distance 3 | Unreachable motor cells | Minimum K for all reachable motors |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 87 used proprioceptor cells | 53 | 68 | 9 | 5 | 4 |
+| 98 used descending cells | 68 | 61 | 1 | 5 | 4 |
+| 24 goal-driven descending cells | 17 | 88 | 25 | 5 | 4 |
+| Union of all 185 used input cells | 80 | 50 | 0 | 5 | 3 |
+
+Thus K=4 removes the graph-distance reason to increase K for the current interface, including the goal path. K=8 cannot make the five structurally unreachable motor cells input-dependent; with zero initial state and zero recurrent bias, those five features remain zero. A higher K can still change temporal filtering, recurrent mixing, transient amplification, cancellation and tanh saturation. The retained-leak conversion preserves passive decay over one control interval but does not make K=4 and K=8 equivalent nonlinear systems.
+
+The next timing study should therefore be a matched `K in {1, 2, 3, 4, 8}` ablation, not an assumption that more updates are better. Compare task return/success and throughput, plus current-observation and current-goal sensitivity of the motor feature vector, feature variance/effective rank, step-to-step change, and saturation. K=3 versus K=4 isolates the 25 goal-to-motor distance-three paths especially well; K=4 versus K=8 tests additional recurrent computation after structural coverage is already complete.

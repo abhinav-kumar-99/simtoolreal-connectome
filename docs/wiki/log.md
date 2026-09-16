@@ -6,6 +6,10 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] query | Audit whether four fixed-reservoir updates are sufficient
+
+Traced the exact synchronous recurrence and ran a directed breadth-first search over the prepared 1,952-cell artifact using the fixed encoder's 87 proprioceptor and 98 descending targets. K=4 gives same-decision access from sensory, descending and goal inputs to all 130 reachable motor cells; five motor cells are unreachable from every used input and cannot be recovered by increasing K. Recorded that this establishes structural coverage, not sufficient nonlinear mixing or task performance, and defined a matched K ablation with motor-feature diagnostics. No trainer or live run was changed; unrelated `.vscode/` and `tmp/` remain untouched.
+
 ## [2026-09-16] launch | Replace dense-input Beta with structured rotation-6D Beta
 
 Stopped only the prior dense-input restricted-Beta suite, trainer and milestone watcher PIDs 4102855/4102915/4103035, preserving their run artifacts. Launched the fresh structured Beta YAML in tmux session `connectome-structured-rot6d-beta-lf-100b`; its suite PID is 319189 and trainer PID is 319244 on physical GPU 1. No structured milestone watcher was launched because that evaluation contract has not been added.
