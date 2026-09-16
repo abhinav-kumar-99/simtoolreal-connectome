@@ -6,6 +6,10 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] query | Identify further visual-reservoir speedups
+
+Audited current timing and Triton forward code. Found backward-only `rec`/`z` output allocations and writes remain active under no-grad; documented an inference-only kernel as a concrete candidate, with approximately 4.25 GiB of avoidable nominal writes per nine-update batched control step. Checked that headless viewer synchronization already disables graphics on skipped policy-camera frames. Recorded GPU timing attribution limits, batching/graph-capture candidates and need to benchmark the current full graph. No runtime configuration or implementation changed.
+
 ## [2026-09-16] implement and launch | Add multirate lower-resolution fly vision
 
 Added explicit YAML profiles for 64x36 policy cameras rendered once every four 60 Hz control steps. The environment caches luminance between renders while proprioception, goal/previous-action channels and all nine CNS updates remain fresh. The actor observation shrank from 5,283 to 2,403 values while all 3,534 L1/L2 cells retain fixed bilinear sampling. Added matched smoke, 100B, audit and milestone-watcher YAMLs; made the audit derive image dimensions from resolved configuration. All 32 focused tests passed. The two-epoch smoke completed finite checkpoint reload; its warmed epoch reached 4,880 step FPS and 2,934 total FPS. The corrected audit passed distinct/nonblank images, goal-image invariance and measurable response in 115 motor cells.

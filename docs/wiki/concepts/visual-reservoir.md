@@ -96,6 +96,14 @@ The 96x54 full-CNS suite/trainer/watcher PIDs 475520/475598/475523 were stopped 
 
 ## Reproduction and helper responsibilities
 
+### Further throughput candidates (not implemented)
+
+After the render-rate change, a live timing sample at frame 878,592 measured 1.185 seconds inside environment steps, 1.971 seconds collecting the rollout, and 0.065 seconds for PPO, about 3,018 total FPS. These host timers are not CUDA-event attribution: synchronization inside environment stepping can charge earlier queued GPU work to that phase. Profile GPU work before assigning exact percentages to camera versus CNS computation.
+
+The tanh Triton `_Step.forward` in `connectome_triton.py` still allocates `out`, `rec`, and `z`, and `_sparse_step` writes the latter two for backward even when the reservoir runs under `no_grad`. A separate inference path could omit those two arrays without changing recurrence equations. Each array at 165,122 neurons and 384 environments is about 242 MiB; eliminating two writes across nine updates avoids about 4.25 GiB of nominal output writes per batched control step. This is a bandwidth opportunity, not a measured speedup or persistent-memory estimate. `VecTask.render()` does not secretly step graphics between scheduled policy renders in current headless training because `_modify_render_settings_if_headless()` sets `enable_viewer_sync=False`.
+
+Other candidates are reusable recurrent buffers and CUDA graph capture of fixed-shape neural inference, fused image conversion/retinal sampling, and a measured environment-count sweep preserving SAPG block ratios. Changes to neural update count or further camera decimation change temporal information and should be evaluated as policy changes. The existing small-circuit backend benchmarks do not establish the fastest backend for this full-CNS forward-only workload.
+
 Run from the repository root (the new full training command is already running; its YAML refuses output-directory reuse):
 
 ```bash
