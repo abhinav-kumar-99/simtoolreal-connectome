@@ -4,9 +4,10 @@ output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/lf_en
 poll_interval_seconds: 30
 shutdown_timeout_seconds: 60
 comparison:
-  tag: mean_successes/frame
+  tag: true_objective_mean/frame
   target_step: 1250000000
-  point_selection: closest_after_crossing
+  aggregation: arithmetic_mean
+  window_steps: 100000000
   comparator: strict_less
 reference:
   name: restricted_beta_lf_entropy1x

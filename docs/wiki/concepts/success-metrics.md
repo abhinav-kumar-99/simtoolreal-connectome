@@ -73,6 +73,8 @@ Every `/frame`, `/iter`, and `/time` suffix is an alias written with the same sc
 
 `true_objective_mean` and `true_objective_max` are curriculum/PBT ranking diagnostics. They are not the environment reward, PPO objective, success rate, or deterministic Task Progress. PBT is disabled in the current suites, so the value is logged but does not select or replace policies.
 
+The staged LF entropy handoff deliberately uses `true_objective_mean/frame` as its user-selected comparison metric even though PBT itself is disabled. At each 1.25B gate it takes the arithmetic mean of every logged scalar sample in the matched inclusive frame window `[1.15B,1.25B]`; the run must first log a point at or beyond 1.25B. This is an average of equally spaced TensorBoard samples, not an episode-weighted mean or a deterministic evaluation result.
+
 For current success tolerance `tau`, initial tolerance `tau_0`, target tolerance `tau_*`, and current-episode goal count `s`, the active configuration computes
 
 ```text

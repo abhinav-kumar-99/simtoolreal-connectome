@@ -7,7 +7,11 @@ import yaml
 from torch.utils.tensorboard import SummaryWriter
 
 from scripts.run_connectome_numerical_fallback import checkpoint_health, scan_event_file
-from scripts.run_connectome_success_handoff import configure_target_state, select_closest_point
+from scripts.run_connectome_success_handoff import (
+    _update_window,
+    configure_comparison_state,
+    summarize_window,
+)
 
 
 def test_event_scanner_detects_only_new_nonfinite_scalars(tmp_path: Path) -> None:
@@ -207,9 +211,10 @@ def test_success_handoff_candidate_contracts_compose() -> None:
         root / 'configs/connectome/handoffs/ppo_1952_lf_entropy_success_handoff.yaml'
     ).read_text())
     assert handoff['comparison'] == {
-        'tag': 'mean_successes/frame',
+        'tag': 'true_objective_mean/frame',
         'target_step': 1_250_000_000,
-        'point_selection': 'closest_after_crossing',
+        'aggregation': 'arithmetic_mean',
+        'window_steps': 100_000_000,
         'comparator': 'strict_less',
     }
     assert [stage['name'] for stage in handoff['stages']] == [
@@ -220,20 +225,39 @@ def test_success_handoff_candidate_contracts_compose() -> None:
     assert handoff['stages'][1]['replacement']['terminal'] is True
 
 
-def test_success_handoff_closest_point_waits_for_crossing_and_prefers_lower_tie() -> None:
-    target = 1_000_000_000
-    assert select_closest_point({'before': {'step': target - 10, 'value': 1.0}}, target) is None
-    selected = select_closest_point({
-        'before': {'step': target - 10, 'value': 1.0},
-        'after': {'step': target + 10, 'value': 2.0},
-    }, target)
-    assert selected == {'step': target - 10, 'value': 1.0}
+def test_success_handoff_window_mean_waits_for_crossing() -> None:
+    target, window = 1_250_000_000, 100_000_000
+    state = {}
+    _update_window(state, [
+        {'step': target - window - 1, 'value': 100.0},
+        {'step': target - window, 'value': 1.0},
+        {'step': target - 50_000_000, 'value': 2.0},
+        {'step': target - 1, 'value': 3.0},
+    ], target, window)
+    assert summarize_window(state, target, window) is None
+    _update_window(state, [{'step': target + 10, 'value': 200.0}], target, window)
+    summary = summarize_window(state, target, window)
+    assert summary == {
+        'window_start_step': 1_150_000_000,
+        'window_end_step': 1_250_000_000,
+        'first_logged_step': 1_150_000_000,
+        'last_logged_step': 1_249_999_999,
+        'sample_count': 3,
+        'mean': 2.0,
+        'crossing_step': 1_250_000_010,
+    }
 
 
-def test_success_handoff_retarget_clears_old_brackets() -> None:
+def test_success_handoff_contract_change_clears_old_metric_state() -> None:
     state = {
         'status': 'monitoring',
-        'comparison_target_step': 1_000_000_000,
+        'comparison_contract': {
+            'tag': 'mean_successes/frame',
+            'target_step': 1_250_000_000,
+            'aggregation': 'arithmetic_mean',
+            'window_steps': 100_000_000,
+            'comparator': 'strict_less',
+        },
         'metrics': {'candidate': {
             'before': {'step': 999_948_288, 'value': 0.1},
             'after': {'step': 1_000_144_896, 'value': 0.2},
@@ -242,10 +266,16 @@ def test_success_handoff_retarget_clears_old_brackets() -> None:
         }},
         'transitions': [],
     }
-    configure_target_state(state, 1_250_000_000)
+    configure_comparison_state(state, {
+        'tag': 'true_objective_mean/frame',
+        'target_step': 1_250_000_000,
+        'aggregation': 'arithmetic_mean',
+        'window_steps': 100_000_000,
+        'comparator': 'strict_less',
+    })
     assert state['comparison_target_step'] == 1_250_000_000
     assert state['metrics'] == {}
-    history = state['target_change_history'][-1]
-    assert history['previous_target_step'] == 1_000_000_000
-    assert history['new_target_step'] == 1_250_000_000
+    history = state['comparison_change_history'][-1]
+    assert history['previous_contract']['tag'] == 'mean_successes/frame'
+    assert history['new_contract']['tag'] == 'true_objective_mean/frame'
     assert history['prior_points']['candidate']['selected']['step'] == 999_948_288

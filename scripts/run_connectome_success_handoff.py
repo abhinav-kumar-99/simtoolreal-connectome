@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import struct
 import sys
 import time
@@ -66,64 +67,105 @@ def _scan_metric_file(
                     points.append({"step": int(event.step), "value": float(number)})
 
 
-def _update_bracket(
-    metric_state: dict[str, Any], points: list[dict[str, float | int]], target: int
+def _update_window(
+    metric_state: dict[str, Any], points: list[dict[str, float | int]],
+    target: int, window_steps: int,
 ) -> None:
+    window_start = target - window_steps
+    values = metric_state.setdefault("window_values", {})
     for point in points:
         step = int(point["step"])
-        if step <= target and (
-            metric_state.get("before") is None
-            or step >= int(metric_state["before"]["step"])
-        ):
-            metric_state["before"] = point
+        if window_start <= step <= target:
+            values[str(step)] = float(point["value"])
         if step >= target and (
-            metric_state.get("after") is None
-            or step <= int(metric_state["after"]["step"])
+            metric_state.get("crossing") is None
+            or step <= int(metric_state["crossing"]["step"])
         ):
-            metric_state["after"] = point
+            metric_state["crossing"] = point
 
 
-def select_closest_point(metric_state: dict[str, Any], target: int) -> dict[str, Any] | None:
-    """Select the closest bracket point, preferring the lower step on ties."""
-    if metric_state.get("after") is None:
+def summarize_window(
+    metric_state: dict[str, Any], target: int, window_steps: int
+) -> dict[str, Any] | None:
+    """Return an arithmetic mean only after the source has crossed the target."""
+    if metric_state.get("crossing") is None:
         return None
-    candidates = [
-        point for point in (metric_state.get("before"), metric_state.get("after"))
-        if point is not None
-    ]
-    return min(candidates, key=lambda point: (abs(int(point["step"]) - target), int(point["step"])))
+    values = {
+        int(step): float(value)
+        for step, value in metric_state.get("window_values", {}).items()
+    }
+    if not values:
+        raise RuntimeError("No metric samples exist in the configured averaging window")
+    steps = sorted(values)
+    return {
+        "window_start_step": target - window_steps,
+        "window_end_step": target,
+        "first_logged_step": steps[0],
+        "last_logged_step": steps[-1],
+        "sample_count": len(steps),
+        "mean": math.fsum(values[step] for step in steps) / len(steps),
+        "crossing_step": int(metric_state["crossing"]["step"]),
+    }
 
 
-def configure_target_state(state: dict[str, Any], target: int) -> None:
-    """Reset target-dependent brackets when a monitoring contract is retargeted."""
-    stored_target = state.get("comparison_target_step")
-    if stored_target == target:
+def configure_comparison_state(
+    state: dict[str, Any], comparison: dict[str, Any]
+) -> None:
+    """Reset metric state when any comparison-contract field changes."""
+    signature = {
+        "tag": str(comparison["tag"]),
+        "target_step": int(comparison["target_step"]),
+        "aggregation": str(comparison["aggregation"]),
+        "window_steps": int(comparison["window_steps"]),
+        "comparator": str(comparison["comparator"]),
+    }
+    if signature["aggregation"] != "arithmetic_mean":
+        raise ValueError("Only comparison.aggregation: arithmetic_mean is supported")
+    if signature["comparator"] != "strict_less":
+        raise ValueError("Only comparison.comparator: strict_less is supported")
+    if not 0 < signature["window_steps"] <= signature["target_step"]:
+        raise ValueError("comparison.window_steps must be positive and no larger than target_step")
+
+    stored = state.get("comparison_contract")
+    if stored is None and state.get("comparison_target_step") is not None:
+        # State written by the point-comparison monitor predating contract
+        # signatures. Preserve its actual semantics in migration history.
+        stored = {
+            "tag": "mean_successes/frame",
+            "target_step": int(state["comparison_target_step"]),
+            "aggregation": "closest_after_crossing",
+            "window_steps": 0,
+            "comparator": "strict_less",
+        }
+    if stored == signature:
         return
-    if stored_target is not None or state.get("metrics"):
+    if stored is not None or state.get("metrics"):
         if state.get("status") != "monitoring" or state.get("transitions"):
             raise RuntimeError(
-                "Cannot change comparison target after a terminal decision or transition"
+                "Cannot change comparison contract after a terminal decision or transition"
             )
         prior_points = {
             name: {
                 key: metric.get(key)
-                for key in ("before", "after", "selected")
+                for key in ("before", "after", "selected", "crossing", "window_summary")
                 if metric.get(key) is not None
             }
             for name, metric in state.get("metrics", {}).items()
         }
-        state.setdefault("target_change_history", []).append({
-            "previous_target_step": stored_target,
-            "new_target_step": target,
+        state.setdefault("comparison_change_history", []).append({
+            "previous_contract": stored,
+            "new_contract": signature,
             "changed_at_utc": datetime.now(timezone.utc).isoformat(),
             "prior_points": prior_points,
         })
         state["metrics"] = {}
-    state["comparison_target_step"] = target
+    state["comparison_contract"] = signature
+    state["comparison_target_step"] = signature["target_step"]
 
 
 def _scan_source(
-    source: dict[str, Any], metric_state: dict[str, Any], tag: str, target: int
+    source: dict[str, Any], metric_state: dict[str, Any], tag: str,
+    target: int, window_steps: int,
 ) -> None:
     offsets = metric_state.setdefault("event_offsets", {})
     event_glob = str(_repository_path(source["event_glob"]))
@@ -131,8 +173,10 @@ def _scan_source(
         key = str(event_path)
         offset, points = _scan_metric_file(event_path, int(offsets.get(key, 0)), tag)
         offsets[key] = offset
-        _update_bracket(metric_state, points, target)
-    metric_state["selected"] = select_closest_point(metric_state, target)
+        _update_window(metric_state, points, target, window_steps)
+    metric_state["window_summary"] = summarize_window(
+        metric_state, target, window_steps
+    )
 
 
 def _stop_stage(stage: dict[str, Any], timeout: float) -> dict[str, list[int]]:
@@ -199,8 +243,10 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
     output = _repository_path(config["output_directory"])
     state_path = output / "status.json"
     stage_by_name = {str(stage["name"]): stage for stage in config["stages"]}
-    tag = str(config["comparison"]["tag"])
-    target = int(config["comparison"]["target_step"])
+    comparison = config["comparison"]
+    tag = str(comparison["tag"])
+    target = int(comparison["target_step"])
+    window_steps = int(comparison["window_steps"])
     state = json.loads(state_path.read_text()) if state_path.is_file() else {
         "schema_version": 1,
         "status": "monitoring",
@@ -208,9 +254,8 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
         "started_at_utc": datetime.now(timezone.utc).isoformat(),
         "metrics": {},
         "transitions": [],
-        "comparison_target_step": target,
     }
-    configure_target_state(state, target)
+    configure_comparison_state(state, comparison)
     if state.get("status") in {
         "candidate_retained", "terminal_replacement_launched",
         "replacement_failed_to_start",
@@ -226,23 +271,28 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
         current = stage_by_name[current_name]
         reference_metric = state["metrics"].setdefault(reference_name, {})
         candidate_metric = state["metrics"].setdefault(current_name, {})
-        _scan_source(config["reference"], reference_metric, tag, target)
-        _scan_source(current, candidate_metric, tag, target)
+        _scan_source(
+            config["reference"], reference_metric, tag, target, window_steps
+        )
+        _scan_source(current, candidate_metric, tag, target, window_steps)
         state["checked_at_utc"] = datetime.now(timezone.utc).isoformat()
         state["candidate_process_pids"] = {
             marker: _matching_pids(str(marker))
             for marker in current["stop_process_markers"]
         }
 
-        reference_point = reference_metric.get("selected")
-        candidate_point = candidate_metric.get("selected")
+        reference_point = reference_metric.get("window_summary")
+        candidate_point = candidate_metric.get("window_summary")
         if reference_point is not None and candidate_point is not None:
-            replace = float(candidate_point["value"]) < float(reference_point["value"])
+            replace = float(candidate_point["mean"]) < float(reference_point["mean"])
             decision = {
                 "stage": current_name,
                 "decided_at_utc": datetime.now(timezone.utc).isoformat(),
+                "metric_tag": tag,
+                "aggregation": "arithmetic_mean",
                 "comparison": "strict_less",
                 "target_step": target,
+                "window_steps": window_steps,
                 "reference": reference_point,
                 "candidate": candidate_point,
                 "replace": replace,
