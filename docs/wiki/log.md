@@ -6,6 +6,14 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] launch | Replace no-auxiliary tanh reservoir with LIF
+
+Stopped only the GPU-1 no-auxiliary fixed-reservoir suite/trainer/watcher PIDs 430585/430658/431147 near frame 301.4M and preserved its artifacts, including the completed 250M three-video evaluation. The dense learned-adapter Gaussian suite/trainer/watcher PIDs 261900/261951/262494 on GPU 0 remained live and were not signaled.
+
+Ran the YAML-owned LIF smoke gate with `use_experimental_cv: true`. It completed two epochs/393,216 frames, saved and reloaded its checkpoint, produced a finite 29-action deployment output and contained only finite floating checkpoint tensors. The resolved contract selected the fixed population encoder, hard LIF dynamics with threshold `.25`, K=4 and the auxiliary actor value path. Actor `c_loss` changed from `1.4254` to `.6505`, privileged `cval_loss` changed from `.9956` to `.2105`, entropy remained near `41.15`, KL remained below `.0008` and both scheduler invalid-KL flags were zero.
+
+Launched the fresh full LIF suite in tmux `connectome-fixed-reservoir-gaussian-lif-100b` as suite/trainer PIDs 450554/450610 on physical GPU 1 and its independent milestone watcher in `connectome-fixed-reservoir-gaussian-lif-videos` as PID 450997. At frame 2,949,120, actor `c_loss` was `.95543`, entropy `41.3040`, KL `.0031157` against the `.004` target and both invalid-KL flags were zero; privileged `cval_loss` was `.06722` at frame 3,145,728. Added the new summaries to the already-running port-6008 TensorBoard by symlink without restarting it. This is launch-health evidence, not convergence evidence.
+
 ## [2026-09-16] launch | Replace fixed tanh reservoir with no-auxiliary control
 
 Implemented a YAML-selectable hard-spiking LIF backend for the fixed cached reservoir, using persistent membrane/refractory/spike state, fixed nonnegative rate codes, control-frequency-derived timestep, hard reset, windowed motor spike rates and a fused Triton forward kernel. The dense and fused CUDA paths match, the focused network/configuration suite passes 119 tests, and the implementation is committed but not launched. The design borrows the valid LIF state/reset structure from Quantum-Coded Fruitfly while rejecting its graph-specific drive/weight calibration and final-substep-only readout. A non-training full-graph probe found threshold one left motor features silent despite finite internal spikes; the explicit LIF profile now uses threshold `.25`, which produced nonzero motor rates while remaining finite.
