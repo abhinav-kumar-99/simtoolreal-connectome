@@ -6,6 +6,38 @@ Last updated: 2026-09-16
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
+## Fixed-input cached-reservoir Beta
+
+The fixed-reservoir contract removes learned input adapters and PPO backpropagation through MaleCNS. The exact fixed population map, memory boundary and biological caveats are in [Fixed-input MaleCNS reservoir controller](../concepts/fixed-reservoir-controller.md). It retains the 144-value Rotation-6D task, four held-input neural updates, restricted Beta actions, LF/1.0 experience reuse, entropy scale `.005`, actor KL target `.004`, LR range `[1e-6,.001]`, 12,288 environments and the privileged central critic. It changes `use_experimental_cv` to false because there is no reason to train the unused actor-side value head through this readout-only policy.
+
+Run the completed two-epoch integration gate from the repository root with an empty output directory:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_fixed_reservoir_rot6d_beta_lf_smoke.yaml
+```
+
+Launch the fresh 100B job with:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_fixed_reservoir_rot6d_beta_lf_100b.yaml
+```
+
+`scripts/run_connectome_suite.py` is the only training entry point. It reads GPU placement, profile, environment count, budgets, checkpoint cadence, optimizer settings and task overrides from the selected YAML. `scripts/prepare_malecns_connectome.py` verifies/prepares the pinned graph artifact. `connectome_network_builder.py` constructs and validates the parameter-free population encoders, runs the live reservoir and exposes cached motor features; `a2c_common.py` stores those 135-value features and presents them as a feed-forward PPO dataset. These helpers are imported by the entry point and are not run separately.
+
+Important settings are:
+
+- `training.gpu_assignments: [1]`: physical GPU used by this replacement job.
+- `training.epochs` and `max_frames`: two/393,216 for smoke or 508,626/100B for the full contract.
+- `fixed_input_encoder.*_mappings`: fixed observation ranges, cell offsets, signed/opponent encoding and physical scales.
+- `reservoir_readout`: selects cached motor features, the 128-unit readout and SAPG conditioning at the readout rather than inside MaleCNS.
+- `normalize_input: false`: prevents running normalization from changing the fixed physical encoding.
+- `dynamics.neural_updates: 4`: recurrent passes per environment control decision.
+- `use_experimental_cv: false`: disables the auxiliary actor value loss while leaving the privileged central critic enabled.
+
+The smoke completed both epochs, 393,216 frames and checkpoint deployment verification. Its warm update took 0.267 seconds versus about 0.92 seconds in the stopped structured/BPTT job. Two earlier smoke attempts are preserved under `train_dir/connectome/fixed_reservoir/*failed*`: one exposed an auxiliary-buffer shape bug before epoch 1, and one completed epoch 1 before exposing variable-width gradient telemetry when the actor value head had no gradient. Both runtime seams were fixed before the successful gate.
+
+The structured Gaussian suite/trainer PIDs 332402/332463 were stopped at the user's direction and their artifacts were preserved. The dense capped-Gaussian suite/trainer/watcher PIDs 261900/261951/262494 on GPU 0 were not signaled. No fixed-reservoir video watcher exists yet; evaluation must use the saved 144-value Rotation-6D policy profile.
+
 ## Structured sensory routing with 6D orientation
 
 Two fresh 100B suite contracts match the Gaussian and Beta jobs that were live when the structured interface was implemented. They retain seed 42, 12,288 environments, LF experience reuse at ratio one, entropy scale `.005`, KL target `.004`, LR range `[1e-6,.001]`, auxiliary actor value loss, four neural updates, batch sizes, force settings, checkpoint cadence and action-distribution parameters. They change the observation/interface contract and output identity only: palm/object orientation uses 6D rotation-matrix columns, body/efference signals enter grouped proprioceptor adapters, tactile cells receive no direct fabricated input, and context/goal/SAPG enter a 128-hidden-unit descending MLP.
@@ -41,7 +73,7 @@ No milestone-evaluation watcher YAML was requested or supplied with these two tr
 
 The structured restricted-Beta suite was launched fresh on 2026-09-16 after terminating only the prior dense-input Beta suite/trainer/watcher PIDs 4102855/4102915/4103035. Its artifacts remain preserved. It ran in tmux session `connectome-structured-rot6d-beta-lf-100b` with suite PID 319189 and trainer PID 319244 on physical GPU 1 and stopped at frame 163,381,248 when the user selected Gaussian actions. Its last TensorBoard point was finite: entropy 12.85896, aggregate KL .01079517, actor loss .00127945 and critic loss .07226394.
 
-The fresh replacement uses the structured capped-Gaussian YAML above in tmux session `connectome-structured-rot6d-gaussian-lf-100b`, with suite PID 332402 and trainer PID 332463 on physical GPU 1. Its saved resolved configuration preserves the new 144-value rotation-6D task, grouped linear proprioceptive adapters, zero direct tactile drive and 128-hidden-unit descending MLP. It changes only the policy family to the same Gaussian contract as the existing dense run: `continuous_a2c_logstd`, coefficient-conditioned log standard deviations, hard-clipped executed actions and a differentiable per-coordinate `max_sigma: 3.0` cap. K=4, auxiliary actor value loss, LF/1.0 reuse, entropy scale .005, KL target .004, LR range, task settings and 100B cap remain matched. At frame 3,735,552, entropy 41.30614, aggregate KL .00194340, actor loss -.00479462 and critic loss .16932771 were finite. This establishes launch health only. No structured milestone watcher was started. The pre-existing dense capped-Gaussian suite/trainer/watcher PIDs 261900/261951/262494 remained live on GPU 0 and were not signaled.
+The structured capped-Gaussian replacement ran in tmux session `connectome-structured-rot6d-gaussian-lf-100b`, with suite PID 332402 and trainer PID 332463 on physical GPU 1. Its saved resolved configuration preserves the new 144-value rotation-6D task, grouped linear proprioceptive adapters, zero direct tactile drive and 128-hidden-unit descending MLP. It changed only the policy family to the same Gaussian contract as the existing dense run: `continuous_a2c_logstd`, coefficient-conditioned log standard deviations, hard-clipped executed actions and a differentiable per-coordinate `max_sigma: 3.0` cap. K=4, auxiliary actor value loss, LF/1.0 reuse, entropy scale .005, KL target .004, LR range, task settings and 100B cap remained matched. The job was later stopped at the user's direction to free GPU 1 for the fixed-reservoir experiment; its artifacts remain preserved. No structured milestone watcher was started. The pre-existing dense capped-Gaussian suite/trainer/watcher PIDs 261900/261951/262494 remained live on GPU 0 and were not signaled.
 
 ## Four-update Beta versus clipped Gaussian (2026-09-15)
 

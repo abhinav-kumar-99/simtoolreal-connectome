@@ -20,6 +20,7 @@ Related: [Overview](overview.md), [Log](log.md)
 ## Concepts
 
 - [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics, implemented structured sensory routing and 6D orientation, exact central-critic inputs, connectome-versus-LSTM auxiliary value gradients, propagation delay and saturation boundaries. Last updated 2026-09-16.
+- [Fixed-input reservoir controller](concepts/fixed-reservoir-controller.md) — Parameter-free robot-to-MaleCNS population coding, cached motor features, no-BPTT PPO boundary, exact channel map and smoke evidence. Last updated 2026-09-16.
 - [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, adapters-only default, and GPU implementation. Last updated 2026-09-14.
 - [Training and evaluation success metrics](concepts/success-metrics.md) — TensorBoard populations, tolerance scaling, policy-ID mismatch and milestone Task Progress. Last updated 2026-09-15.
 

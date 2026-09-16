@@ -4,7 +4,7 @@ The actor is a sparse rate RNN whose recurrent support and base weights come fro
 
 Last updated: 2026-09-16
 
-Related: [Overview](../overview.md), [Source](../sources/summaries/malecns-front-leg-circuit.md), [Workflow](../workflows/connectome-experiments.md), [Sparse backends](../analyses/sparse-backends.md)
+Related: [Overview](../overview.md), [Source](../sources/summaries/malecns-front-leg-circuit.md), [Workflow](../workflows/connectome-experiments.md), [Fixed reservoir](fixed-reservoir-controller.md), [Sparse backends](../analyses/sparse-backends.md)
 
 ## Plain-language overview of the current 1,952-cell circuit
 
@@ -22,7 +22,7 @@ Verified against `configs/connectome/malecns_1952.yaml`, `data/connectomes/proce
 
 The sensory inventory contains 36 chordotonal-organ, 19 hair-plate, four campaniform and 33 less-specific leg annotations; these are not a complete physiological sensor census. The seed includes T1 families 13A (145), 13B (150), 09A (170) and 23B (145). T1 denotes the front-leg body segment, and family labels describe developmental groupings rather than a single computation performed by every member. Counts overlap other biological groups and must not be added to the interface table. Studies of subsets motivate motor coordination and sensory feedback hypotheses, not identical functions for all family members.
 
-Robot body/object observations (128 numbers) enter a learned linear sensory adapter driving 384 cells. Goal information (12 numbers plus a 32-number conditioning code) enters another learned linear adapter driving 157 descending cells. Each control call updates the circuit once from its previous activity and current inputs; multiple connections in a chain can therefore require multiple control steps to carry new input to motor output. A learned linear readout maps 135 motor activities to 29 robot commands. There is no established one-to-one mapping from either fly front leg to particular robot fingers.
+The original 140-value profiles send 128 robot body/object observations through a learned sensory adapter driving 384 cells. Goal information (12 numbers plus a 32-number conditioning code) enters another learned adapter driving 157 descending cells. The later structured 144-value profiles narrow the learned body route to selected proprioceptors and use Rotation-6D orientation. The [fixed-reservoir profile](fixed-reservoir-controller.md) goes further: parameter-free population codes drive selected proprioceptor and descending cells, SAPG conditioning moves to the output readout, and PPO never differentiates through the circuit. A learned readout maps 135 motor activities to 29 robot commands in every profile. There is no established one-to-one mapping from either fly front leg to particular robot fingers.
 
 The selected graph contains 33,720 directed neuron-pair connections, each supported by at least five anatomical synaptic contacts. This is a graph-filter threshold, not a neural firing threshold or a learning hyperparameter. Selection preserved 1,285 seeds, added connecting paths to reach 1,596, then included all 356 additional direct sensory-to-intermediate-to-motor candidates. Those 356 were selected for their wiring, not to meet a round size quota. Forty-four retained cells have no edges in this filtered subgraph; isolated sensory cells, for example, cannot communicate with the rest through recurrence. Neither this graph nor the larger 4,778 reference establishes full biological circuit completeness.
 
