@@ -168,6 +168,8 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             'prev_actions': actions_batch, 
             'obs' : obs_batch,
         }
+        if self.uses_cached_reservoir_features:
+            batch_dict['reservoir_features'] = input_dict['reservoir_features']
 
         rnn_masks = None
         if self.is_rnn:
@@ -330,12 +332,15 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
 
         loss.backward(retain_graph=retain_graph)
 
-        all_grads_list = []
-        for param in self.model.parameters():
-            if param.grad is not None:
-                all_grads_list.append(param.grad.view(-1))
-
-        all_grads = torch.cat(all_grads_list)
+        all_grads = torch.cat(
+            [
+                param.grad.view(-1)
+                if param.grad is not None
+                else torch.zeros_like(param).view(-1)
+                for param in self.model.parameters()
+                if param.requires_grad
+            ]
+        )
         if self.multi_gpu:
             # batch allreduce ops: see https://github.com/entity-neural-network/incubator/pull/220
             dist.all_reduce(all_grads, op=dist.ReduceOp.SUM)

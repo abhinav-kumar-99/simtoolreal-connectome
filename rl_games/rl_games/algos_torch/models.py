@@ -321,6 +321,15 @@ class ModelA2CContinuousBeta(BaseModel):
                 raise ValueError('Beta model requires continuous.distribution: beta')
             self.a2c_network = a2c_network
 
+        def uses_cached_reservoir_features(self):
+            method = getattr(
+                self.a2c_network, 'uses_cached_reservoir_features', None
+            )
+            return bool(method is not None and method())
+
+        def get_reservoir_feature_count(self):
+            return self.a2c_network.get_reservoir_feature_count()
+
         def is_rnn(self):
             return self.a2c_network.is_rnn()
 
@@ -351,7 +360,7 @@ class ModelA2CContinuousBeta(BaseModel):
                     'action_mean': action_mean,
                 }
             unit_action = distribution.sample()
-            return {
+            result = {
                 'neglogpacs': -(distribution.log_prob(unit_action) - math.log(2.0)).sum(-1),
                 'values': self.denorm_value(value),
                 'actions': 2.0 * unit_action - 1.0,
@@ -362,6 +371,11 @@ class ModelA2CContinuousBeta(BaseModel):
                 'policy_storage_mus': alpha,
                 'policy_storage_sigmas': beta,
             }
+            if self.uses_cached_reservoir_features():
+                result['reservoir_features'] = (
+                    self.a2c_network.last_reservoir_features
+                )
+            return result
 
 
 class ModelA2CContinuousTanhLogStd(BaseModel):

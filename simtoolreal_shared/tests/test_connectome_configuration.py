@@ -281,6 +281,77 @@ def test_structured_rotation6d_profiles_and_live_matched_suites_compose() -> Non
             assert actor.space.continuous.beta_initial_shape == 2.0
 
 
+def test_fixed_reservoir_rotation6d_beta_suites_compose() -> None:
+    from scripts.run_connectome_suite import _compose_resolved, _training_overrides
+
+    root = Path(__file__).resolve().parents[2]
+    suite_root = root / "configs/connectome/suites"
+    smoke = yaml.safe_load(
+        (suite_root / "ppo_1952_fixed_reservoir_rot6d_beta_lf_smoke.yaml").read_text()
+    )
+    full = yaml.safe_load(
+        (suite_root / "ppo_1952_fixed_reservoir_rot6d_beta_lf_100b.yaml").read_text()
+    )
+    ignored = {
+        "epochs",
+        "max_frames",
+        "inference_checkpoint_interval_frames",
+        "save_frequency",
+        "save_best_after",
+        "wandb",
+    }
+    assert {
+        key: value for key, value in smoke["training"].items() if key not in ignored
+    } == {
+        key: value for key, value in full["training"].items() if key not in ignored
+    }
+    assert smoke["preparation"] == full["preparation"]
+
+    entry = smoke["training"]["train_profiles"][0]
+    config = _compose_resolved(
+        _training_overrides(
+            smoke["training"],
+            entry["train_profile"],
+            42,
+            entry["name"],
+            root / smoke["output_directory"],
+        )
+    )
+    assert config.task.env.orientationObservationRepresentation == "rotation_6d"
+    assert config.task.env.numEnvs == 12288
+    actor = config.train.params.network
+    graph = actor.connectome
+    assert graph.observations.policy_size == 144
+    assert graph.expected.neurons == 1952
+    assert graph.dynamics.neural_updates == 4
+    assert graph.adaptation.weight_mode == "adapters_only"
+    assert graph.adaptation.learn_dynamics is False
+    assert "structured_input_adapter" not in graph
+    fixed = graph.fixed_input_encoder
+    assert fixed.mode == "population_code_v1"
+    assert len(fixed.sensory_mappings) == 2
+    assert list(fixed.sensory_mappings[1].source_range) == [29, 58]
+    assert fixed.sensory_mappings[1].encoding == "opponent_tanh"
+    assert len(fixed.descending_mappings) == 7
+    assert list(fixed.descending_mappings[-1].source_range) == [129, 141]
+    assert fixed.descending_mappings[-1].encoding == "opponent_tanh"
+    readout = graph.reservoir_readout
+    assert readout.enabled is True
+    assert readout.feature_population == "motor"
+    assert readout.condition_on_sapg is True
+    assert readout.architecture == "mlp"
+    assert readout.hidden_size == 128
+    assert config.train.params.config.normalize_input is False
+    assert config.train.params.config.use_experimental_cv is False
+    assert config.train.params.config.use_others_experience == "lf"
+    assert config.train.params.config.off_policy_ratio == 1.0
+    assert config.train.params.config.kl_threshold == 0.004
+    assert config.train.params.model.name == "continuous_a2c_beta"
+    assert actor.space.continuous.distribution == "beta"
+    assert actor.space.continuous.beta_min_shape == 1.0
+    assert actor.space.continuous.beta_initial_shape == 2.0
+
+
 def test_distal_leg_profiles_compose_with_matched_policy_distributions() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     import isaacgymenvs  # noqa: F401 - registers OmegaConf resolvers

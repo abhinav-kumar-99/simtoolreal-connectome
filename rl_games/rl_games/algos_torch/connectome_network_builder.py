@@ -185,6 +185,100 @@ class _GroupedSensoryAdapter(nn.Module):
         return output.index_copy(1, self.proprioceptor_positions, compact)
 
 
+class _FixedPopulationEncoder(nn.Module):
+    """Deterministically route policy features into selected fly populations."""
+
+    def __init__(
+        self,
+        *,
+        policy_size: int,
+        output_size: int,
+        mappings: list[dict[str, Any]],
+        target_positions: np.ndarray | None = None,
+    ) -> None:
+        super().__init__()
+        if not mappings:
+            raise ValueError("fixed population mappings must not be empty")
+        if target_positions is None:
+            target_positions = np.arange(output_size, dtype=np.int64)
+        else:
+            target_positions = np.asarray(target_positions, dtype=np.int64)
+        if np.any(target_positions < 0) or np.any(target_positions >= output_size):
+            raise ValueError("fixed encoder target population contains invalid positions")
+
+        self.policy_size = int(policy_size)
+        self.output_size = int(output_size)
+        self.encodings: list[str] = []
+        self.scales: list[float] = []
+        used_targets: list[int] = []
+        for index, mapping in enumerate(mappings):
+            source_start, source_stop = (
+                int(value) for value in mapping["source_range"]
+            )
+            if (
+                source_start < 0
+                or source_stop <= source_start
+                or source_stop > self.policy_size
+            ):
+                raise ValueError(
+                    f"Invalid fixed encoder source range {source_start, source_stop}"
+                )
+            encoding = str(mapping.get("encoding", "signed_tanh")).lower()
+            if encoding not in {"signed_tanh", "opponent_tanh"}:
+                raise ValueError(
+                    "fixed encoder encoding must be signed_tanh or opponent_tanh"
+                )
+            scale = float(mapping.get("scale", 1.0))
+            if not math.isfinite(scale) or scale <= 0.0:
+                raise ValueError("fixed encoder scale must be finite and positive")
+            source_width = source_stop - source_start
+            encoded_width = source_width * (2 if encoding == "opponent_tanh" else 1)
+            target_offset = int(mapping["target_offset"])
+            target_stop = target_offset + encoded_width
+            if target_offset < 0 or target_stop > len(target_positions):
+                raise ValueError(
+                    "fixed encoder target range exceeds its selected population"
+                )
+            selected_targets = target_positions[target_offset:target_stop]
+            used_targets.extend(int(value) for value in selected_targets)
+            self.register_buffer(
+                f"source_indices_{index}",
+                torch.arange(source_start, source_stop, dtype=torch.long),
+            )
+            self.register_buffer(
+                f"target_indices_{index}",
+                torch.from_numpy(selected_targets.copy()),
+            )
+            self.encodings.append(encoding)
+            self.scales.append(scale)
+        if len(set(used_targets)) != len(used_targets):
+            raise ValueError("fixed encoder mappings must not overlap target cells")
+
+    def forward(self, observations: torch.Tensor) -> torch.Tensor:
+        if observations.ndim != 2 or observations.shape[1] < self.policy_size:
+            raise ValueError(
+                f"Expected fixed encoder observations [batch, >= {self.policy_size}]"
+            )
+        output = observations.new_zeros(
+            (observations.shape[0], self.output_size), dtype=torch.float32
+        )
+        for index, (encoding, scale) in enumerate(
+            zip(self.encodings, self.scales)
+        ):
+            source_indices = getattr(self, f"source_indices_{index}")
+            target_indices = getattr(self, f"target_indices_{index}")
+            encoded = torch.tanh(
+                observations.float().index_select(1, source_indices) / scale
+            )
+            if encoding == "opponent_tanh":
+                encoded = torch.cat(
+                    (torch.clamp_min(encoded, 0.0), torch.clamp_min(-encoded, 0.0)),
+                    dim=-1,
+                )
+            output.index_copy_(1, target_indices, encoded)
+        return output
+
+
 class ConnectomeBuilder(network_builder.NetworkBuilder):
     """Builds a continuous actor whose recurrent state is the MaleCNS circuit."""
 
@@ -260,6 +354,28 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 structured_input, Mapping
             ):
                 raise TypeError("structured_input_adapter must be a YAML mapping")
+            fixed_input = connectome.get("fixed_input_encoder")
+            if fixed_input is not None and not isinstance(fixed_input, Mapping):
+                raise TypeError("fixed_input_encoder must be a YAML mapping")
+            if structured_input is not None and fixed_input is not None:
+                raise ValueError(
+                    "Specify structured_input_adapter or fixed_input_encoder, not both"
+                )
+            reservoir_readout = connectome.get("reservoir_readout", {})
+            if not isinstance(reservoir_readout, Mapping):
+                raise TypeError("reservoir_readout must be a YAML mapping")
+            self.cache_reservoir_features = bool(
+                reservoir_readout.get("enabled", False)
+            )
+            if self.cache_reservoir_features:
+                if fixed_input is None:
+                    raise ValueError(
+                        "reservoir_readout requires fixed_input_encoder"
+                    )
+                if self.weight_mode != "adapters_only" or self.learn_dynamics:
+                    raise ValueError(
+                        "reservoir_readout requires adapters_only weights and frozen dynamics"
+                    )
             artifact_path = _resolve_artifact(connectome["artifact_path"])
             if not artifact_path.exists():
                 raise FileNotFoundError(
@@ -274,15 +390,19 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 descending_indices = artifact["descending_indices"].astype(np.int64)
                 motor_indices = artifact["motor_indices"].astype(np.int64)
                 body_ids = artifact["body_ids"].astype(np.int64)
-                if structured_input is not None:
+                if structured_input is not None or fixed_input is not None:
+                    population_config = (
+                        structured_input if structured_input is not None else fixed_input
+                    )
+                    assert population_config is not None
                     proprioceptor_key = str(
-                        structured_input.get(
+                        population_config.get(
                             "proprioceptor_artifact_key",
                             "front_proprioceptors_indices",
                         )
                     )
                     tactile_key = str(
-                        structured_input.get(
+                        population_config.get(
                             "tactile_artifact_key", "front_tactile_indices"
                         )
                     )
@@ -332,7 +452,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             ):
                 if np.any(indices < 0) or np.any(indices >= self.neuron_count):
                     raise ValueError(f"Invalid {population_name} population indices")
-            if structured_input is not None:
+            if structured_input is not None or fixed_input is not None:
                 assert proprioceptor_indices is not None and tactile_indices is not None
                 if np.intersect1d(proprioceptor_indices, tactile_indices).size:
                     raise ValueError(
@@ -379,7 +499,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self.goal_ranges = _as_ranges(observations["goal_ranges"], "goal_ranges")
             self.context_ranges = (
                 _as_ranges(observations["context_ranges"], "context_ranges")
-                if structured_input is not None
+                if structured_input is not None or fixed_input is not None
                 else ()
             )
             self.policy_observation_size = int(observations["policy_size"])
@@ -390,7 +510,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 raise ValueError("Sensory observation ranges do not match sensory_size")
             if goal_size != int(observations["goal_size"]):
                 raise ValueError("Goal observation ranges do not match goal_size")
-            if structured_input is not None and context_size != int(
+            if (structured_input is not None or fixed_input is not None) and context_size != int(
                 observations["context_size"]
             ):
                 raise ValueError("Context observation ranges do not match context_size")
@@ -486,7 +606,35 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             # later YAML architecture switch cannot expose a latent bad value.
             _interface_activation(self.projection_activation)
             input_bias = bool(adapter.get("bias", False))
-            if structured_input is None:
+            if fixed_input is not None:
+                mode = str(fixed_input.get("mode", "population_code_v1")).lower()
+                if mode != "population_code_v1":
+                    raise ValueError(
+                        "fixed_input_encoder.mode must be population_code_v1"
+                    )
+                assert proprioceptor_indices is not None
+                sensory_positions = {
+                    int(neuron): position
+                    for position, neuron in enumerate(sensory_indices)
+                }
+                proprioceptor_positions = np.asarray(
+                    [sensory_positions[int(neuron)] for neuron in proprioceptor_indices],
+                    dtype=np.int64,
+                )
+                self.sensory_adapter_mode = "fixed_population_code"
+                self.sensory_adapter = _FixedPopulationEncoder(
+                    policy_size=self.policy_observation_size,
+                    output_size=len(sensory_indices),
+                    mappings=list(fixed_input["sensory_mappings"]),
+                    target_positions=proprioceptor_positions,
+                )
+                self.descending_projection_architecture = "fixed_population_code"
+                self.descending_adapter = _FixedPopulationEncoder(
+                    policy_size=self.policy_observation_size,
+                    output_size=len(descending_indices),
+                    mappings=list(fixed_input["descending_mappings"]),
+                )
+            elif structured_input is None:
                 self.sensory_adapter_mode = "dense"
                 self.sensory_adapter = _interface_projection(
                     sensory_size,
@@ -544,15 +692,16 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     descending_projection.get("activation", "elu")
                 ).lower()
                 _interface_activation(descending_activation)
-            self.descending_projection_architecture = descending_architecture
-            self.descending_adapter = _interface_projection(
-                context_size + goal_size + self.coef_embedding_size,
-                len(descending_indices),
-                descending_architecture,
-                descending_hidden_size,
-                descending_activation,
-                bias=input_bias,
-            )
+            if fixed_input is None:
+                self.descending_projection_architecture = descending_architecture
+                self.descending_adapter = _interface_projection(
+                    context_size + goal_size + self.coef_embedding_size,
+                    len(descending_indices),
+                    descending_architecture,
+                    descending_hidden_size,
+                    descending_activation,
+                    bias=input_bias,
+                )
 
             dynamics = connectome["dynamics"]
             self.neural_updates = dynamics.get("neural_updates", 1)
@@ -601,19 +750,62 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 )
             )
 
+            self.reservoir_feature_count = len(motor_indices)
+            self.readout_input_size = self.reservoir_feature_count
+            readout_architecture = self.projection_architecture
+            readout_hidden_size = self.projection_hidden_size
+            readout_activation = self.projection_activation
+            if self.cache_reservoir_features:
+                feature_population = str(
+                    reservoir_readout.get("feature_population", "motor")
+                ).lower()
+                if feature_population != "motor":
+                    raise ValueError(
+                        "reservoir_readout.feature_population must be motor"
+                    )
+                if bool(reservoir_readout.get("condition_on_sapg", True)) and (
+                    self.net_type == "extra_param"
+                ):
+                    self.readout_input_size += self.coef_embedding_size
+                    self.readout_conditions_on_sapg = True
+                else:
+                    self.readout_conditions_on_sapg = False
+                readout_architecture = str(
+                    reservoir_readout.get("architecture", "mlp")
+                ).lower()
+                readout_hidden_size = int(
+                    reservoir_readout.get("hidden_size", 128)
+                )
+                if readout_hidden_size < 1:
+                    raise ValueError("reservoir readout hidden_size must be positive")
+                readout_activation = str(
+                    reservoir_readout.get("activation", "elu")
+                ).lower()
+                _interface_activation(readout_activation)
+            else:
+                self.readout_conditions_on_sapg = False
             self.mu = _interface_projection(
-                len(motor_indices),
+                self.readout_input_size,
                 self.actions_num,
-                self.projection_architecture,
-                self.projection_hidden_size,
-                self.projection_activation,
+                readout_architecture,
+                readout_hidden_size,
+                readout_activation,
                 bias=True,
             )
-            self.value = nn.Linear(self.neuron_count, self.value_size)
+            value_input_size = (
+                self.readout_input_size
+                if self.cache_reservoir_features
+                else self.neuron_count
+            )
+            self.value = nn.Linear(value_input_size, self.value_size)
             continuous = params["space"]["continuous"]
             self.action_distribution = continuous.get("distribution", "gaussian")
             if self.action_distribution not in {"gaussian", "beta"}:
                 raise ValueError("continuous.distribution must be gaussian or beta")
+            if self.cache_reservoir_features and self.action_distribution != "beta":
+                raise ValueError(
+                    "reservoir_readout currently requires the Beta policy model"
+                )
             self.mu_act = self.activations_factory.create(continuous["mu_activation"])
             self.sigma_act = self.activations_factory.create(
                 continuous["sigma_activation"]
@@ -651,9 +843,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                         "beta_initial_shape must be finite and greater than beta_min_shape"
                     )
                 self.beta_head = _interface_projection(
-                    len(motor_indices), self.actions_num,
-                    self.projection_architecture, self.projection_hidden_size,
-                    self.projection_activation, bias=True,
+                    self.readout_input_size, self.actions_num,
+                    readout_architecture, readout_hidden_size,
+                    readout_activation, bias=True,
                 )
             elif self.fixed_sigma == "coef_cond":
                 if self.net_type != "extra_param":
@@ -877,22 +1069,26 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             with autocast_disabled:
                 observations = observations.float()
                 hidden = hidden.float()
-                sensory = _select_ranges(observations, self.sensory_ranges)
-                descending_inputs = []
-                if self.context_ranges:
+                if self.sensory_adapter_mode == "fixed_population_code":
+                    sensory_drive = self.sensory_adapter(observations)
+                    descending_drive = self.descending_adapter(observations)
+                else:
+                    sensory = _select_ranges(observations, self.sensory_ranges)
+                    descending_inputs = []
+                    if self.context_ranges:
+                        descending_inputs.append(
+                            _select_ranges(observations, self.context_ranges)
+                        )
                     descending_inputs.append(
-                        _select_ranges(observations, self.context_ranges)
+                        _select_ranges(observations, self.goal_ranges)
                     )
-                descending_inputs.append(
-                    _select_ranges(observations, self.goal_ranges)
-                )
-                if self.net_type == "extra_param":
-                    descending_inputs.append(
-                        self.extra_params[self._coefficient_rows(observations)]
-                    )
-                descending_input = torch.cat(descending_inputs, dim=-1)
-                sensory_drive = self.sensory_adapter(sensory)
-                descending_drive = self.descending_adapter(descending_input)
+                    if self.net_type == "extra_param":
+                        descending_inputs.append(
+                            self.extra_params[self._coefficient_rows(observations)]
+                        )
+                    descending_input = torch.cat(descending_inputs, dim=-1)
+                    sensory_drive = self.sensory_adapter(sensory)
+                    descending_drive = self.descending_adapter(descending_input)
                 leak = self.substep_leaks()
                 incoming = self.incoming_gains()
                 if self.operator_backend == "triton_fused":
@@ -932,51 +1128,91 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     f"Expected at least {minimum_features} observation features, "
                     f"got {observations.shape[1]}"
                 )
-            sequence_length = int(obs_dict.get("seq_length", 1))
-            if observations.shape[0] % sequence_length:
-                raise ValueError("Batch size must be divisible by seq_length")
-            sequence_count = observations.shape[0] // sequence_length
-            sequence = observations.reshape(
-                sequence_count, sequence_length, -1
-            ).transpose(0, 1)
-
-            states = obs_dict.get("rnn_states")
-            if states is None:
-                hidden = observations.new_zeros(
-                    (sequence_count, self.neuron_count), dtype=torch.float32
-                )
+            cached_features = obs_dict.get("reservoir_features")
+            if cached_features is not None:
+                if not self.cache_reservoir_features:
+                    raise ValueError(
+                        "reservoir_features were provided to a non-reservoir policy"
+                    )
+                if cached_features.ndim != 2 or tuple(cached_features.shape) != (
+                    observations.shape[0],
+                    self.reservoir_feature_count,
+                ):
+                    raise ValueError(
+                        "Expected reservoir_features shape "
+                        f"{(observations.shape[0], self.reservoir_feature_count)}, "
+                        f"got {tuple(cached_features.shape)}"
+                    )
+                motor = cached_features.float()
+                returned_states = ()
             else:
-                hidden = states[0] if isinstance(states, (tuple, list)) else states
-                if hidden.ndim == 3:
-                    hidden = hidden[0]
-                hidden = hidden.float()
-            dones = obs_dict.get("dones")
-            if dones is not None:
-                dones = dones.reshape(sequence_count, sequence_length, -1).transpose(
-                    0, 1
-                )
+                sequence_length = int(obs_dict.get("seq_length", 1))
+                if observations.shape[0] % sequence_length:
+                    raise ValueError("Batch size must be divisible by seq_length")
+                sequence_count = observations.shape[0] // sequence_length
+                sequence = observations.reshape(
+                    sequence_count, sequence_length, -1
+                ).transpose(0, 1)
 
-            outputs = []
-            values = self.effective_values()
-            operator = self.recurrent_matrix(values)
-            for step, step_observations in enumerate(sequence):
+                states = obs_dict.get("rnn_states")
+                if states is None:
+                    hidden = observations.new_zeros(
+                        (sequence_count, self.neuron_count), dtype=torch.float32
+                    )
+                else:
+                    hidden = states[0] if isinstance(states, (tuple, list)) else states
+                    if hidden.ndim == 3:
+                        hidden = hidden[0]
+                    hidden = hidden.float()
+                dones = obs_dict.get("dones")
                 if dones is not None:
-                    hidden = hidden * (1.0 - dones[step].float())
-                hidden = self._step(step_observations, hidden, operator, values)
-                outputs.append(hidden)
-            output = (
-                torch.stack(outputs).transpose(0, 1).reshape(observations.shape[0], -1)
-            )
+                    dones = dones.reshape(
+                        sequence_count, sequence_length, -1
+                    ).transpose(0, 1)
 
-            value = self.value(output)
+                def run_reservoir() -> torch.Tensor:
+                    outputs = []
+                    values = self.effective_values()
+                    operator = self.recurrent_matrix(values)
+                    nonlocal hidden
+                    for step, step_observations in enumerate(sequence):
+                        if dones is not None:
+                            hidden = hidden * (1.0 - dones[step].float())
+                        hidden = self._step(
+                            step_observations, hidden, operator, values
+                        )
+                        outputs.append(hidden)
+                    return torch.stack(outputs).transpose(0, 1).reshape(
+                        observations.shape[0], -1
+                    )
+
+                if self.cache_reservoir_features:
+                    with torch.no_grad():
+                        output = run_reservoir()
+                else:
+                    output = run_reservoir()
+                motor = output[:, self.motor_indices].float()
+                returned_states = (hidden.unsqueeze(0),)
+
+            if self.cache_reservoir_features:
+                self.last_reservoir_features = motor.detach()
+                readout_parts = [motor]
+                if self.readout_conditions_on_sapg:
+                    readout_parts.append(
+                        self.extra_params[self._coefficient_rows(observations)]
+                    )
+                readout = torch.cat(readout_parts, dim=-1)
+                value = self.value(readout)
+            else:
+                readout = motor
+                value = self.value(output)
             if self.action_distribution == "beta":
                 # Shape heads and special-function inputs stay FP32 under AMP.
-                with torch.autocast(device_type=output.device.type, enabled=False):
-                    motor = output[:, self.motor_indices].float()
-                    alpha = self.beta_min_shape + torch.nn.functional.softplus(self.mu(motor))
-                    beta = self.beta_min_shape + torch.nn.functional.softplus(self.beta_head(motor))
-                return alpha, beta, value, (hidden.unsqueeze(0),)
-            mu = self.mu_act(self.mu(output[:, self.motor_indices]))
+                with torch.autocast(device_type=readout.device.type, enabled=False):
+                    alpha = self.beta_min_shape + torch.nn.functional.softplus(self.mu(readout))
+                    beta = self.beta_min_shape + torch.nn.functional.softplus(self.beta_head(readout))
+                return alpha, beta, value, returned_states
+            mu = self.mu_act(self.mu(readout))
             if self.fixed_sigma == "coef_cond":
                 sigma = self.sigma_act(self.sigma[self._coefficient_rows(observations)])
             else:
@@ -985,7 +1221,13 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 sigma = self.max_log_sigma - torch.nn.functional.softplus(
                     self.max_log_sigma - sigma + self.max_sigma_offset
                 )
-            return mu, sigma, value, (hidden.unsqueeze(0),)
+            return mu, sigma, value, returned_states
+
+        def uses_cached_reservoir_features(self) -> bool:
+            return self.cache_reservoir_features
+
+        def get_reservoir_feature_count(self) -> int:
+            return self.reservoir_feature_count
 
         def is_rnn(self) -> bool:
             return True

@@ -254,6 +254,143 @@ def test_structured_adapter_drives_only_proprioceptors_and_uses_context(
         assert torch.isfinite(adapter.weight.grad).all()
 
 
+def _build_fixed_reservoir(artifact_path):
+    params = _network_params(
+        artifact_path,
+        interface_projections={
+            "architecture": "mlp",
+            "hidden_size": 16,
+            "activation": "elu",
+        },
+    )
+    params["connectome"]["observations"] = {
+        "policy_size": 3,
+        "sensory_size": 1,
+        "context_size": 1,
+        "goal_size": 1,
+        "sensory_ranges": [[0, 1]],
+        "context_ranges": [[1, 2]],
+        "goal_ranges": [[2, 3]],
+    }
+    params["connectome"]["fixed_input_encoder"] = {
+        "mode": "population_code_v1",
+        "proprioceptor_artifact_key": "front_proprioceptors_indices",
+        "tactile_artifact_key": "front_tactile_indices",
+        "sensory_mappings": [
+            {
+                "source_range": [0, 1],
+                "target_offset": 0,
+                "encoding": "signed_tanh",
+                "scale": 2.0,
+            }
+        ],
+        "descending_mappings": [
+            {
+                "source_range": [1, 2],
+                "target_offset": 0,
+                "encoding": "signed_tanh",
+                "scale": 1.0,
+            },
+            {
+                "source_range": [2, 3],
+                "target_offset": 1,
+                "encoding": "signed_tanh",
+                "scale": 0.5,
+            },
+        ],
+    }
+    params["connectome"]["reservoir_readout"] = {
+        "enabled": True,
+        "feature_population": "motor",
+        "condition_on_sapg": True,
+        "architecture": "mlp",
+        "hidden_size": 8,
+        "activation": "elu",
+    }
+    params["connectome"].pop("plasticity_mode")
+    params["connectome"]["adaptation"] = {
+        "weight_mode": "adapters_only",
+        "learn_dynamics": False,
+    }
+    params["space"]["continuous"].update(
+        distribution="beta",
+        fixed_sigma="state_dependent",
+        beta_initial_shape=2.0,
+        beta_min_shape=1.0,
+    )
+    builder = ConnectomeBuilder()
+    builder.load(params)
+    return builder.build(
+        "fixed_reservoir",
+        actions_num=2,
+        input_shape=(4,),
+        num_seqs=2,
+        value_size=1,
+        type="extra_param",
+        coef_ids=torch.tensor([50.0, 0.0]),
+        coef_id_idx=3,
+    )
+
+
+def test_fixed_reservoir_encodes_inputs_and_trains_only_cached_readout(
+    artifact_path, monkeypatch
+) -> None:
+    network = _build_fixed_reservoir(artifact_path)
+    observations = torch.tensor(
+        [
+            [1.0, 0.25, -0.5, 50.0],
+            [-1.0, -0.25, 0.5, 0.0],
+        ]
+    )
+    sensory = network.sensory_adapter(observations)
+    descending = network.descending_adapter(observations)
+    torch.testing.assert_close(sensory[:, 0], torch.tanh(observations[:, 0] / 2.0))
+    assert torch.count_nonzero(sensory[:, 1]) == 0
+    torch.testing.assert_close(descending[:, 0], torch.tanh(observations[:, 1]))
+    torch.testing.assert_close(descending[:, 1], torch.tanh(observations[:, 2] / 0.5))
+    assert not list(network.sensory_adapter.parameters())
+    assert not list(network.descending_adapter.parameters())
+
+    online = network(
+        {
+            "obs": observations,
+            "rnn_states": network.get_default_rnn_state(),
+        }
+    )
+    cached = network.last_reservoir_features.clone()
+    assert cached.shape == (2, 2)
+    assert online[3][0].shape == (1, 2, 7)
+
+    def fail_step(*args, **kwargs):
+        raise AssertionError("cached PPO update replayed the reservoir")
+
+    monkeypatch.setattr(network, "_step", fail_step)
+    training = network(
+        {"obs": observations, "reservoir_features": cached}
+    )
+    assert training[3] == ()
+    loss = training[0].sum() + training[1].sum()
+    loss.backward()
+    assert network.extra_params.grad is not None
+    assert all(parameter.grad is None for parameter in network.sensory_adapter.parameters())
+    assert all(parameter.grad is None for parameter in network.descending_adapter.parameters())
+    for parameter in (
+        network.incoming_gain_raw,
+        network.outgoing_gain_raw,
+        network.leak_raw,
+        network.recurrent_bias,
+    ):
+        assert not parameter.requires_grad and parameter.grad is None
+    assert any(
+        parameter.grad is not None and torch.isfinite(parameter.grad).all()
+        for parameter in network.mu.parameters()
+    )
+    assert any(
+        parameter.grad is not None and torch.isfinite(parameter.grad).all()
+        for parameter in network.beta_head.parameters()
+    )
+
+
 @pytest.mark.parametrize(
     "projection,error_type,message",
     [

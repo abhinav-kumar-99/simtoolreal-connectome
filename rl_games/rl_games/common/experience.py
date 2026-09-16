@@ -352,7 +352,10 @@ class ExperienceBuffer:
     def _init_from_aux_dict(self, tensor_dict):
         obs_base_shape = self.obs_base_shape
         for k,v in tensor_dict.items():
-            self.tensor_dict[k] = self._create_tensor_from_space(gym.spaces.Box(low=0, high=1,shape=(v), dtype=np.float32), obs_base_shape)
+            self.tensor_dict[k] = self._create_tensor_from_space(
+                gym.spaces.Box(low=0, high=1, shape=(v,), dtype=np.float32),
+                obs_base_shape,
+            )
 
     def _create_tensor_from_space(self, space, base_shape, extra_dim=None):       
         if type(space) is gym.spaces.Box:

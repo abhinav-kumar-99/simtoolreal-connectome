@@ -378,29 +378,36 @@ class A2CBase(BaseAlgorithm):
         
 
     def trancate_gradients_and_step(self):
+        trainable_parameters = [
+            param for param in self.model.parameters() if param.requires_grad
+        ]
+        # Diagnostics compare gradient vectors across minibatches. Some trainable
+        # heads can be intentionally inactive (for example the actor value head
+        # when a separate central critic is authoritative), so represent their
+        # missing gradients as zeros instead of changing the vector shape.
+        def flattened_gradients():
+            return torch.cat(
+                [
+                    param.grad.view(-1)
+                    if param.grad is not None
+                    else torch.zeros_like(param).view(-1)
+                    for param in trainable_parameters
+                ]
+            )
+
         if self.multi_gpu:
             # batch allreduce ops: see https://github.com/entity-neural-network/incubator/pull/220
-            all_grads_list = []
-            for param in self.model.parameters():
-                if param.grad is not None:
-                    all_grads_list.append(param.grad.view(-1))
-
-            all_grads = torch.cat(all_grads_list)
+            all_grads = flattened_gradients()
             dist.all_reduce(all_grads, op=dist.ReduceOp.SUM)
             offset = 0
-            for param in self.model.parameters():
+            for param in trainable_parameters:
                 if param.grad is not None:
                     param.grad.data.copy_(
                         all_grads[offset : offset + param.numel()].view_as(param.grad.data) / self.world_size
                     )
-                    offset += param.numel()
+                offset += param.numel()
         else:
-            all_grads_list = []
-            for param in self.model.parameters():
-                if param.grad is not None:
-                    all_grads_list.append(param.grad.view(-1))
-
-            all_grads = torch.cat(all_grads_list)
+            all_grads = flattened_gradients()
         
         if self.truncate_grads:
             self.scaler.unscale_(self.optimizer)
@@ -530,7 +537,20 @@ class A2CBase(BaseAlgorithm):
             'has_central_value' : self.has_central_value,
             'use_action_masks' : self.use_action_masks
         }
-        self.experience_buffer = ExperienceBuffer(self.env_info, algo_info, self.ppo_device, self.intr_reward_coef_embd.shape[-1] if self.intr_reward_coef_embd is not None else None)
+        auxiliary_tensors = None
+        if getattr(self, 'uses_cached_reservoir_features', False):
+            auxiliary_tensors = {
+                'reservoir_features': self.model.get_reservoir_feature_count()
+            }
+        self.experience_buffer = ExperienceBuffer(
+            self.env_info,
+            algo_info,
+            self.ppo_device,
+            self.intr_reward_coef_embd.shape[-1]
+            if self.intr_reward_coef_embd is not None
+            else None,
+            aux_tensor_dict=auxiliary_tensors,
+        )
 
         val_shape = (self.horizon_length, batch_size, self.value_size)
         current_rewards_shape = (batch_size, self.value_size)
@@ -546,18 +566,27 @@ class A2CBase(BaseAlgorithm):
             self.current_lengths = self.current_lengths.to(self.ppo_device)
             self.dones = self.dones.to(self.ppo_device)
 
-        if self.is_rnn:
+        if self.is_rnn or getattr(self, 'uses_cached_reservoir_features', False):
             if not hasattr(self, 'rnn_states') or self.rnn_states is None:
                 self.rnn_states = self.model.get_default_rnn_state()
             self.rnn_states = [s.to(self.ppo_device) for s in self.rnn_states]
 
+        if self.is_rnn:
             total_agents = self.num_agents * self.num_actors
             num_seqs = self.horizon_length // self.seq_length
             assert((self.horizon_length * total_agents // self.num_minibatches) % self.seq_length == 0)
             self.mb_rnn_states = [torch.zeros((num_seqs, s.size()[0], total_agents, s.size()[2]), dtype = torch.float32, device=self.ppo_device) for s in self.rnn_states]
 
     def init_rnn_from_model(self, model):
-        self.is_rnn = self.model.is_rnn()
+        method = getattr(model, 'uses_cached_reservoir_features', None)
+        self.uses_cached_reservoir_features = bool(
+            method is not None and method()
+        )
+        # Cached reservoir policies retain a live recurrent state while collecting
+        # experience, but their PPO optimizer is a feed-forward readout over cached
+        # motor features.  Treating that optimizer as recurrent would retain the
+        # full fly state for every rollout step and replay the fly during updates.
+        self.is_rnn = self.model.is_rnn() and not self.uses_cached_reservoir_features
 
     def cast_obs(self, obs):
         if isinstance(obs, torch.Tensor):
@@ -964,8 +993,14 @@ class A2CBase(BaseAlgorithm):
 
             if self.is_rnn:
                 self.rnn_states = res_dict['rnn_states']
+            elif self.uses_cached_reservoir_features:
+                self.rnn_states = res_dict['rnn_states']
             self.experience_buffer.update_data('obses', n, self.obs['obs'])
             self.experience_buffer.update_data('dones', n, self.dones.byte())
+            if self.uses_cached_reservoir_features:
+                self.experience_buffer.update_data(
+                    'reservoir_features', n, res_dict['reservoir_features']
+                )
 
             for k in update_list:
                 # Squashed policies execute bounded actions but retain latent
@@ -1007,7 +1042,9 @@ class A2CBase(BaseAlgorithm):
             all_done_indices = self.dones.nonzero(as_tuple=False)
             env_done_indices = all_done_indices[::self.num_agents]
 
-            if self.is_rnn and len(all_done_indices) > 0:
+            if (
+                self.is_rnn or self.uses_cached_reservoir_features
+            ) and len(all_done_indices) > 0:
                 if self.zero_rnn_on_done:
                     for s in self.rnn_states:
                         s[:, all_done_indices, :] = s[:, all_done_indices, :] * 0.0
@@ -1470,6 +1507,8 @@ class ContinuousA2CBase(A2CBase):
         A2CBase.init_tensors(self)
         self.update_list = ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']
         self.tensor_list = self.update_list + ['obses', 'states', 'dones']
+        if self.uses_cached_reservoir_features:
+            self.tensor_list.append('reservoir_features')
 
     def train_epoch(self):
         super().train_epoch()
@@ -1743,6 +1782,8 @@ class ContinuousA2CBase(A2CBase):
         dataset_dict['mu'] = mus
         dataset_dict['sigma'] = sigmas
         dataset_dict['off_policy_mask'] = batch_dict.get('off_policy_mask', None)
+        if self.uses_cached_reservoir_features:
+            dataset_dict['reservoir_features'] = batch_dict['reservoir_features']
 
         self.dataset.update_values_dict(dataset_dict)
 
