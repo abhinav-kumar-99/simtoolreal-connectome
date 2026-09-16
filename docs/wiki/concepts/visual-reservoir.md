@@ -20,6 +20,16 @@ All 135 readout cells are annotated `vnc_motor`, `somaNeuromere: T1`: 68 left an
 
 The full annotated population contains 708 VNC motor neurons, 107 central-brain motor neurons and 1,314 descending neurons. A motor-only versus descending-plus-front-motor comparison would test whether higher-level commands retain useful visual information lost before the final motor stage. Reading all motor types would also mix other body functions into the controller. The current 135-cell choice is biologically motivated but not empirically optimal; no readout expansion was silently included in this full-neuron experiment.
 
+### Descending neurons as a possible readout
+
+Biologically, descending neurons link brain processing to ventral nerve cord motor circuitry, where local circuits and sensory feedback help generate coordinated movements. They can initiate or modify behavior without encoding each muscle command; the population is not a list of independent robot-joint commands. See [Namiki et al., 2018](https://elifesciences.org/articles/34272). Anatomical identity does not establish that our frozen tanh approximation reproduces those functions.
+
+An audit of the pinned Traced annotations finds 1,314 descending neurons across 480 non-null type labels (656 left, 648 right, 10 midline). All are simulated in the full artifact. The 157 descending input ports are a subset, not the total descending population. In the current visual profile, only 53 receive direct external drive: 29 previous joint targets and 24 opponent-coded desired-goal channels. The other 104 input ports have no directly mapped external channel in this profile.
+
+A descending readout would expose signals before the fly-specific VNC-to-muscle transformation; a hybrid descending-plus-135-motor readout would retain both stages. This is an experimental hypothesis, not demonstrated robot-control improvement. It requires a new readout population option: the current implementation remains motor-only. All descending cells are already simulated, so reading them adds no recurrent neural updates or need for BPTT. Caching 1,314 additional float32 features for 384 environments and a 16-step rollout would add about 30.8 MiB before other training buffers.
+
+Important confound: reading all descending cells also exposes the 53 directly driven goal/previous-action cells. A readout can exploit that route without relying on visual processing. Compare motor-only, descending-plus-motor, and descending-plus-motor excluding those 53 directly driven cells (1,261 remaining descending cells), with blank/shuffled-camera controls. Exclusion removes direct input/readout overlap, not all indirect nonvisual information. No architecture or running job was changed for this explanation.
+
 The prior visual-path run and watcher were stopped with artifacts preserved. The replacement entrypoints are:
 
 ```bash

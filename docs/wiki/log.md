@@ -6,6 +6,10 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] query | Explain descending neurons and candidate readout
+
+Updated the visual-reservoir concept and index with the biological brain-to-VNC role (Namiki et al. 2018) and local annotation/config audit: 1,314 descending neurons, 480 type labels, 157 designated input ports, only 53 directly driven by current goal/previous-target mappings. Distinguished all simulated cells from motor-only readout. Documented hybrid readout as an unimplemented experiment, its approximately 30.8 MiB extra rollout feature cost, and the need to control for direct input/readout overlap and visual dependence. No trainer or policy implementation changed.
+
 ## [2026-09-16] implement and launch | Include all traced CNS neurons and audit outputs
 
 Added explicit `all_traced_neurons` artifact selection, preserving the earlier visual-path mode and checking that interface cells are retained. The separate SHA-pinned artifact contains exactly 165,122 Traced body IDs and 6,235,682 stored edges; all glia/non-Traced/unannotated endpoints are excluded. Relative to the preceding run it adds 7,955 traced neurons and removes 5,629 other nodes. Verified exact full-population equality and identical visual/proprioceptive/goal-input/motor-output body IDs. The motor audit identified all 135 output cells as T1 VNC motor neurons (68 left, 67 right); documented descending-plus-motor readout as an unimplemented comparison, not a necessary consequence of full-CNS simulation.
