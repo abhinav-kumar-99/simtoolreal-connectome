@@ -802,10 +802,6 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self.action_distribution = continuous.get("distribution", "gaussian")
             if self.action_distribution not in {"gaussian", "beta"}:
                 raise ValueError("continuous.distribution must be gaussian or beta")
-            if self.cache_reservoir_features and self.action_distribution != "beta":
-                raise ValueError(
-                    "reservoir_readout currently requires the Beta policy model"
-                )
             self.mu_act = self.activations_factory.create(continuous["mu_activation"])
             self.sigma_act = self.activations_factory.create(
                 continuous["sigma_activation"]

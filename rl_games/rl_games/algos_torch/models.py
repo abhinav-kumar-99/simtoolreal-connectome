@@ -257,6 +257,15 @@ class ModelA2CContinuousLogStd(BaseModel):
         def is_rnn(self):
             return self.a2c_network.is_rnn()
 
+        def uses_cached_reservoir_features(self):
+            method = getattr(
+                self.a2c_network, 'uses_cached_reservoir_features', None
+            )
+            return bool(method is not None and method())
+
+        def get_reservoir_feature_count(self):
+            return self.a2c_network.get_reservoir_feature_count()
+
         def get_value_layer(self):
             return self.a2c_network.get_value_layer()
 
@@ -294,6 +303,10 @@ class ModelA2CContinuousLogStd(BaseModel):
                     'mus' : mu,
                     'sigmas' : sigma
                 }
+                if self.uses_cached_reservoir_features():
+                    result['reservoir_features'] = (
+                        self.a2c_network.last_reservoir_features
+                    )
                 return result
 
         def neglogp(self, x, mean, std, logstd):

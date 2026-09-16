@@ -352,6 +352,89 @@ def test_fixed_reservoir_rotation6d_beta_suites_compose() -> None:
     assert actor.space.continuous.beta_initial_shape == 2.0
 
 
+def test_fixed_reservoir_gaussian_matches_live_gaussian_contract() -> None:
+    from scripts.run_connectome_suite import _compose_resolved, _training_overrides
+
+    root = Path(__file__).resolve().parents[2]
+    suite_root = root / "configs/connectome/suites"
+    live = yaml.safe_load(
+        (
+            suite_root
+            / "ppo_1952_4update_gaussian_lf_entropy1x_sigma3_100b.yaml"
+        ).read_text()
+    )
+    full = yaml.safe_load(
+        (
+            suite_root
+            / "ppo_1952_fixed_reservoir_rot6d_gaussian_lf_entropy1x_sigma3_100b.yaml"
+        ).read_text()
+    )
+    smoke = yaml.safe_load(
+        (
+            suite_root
+            / "ppo_1952_fixed_reservoir_rot6d_gaussian_lf_entropy1x_sigma3_smoke.yaml"
+        ).read_text()
+    )
+    ignored = {
+        "task_profile",
+        "train_profiles",
+        "gpu_assignments",
+        "wandb",
+    }
+    assert {
+        key: value for key, value in full["training"].items() if key not in ignored
+    } == {
+        key: value for key, value in live["training"].items() if key not in ignored
+    }
+    budget_fields = {
+        "epochs",
+        "max_frames",
+        "inference_checkpoint_interval_frames",
+        "save_frequency",
+        "save_best_after",
+        "wandb",
+    }
+    assert {
+        key: value
+        for key, value in smoke["training"].items()
+        if key not in budget_fields
+    } == {
+        key: value
+        for key, value in full["training"].items()
+        if key not in budget_fields
+    }
+
+    entry = full["training"]["train_profiles"][0]
+    config = _compose_resolved(
+        _training_overrides(
+            full["training"],
+            entry["train_profile"],
+            42,
+            entry["name"],
+            root / full["output_directory"],
+        )
+    )
+    actor = config.train.params.network
+    graph = actor.connectome
+    assert config.task.env.orientationObservationRepresentation == "rotation_6d"
+    assert graph.fixed_input_encoder.mode == "population_code_v1"
+    assert graph.reservoir_readout.enabled is True
+    assert graph.reservoir_readout.condition_on_sapg is True
+    assert graph.dynamics.neural_updates == 4
+    assert config.train.params.model.name == "continuous_a2c_logstd"
+    assert actor.space.continuous.distribution == "gaussian"
+    assert actor.space.continuous.fixed_sigma == "coef_cond"
+    assert actor.space.continuous.max_sigma == 3.0
+    assert config.train.params.config.normalize_input is False
+    assert config.train.params.config.use_experimental_cv is True
+    assert config.train.params.config.use_others_experience == "lf"
+    assert config.train.params.config.off_policy_ratio == 1.0
+    assert config.train.params.config.expl_reward_coef_scale == 0.005
+    assert config.train.params.config.kl_threshold == 0.004
+    assert config.train.params.config.learning_rate == 0.0001
+    assert config.train.params.config.max_lr == 0.001
+
+
 def test_distal_leg_profiles_compose_with_matched_policy_distributions() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     import isaacgymenvs  # noqa: F401 - registers OmegaConf resolvers

@@ -254,7 +254,7 @@ def test_structured_adapter_drives_only_proprioceptors_and_uses_context(
         assert torch.isfinite(adapter.weight.grad).all()
 
 
-def _build_fixed_reservoir(artifact_path):
+def _build_fixed_reservoir(artifact_path, distribution="beta"):
     params = _network_params(
         artifact_path,
         interface_projections={
@@ -312,12 +312,19 @@ def _build_fixed_reservoir(artifact_path):
         "weight_mode": "adapters_only",
         "learn_dynamics": False,
     }
-    params["space"]["continuous"].update(
-        distribution="beta",
-        fixed_sigma="state_dependent",
-        beta_initial_shape=2.0,
-        beta_min_shape=1.0,
-    )
+    if distribution == "beta":
+        params["space"]["continuous"].update(
+            distribution="beta",
+            fixed_sigma="state_dependent",
+            beta_initial_shape=2.0,
+            beta_min_shape=1.0,
+        )
+    else:
+        params["space"]["continuous"].update(
+            distribution="gaussian",
+            fixed_sigma="coef_cond",
+            max_sigma=3.0,
+        )
     builder = ConnectomeBuilder()
     builder.load(params)
     return builder.build(
@@ -388,6 +395,57 @@ def test_fixed_reservoir_encodes_inputs_and_trains_only_cached_readout(
     assert any(
         parameter.grad is not None and torch.isfinite(parameter.grad).all()
         for parameter in network.beta_head.parameters()
+    )
+
+
+def test_fixed_reservoir_gaussian_reuses_cached_features(
+    artifact_path, monkeypatch
+) -> None:
+    from rl_games.algos_torch.models import ModelA2CContinuousLogStd
+
+    network = _build_fixed_reservoir(artifact_path, distribution="gaussian")
+    model = ModelA2CContinuousLogStd.Network(
+        network,
+        obs_shape=(4,),
+        normalize_input=False,
+        normalize_value=False,
+        value_size=1,
+        extra_info_start_idx=3,
+    )
+    observations = torch.tensor(
+        [[1.0, 0.25, -0.5, 50.0], [-1.0, -0.25, 0.5, 0.0]]
+    )
+    rollout = model(
+        {
+            "is_train": False,
+            "obs": observations,
+            "rnn_states": model.get_default_rnn_state(),
+        }
+    )
+    cached = rollout["reservoir_features"].clone()
+    assert cached.shape == (2, 2)
+    assert rollout["rnn_states"][0].shape == (1, 2, 7)
+
+    def fail_step(*args, **kwargs):
+        raise AssertionError("cached Gaussian PPO update replayed the reservoir")
+
+    monkeypatch.setattr(network, "_step", fail_step)
+    training = model(
+        {
+            "is_train": True,
+            "obs": observations,
+            "prev_actions": rollout["actions"],
+            "reservoir_features": cached,
+        }
+    )
+    assert training["rnn_states"] == ()
+    loss = training["prev_neglogp"].mean() + training["values"].mean()
+    loss.backward()
+    assert network.extra_params.grad is not None
+    assert network.sigma.grad is not None
+    assert any(
+        parameter.grad is not None and torch.isfinite(parameter.grad).all()
+        for parameter in network.mu.parameters()
     )
 
 
