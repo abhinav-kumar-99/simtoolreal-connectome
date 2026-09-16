@@ -37,7 +37,7 @@ Important YAML parameters are:
 - `params.network.connectome.observations` in the train profile: owns the exact 102/30/12 sensory/context/goal partition.
 - `structured_input_adapter.groups`: owns robot DOF and fingertip grouping. The listed fingertip indices follow environment order index, middle, ring, thumb, pinky.
 
-No milestone-evaluation watcher is supplied yet because deployment/evaluation observation builders that still emit the released 140-value quaternion vector must first opt into the same 144-value conversion. Training checkpoint verification is dimension-aware. The two suites were composed and both actor distributions completed real 1,952-cell CPU forward/backward checks, but no new trainer was launched during implementation.
+No milestone-evaluation watcher YAML was requested or supplied with these two training contracts. A future Isaac Gym watcher must load each run's resolved task/profile so it reconstructs the 144-value environment. External deployment and Isaac Sim observation builders that still emit the released 140-value quaternion vector require the same explicit 6D conversion before they can consume these checkpoints. Training checkpoint verification is dimension-aware. The two suites were composed and both actor distributions completed real 1,952-cell CPU forward/backward checks, but no new trainer was launched during implementation.
 
 ## Four-update Beta versus clipped Gaussian (2026-09-15)
 
