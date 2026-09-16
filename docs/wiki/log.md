@@ -6,6 +6,10 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] audit | Correct visual-reservoir neuron coverage denominator
+
+Compared all 162,796 artifact body IDs against the pinned 211,577-row annotation table. Of 165,122 locally Traced entries, 157,167 are included and 7,955 excluded; documented the excluded superclass and type breakdown. Found 4,060 included annotated non-Traced entries (including 64 Glia) and 1,569 included IDs absent from the annotations. The visual extractor has no reconstruction-status filter, so the previous graph-node count must not be presented as confirmed-neuron coverage of the published approximately 166K CNS. Recorded this limitation and the need for an explicitly cleaned artifact. This was a read-only data audit plus documentation; no training process, graph artifact or implementation was changed.
+
 ## [2026-09-16] implement and launch | Raw-camera visual CNS reservoir
 
 At the user's correction, implemented actual MaleCNS L1/L2 visual populations and measured optic-to-motor paths rather than an image code injected into the small front-leg circuit. Added SHA-pinned YAML graph extraction (162,796 cells, 6,144,284 stored edges), fixed anatomical-column image sampling, per-environment raw evaluation-angle cameras, hidden goal visualization actors, retained proprioception, explicit desired-goal input and a nine-update tanh profile. Added YAML-owned 96/384-environment smoke gates, full run, camera/sensitivity audit and video watcher. The 93 network/initial-retina tests passed; both smokes passed checkpoint reload. The simulator audit showed byte-identical images under a goal-only change, distinct environment cameras and a small measurable motor response to brightness. Fixed optical alignment and tanh dynamics remain modeling assumptions; the exact evidence and limitations are recorded in the visual-reservoir concept page.
