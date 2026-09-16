@@ -6,6 +6,10 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] audit | Decompose full-CNS vision throughput
+
+Traced RL Games timing and the live full-CNS event stream. `step_fps` times only `env_step`, which includes synchronous rendering and GPU access for 384 independent 96x54 cameras; fly inference is outside that timer. The full-CNS run had median 1,913 step FPS and 1,539 step-plus-inference FPS, essentially identical to the preceding visual-path graph's 1,917/1,542. A representative epoch spent 3.18 seconds in environment steps, 3.95 seconds collecting the rollout and only 0.064 seconds updating PPO. Documented that the remaining-neuron expansion is not the throughput cause, the non-camera 12,288-environment run is not a matched control, and a same-size camera-off benchmark is needed to quantify rendering cost precisely. No process or training configuration changed.
+
 ## [2026-09-16] query | Explain descending neurons and candidate readout
 
 Updated the visual-reservoir concept and index with the biological brain-to-VNC role (Namiki et al. 2018) and local annotation/config audit: 1,314 descending neurons, 480 type labels, 157 designated input ports, only 53 directly driven by current goal/previous-target mappings. Distinguished all simulated cells from motor-only readout. Documented hybrid readout as an unimplemented experiment, its approximately 30.8 MiB extra rollout feature cost, and the need to control for direct input/readout overlap and visual dependence. No trainer or policy implementation changed.
