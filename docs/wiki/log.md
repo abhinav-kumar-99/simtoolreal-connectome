@@ -661,3 +661,8 @@ Added YAML-owned memory-monitored capacity probes and two passing orchestration 
 A resumed 2,688-env trainer fit alone but a concurrent video worker hit CUDA OOM, so that attempt was stopped with artifacts retained. Resumed the same full actor/critic/optimizer checkpoint at frame 2,359,296 into the validated 2,304-env configuration instead. Suite/trainer PIDs 504111/504155 remain live on GPU 1; a real 60-step video worker passed concurrently at sampled total occupancy 22,270 MiB. Restored the three-case milestone watcher and added `full_cns_tanh_vision_capacity2304_100b` to the existing TensorBoard 6008 server without restart. GPU-0 trainer 261951 was preserved throughout. Commits `b5ba3ed0`, `075d2c67`, `7636a96c`; unrelated `.vscode/` and `tmp/` untouched.
 
 Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md) with raw artifact locations, entrypoint/helper usage, all failed-attempt boundaries, and sourced discussion of GPU-native simulation, tiled cameras and asynchronous RL. More VRAM occupancy did not improve throughput in these short tests; no renderer migration or algorithm change was implemented.
+
+# [2026-09-16] query | Clarify full-CNS readout scope
+
+- Updated `docs/wiki/concepts/visual-reservoir.md` to distinguish simulating all traced neurons from exposing all neuron states to the trainable policy readout.
+- Recorded the nine-update reachability caveat, direct-input shortcut risk, and rollout-cache costs for motor-only, all-neuron and non-direct descending-plus-motor readouts.

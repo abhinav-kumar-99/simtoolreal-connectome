@@ -32,6 +32,14 @@ A descending readout would expose signals before the fly-specific VNC-to-muscle 
 
 Important confound: reading all descending cells also exposes the 53 directly driven goal/previous-action cells. A readout can exploit that route without relying on visual processing. Compare motor-only, descending-plus-motor, and descending-plus-motor excluding those 53 directly driven cells (1,261 remaining descending cells), with blank/shuffled-camera controls. Exclusion removes direct input/readout overlap, not all indirect nonvisual information. No architecture or running job was changed for this explanation.
 
+### Why the readout does not expose every neuron
+
+For tanh dynamics, the recurrent runner returns the complete final hidden state, and the policy then explicitly selects `output[:, motor_indices]`; the other neuron values exist but are discarded before PPO feature caching. A neuron is not guaranteed to change merely because it is present in the artifact. It must be active already or lie on an effective nonzero-weight path reached by one of the driven populations within the nine synchronous recurrent updates; isolated, more-distant, weakly driven or saturated cells can remain unchanged or change negligibly. Recurrent state carried across control steps can extend the effective temporal influence, but does not make every cell informative.
+
+Exposing all 165,122 raw states would also expose the directly driven L1/L2, proprioceptive, goal and previous-action cells, allowing the learned readout to bypass the intervening connectome. At the current 2,304-environment, 16-step rollout size, caching all float32 states would require about 22.7 GiB, versus about 19.0 MiB for 135 motor states, before gradients and other PPO/simulator buffers. The output-layer parameter count is not the main cost; retaining one feature vector per environment and rollout step is.
+
+A better staged comparison is the existing motor population versus motor plus the 1,261 non-directly-driven descending cells. That hybrid would cache about 196.3 MiB at the same rollout size and preserves a meaningful intermediate-control population without directly handing the goal/previous-action input ports to the readout. To test whether the entire CNS contains useful distributed information, use a fixed anatomical pooling or fixed random projection before caching rather than concatenating every raw state. Such compression keeps the reservoir frozen and avoids BPTT, but requires blank/shuffled-camera and direct-input-exclusion controls to show that any gain comes from CNS processing rather than an input shortcut.
+
 The current multirate replacement entrypoints are:
 
 ```bash
