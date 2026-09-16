@@ -46,3 +46,26 @@ def test_visual_profile_has_no_object_state_shortcut():
     assert not cfg.train.params.config.normalize_input
     assert net.reservoir_readout.enabled
     assert net.fixed_input_encoder.retina.image_start == 99
+
+
+def test_multirate_low_resolution_visual_profile_contract():
+    from pathlib import Path
+    from hydra import compose, initialize_config_dir
+    root = Path(__file__).resolve().parents[2]
+    with initialize_config_dir(version_base=None, config_dir=str(root / 'isaacgymenvs/cfg')):
+        cfg = compose(
+            config_name='config',
+            overrides=[
+                'task=SimToolRealVisionProprio64x36R4',
+                'train=SimToolRealFullCNSVisualReservoirGaussianSAPGVision64x36R4',
+            ],
+        )
+    vision = cfg.task.env.policyVision
+    net = cfg.train.params.network.connectome
+    assert (vision.width, vision.height, vision.renderInterval) == (64, 36, 4)
+    assert net.observations.policy_size == 99 + 64 * 36 == 2403
+    assert net.observations.context_size == 29 + 64 * 36 == 2333
+    assert list(net.observations.context_ranges) == [[58, 87], [99, 2403]]
+    assert (net.fixed_input_encoder.retina.height,
+            net.fixed_input_encoder.retina.width) == (36, 64)
+    assert net.fixed_input_encoder.retina.image_start == 99

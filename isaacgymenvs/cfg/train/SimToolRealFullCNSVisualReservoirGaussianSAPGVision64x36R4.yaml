@@ -1,0 +1,19 @@
+defaults:
+  - SimToolRealFullCNSVisualReservoirGaussianSAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      observations:
+        policy_size: 2403
+        sensory_size: 58
+        context_size: 2333
+        goal_size: 12
+        sensory_ranges: [[0, 58]]
+        context_ranges: [[58, 87], [99, 2403]]
+        goal_ranges: [[87, 99]]
+      fixed_input_encoder:
+        retina: {image_start: 99, height: 36, width: 64, gain: 1.0}
+  config:
+    name: ${resolve_default:SimToolRealFullCNSVisualReservoirGaussianSAPGVision64x36R4,${....experiment}}

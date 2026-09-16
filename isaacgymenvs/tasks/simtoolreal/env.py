@@ -356,6 +356,9 @@ class SimToolReal(VecTask):
         self.vision_config = self.cfg['env'].get('policyVision', {})
         self.policy_vision_enabled = bool(self.vision_config.get('enabled', False))
         self.policy_camera_handles = []
+        self.policy_camera_render_interval = 1
+        self._policy_camera_observation_index = 0
+        self._policy_camera_luminance = None
         if self.policy_vision_enabled:
             if self.cfg['env'].get('goodResetBoundary', 0) > 0 or self.cfg['env'].get('saveStates', False):
                 raise ValueError('Vision currently requires ordinary resets and saveStates=false: hidden goal actors are not logical goal snapshots')
@@ -363,6 +366,12 @@ class SimToolReal(VecTask):
                 raise ValueError('policyVision requires enableCameraSensors')
             if self.cfg['env'].get('enableDebugVis') or self.cfg['env'].get('VISUALIZE_PD_TARGET_AS_BLUE_ROBOT'):
                 raise ValueError('Policy cameras must not contain debug annotations')
+            render_interval = self.vision_config.get('renderInterval', 1)
+            if isinstance(render_interval, bool) or not isinstance(render_interval, int):
+                raise TypeError('policyVision.renderInterval must be an integer')
+            if render_interval < 1:
+                raise ValueError('policyVision.renderInterval must be positive')
+            self.policy_camera_render_interval = render_interval
             self.obs_type_size_dict['camera_luminance'] = int(self.vision_config['width']) * int(self.vision_config['height'])
             self.obs_type_size_dict['goal_keypoints_world'] = 3 * self.num_keypoints
 
@@ -3135,13 +3144,24 @@ class SimToolReal(VecTask):
         num_dofs = self.num_hand_arm_dofs
         obs_dict = {}
         if self.policy_vision_enabled:
-            render_camera_sensors_for_current_step(self.gym, self.sim, self.device)
-            self.gym.start_access_image_tensors(self.sim)
-            try:
-                rgb = torch.stack(self.policy_camera_tensors)[..., :3].float() / 255.0
-                obs_dict['camera_luminance'] = (rgb * rgb.new_tensor([.299, .587, .114])).sum(-1).flatten(1)
-            finally:
-                self.gym.end_access_image_tensors(self.sim)
+            should_render = (
+                self._policy_camera_luminance is None
+                or self._policy_camera_observation_index
+                % self.policy_camera_render_interval
+                == 0
+            )
+            if should_render:
+                render_camera_sensors_for_current_step(self.gym, self.sim, self.device)
+                self.gym.start_access_image_tensors(self.sim)
+                try:
+                    rgb = torch.stack(self.policy_camera_tensors)[..., :3].float() / 255.0
+                    self._policy_camera_luminance = (
+                        rgb * rgb.new_tensor([.299, .587, .114])
+                    ).sum(-1).flatten(1)
+                finally:
+                    self.gym.end_access_image_tensors(self.sim)
+            obs_dict['camera_luminance'] = self._policy_camera_luminance
+            self._policy_camera_observation_index += 1
             # Desired geometry only: no actual object pose or goal-error shortcut.
             obs_dict['goal_keypoints_world'] = self.goal_keypoint_pos_fixed_size.flatten(1)
 

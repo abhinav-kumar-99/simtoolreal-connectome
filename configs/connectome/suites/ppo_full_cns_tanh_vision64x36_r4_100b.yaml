@@ -1,0 +1,60 @@
+# Full-CNS raw vision with a 64x36 camera rendered every four control steps.
+schema_version: 1
+name: ppo_full_cns_tanh_vision64x36_r4_100b
+stages: [train]
+output_directory: train_dir/connectome/vision/ppo_full_cns_tanh_vision64x36_r4_100b
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+training:
+  task_profile: SimToolRealVisionProprio64x36R4
+  train_profiles:
+    - {name: visual_tanh_64x36_r4, train_profile: SimToolRealFullCNSVisualReservoirGaussianSAPGVision64x36R4}
+  seeds: [42]
+  gpu_assignments: [1]
+  max_parallel: 1
+  num_envs: 384
+  sapg_block_size: 64
+  epochs: 16276041
+  max_frames: 100000000000
+  minibatch_size: 1536
+  central_critic_minibatch_size: 1536
+  rollout_accumulation_steps: 1
+  actor_microbatch_size: 1536
+  central_critic_microbatch_size: 1536
+  inference_checkpoint_interval_frames: 1000000
+  save_frequency: 200
+  save_best_after: 100
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: visual-tanh-64x36-r4
+    tags: [malecns, vision, L1, L2, proprioception, fixed-input, tanh, 64x36, render-interval-4]
+  overrides:
+    train.params.config.kl_threshold: 0.004
+    train.params.config.learning_rate: 0.0001
+    train.params.config.max_lr: 0.001
+    train.params.config.use_others_experience: lf
+    train.params.config.off_policy_ratio: 1.0
+    ++train.params.config.use_experimental_cv: true
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    train.params.config.expl_reward_coef_scale: 0.005
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

@@ -1,0 +1,10 @@
+defaults:
+  - SimToolRealVisionProprio
+  - _self_
+
+env:
+  policyVision:
+    enabled: true
+    width: 64
+    height: 36
+    renderInterval: 4
