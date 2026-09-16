@@ -1,6 +1,11 @@
 """Rendering helpers that do not require importing Isaac Gym."""
 
 
+def simtoolreal_camera_pose():
+    """Shared environment-local pose for evaluation videos and policy cameras."""
+    return (0.0, -1.0, 1.03), (0.0, 0.0, 0.53)
+
+
 def render_camera_sensors_for_current_step(gym, sim, device) -> None:
     """Advance headless graphics before rendering camera sensor buffers.
 

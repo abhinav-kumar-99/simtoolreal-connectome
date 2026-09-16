@@ -22,6 +22,9 @@ def main() -> None:
     if kind in {'compact_paths', 'compact_distal_leg'}:
         from simtoolreal_shared.compact_connectome import prepare_compact_connectome
         manifest = prepare_compact_connectome(config_path, repository_root)
+    elif kind == 'visual_paths':
+        from simtoolreal_shared.visual_connectome import prepare_visual_connectome
+        manifest = prepare_visual_connectome(config_path, repository_root)
     elif kind == 'original_csv':
         manifest = prepare_connectome(config_path, repository_root)
     else:

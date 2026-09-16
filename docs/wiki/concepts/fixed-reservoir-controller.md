@@ -54,7 +54,7 @@ A non-refractory cell emits `s'=1` when `v' >= 0.25`, resets its membrane to zer
 
 The fixed encoder supplies rates in `[0,1]`. Existing opponent codes are already nonnegative and are unchanged. A signed code `z=tanh(x/scale)` becomes `(z+1)/2`, so zero is a half-rate baseline and negative values suppress rather than require non-biological negative spikes. Unmapped population cells, including tactile cells without measurements, remain exactly zero instead of receiving that baseline. The action readout receives each motor cell's mean binary spike count across all four updates, not merely its last substep.
 
-The YAML-selectable profile is `SimToolRealConnectome1952FixedReservoirRotation6DGaussianSigma3SAPGLIF`. Its important parameters are `activation`, `control_frequency_hz`, `membrane_time_constant_ms`, `spike_threshold`, `refractory_period_ms`, `input_current_scale` and the inherited `neural_updates`. These are engineering operating-point choices, not measured MaleCNS physiology. The supplied smoke and 100B suites are prepared for later evaluation, but the LIF full run is deliberately not launched while the tanh no-auxiliary-value control is running.
+The YAML-selectable profile is `SimToolRealConnectome1952FixedReservoirRotation6DGaussianSigma3SAPGLIF`. Its important parameters are `activation`, `control_frequency_hz`, `membrane_time_constant_ms`, `spike_threshold`, `refractory_period_ms`, `input_current_scale` and the inherited `neural_updates`. These are engineering operating-point choices, not measured MaleCNS physiology. The LIF full run subsequently passed its smoke gate and ran on GPU 1; it was then stopped at the user's direction for the separate [visual tanh reservoir](visual-reservoir.md).
 
 ### Fixed-scale calibration diagnostic
 
@@ -73,7 +73,7 @@ The reservoir trainer used about 6.2 GiB on physical GPU 1 during initialization
 - The first executable version deliberately keeps the validated 1,952-cell MaleCNS graph. Larger subcircuits should be separate artifacts and matched YAML profiles, not silent graph substitutions.
 - Four held-input recurrent updates remain the current timing choice. With backpropagation removed, K can be swept higher, but rollout time still grows with K.
 - The continuous tanh rate model and hard-spiking LIF model are separate YAML-selected dynamics. The LIF operating point still needs spike-rate, motor-coverage, throughput and task-learning validation before it supports a biological or performance claim.
-- Camera-to-fly vision is not implemented here. A later visual profile should use a fixed retinotopic mapping and an appropriate visual/CNS artifact, while keeping goal and nonvisual feedback channels explicit.
+- The separate [visual reservoir profile](visual-reservoir.md) now implements real L1/L2 column inputs and measured optic-to-motor paths, raw evaluation-angle cameras, retained proprioception and explicit goal channels. The small 1,952-cell profiles themselves have no visual cells.
 - Compare learning curves and task videos against learned structured adapters before attributing any speedup or control quality to the biological circuit.
 
 ## Is K=4 enough?

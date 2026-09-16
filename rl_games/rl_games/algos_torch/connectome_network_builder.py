@@ -404,6 +404,8 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 descending_indices = artifact["descending_indices"].astype(np.int64)
                 motor_indices = artifact["motor_indices"].astype(np.int64)
                 body_ids = artifact["body_ids"].astype(np.int64)
+                visual_indices = artifact['visual_indices'].astype(np.int64) if 'visual_indices' in artifact else np.array([], dtype=np.int64)
+                visual_grid = artifact['visual_grid'].astype(np.float32) if 'visual_grid' in artifact else None
                 if structured_input is not None or fixed_input is not None:
                     population_config = (
                         structured_input if structured_input is not None else fixed_input
@@ -473,7 +475,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                         "Structured proprioceptor and tactile populations overlap"
                     )
                 structured_union = np.sort(
-                    np.concatenate((proprioceptor_indices, tactile_indices))
+                    np.concatenate((proprioceptor_indices, tactile_indices, visual_indices))
                 )
                 if not np.array_equal(structured_union, np.sort(sensory_indices)):
                     raise ValueError(
@@ -643,6 +645,17 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     target_positions=proprioceptor_positions,
                 )
                 self.descending_projection_architecture = "fixed_population_code"
+                retina = fixed_input.get('retina')
+                if len(visual_indices):
+                    if retina is None or visual_grid is None:
+                        raise ValueError('Visual artifact requires a configured retinal encoder')
+                    from simtoolreal_shared.retina import RetinalPopulationEncoder
+                    self.sensory_adapter = RetinalPopulationEncoder(
+                        self.sensory_adapter,
+                        [sensory_positions[int(i)] for i in visual_indices],
+                        visual_grid, **dict(retina))
+                elif retina is not None:
+                    raise ValueError('Retinal encoder requires visual neurons in the artifact')
                 self.descending_adapter = _FixedPopulationEncoder(
                     policy_size=self.policy_observation_size,
                     output_size=len(descending_indices),

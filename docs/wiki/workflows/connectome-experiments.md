@@ -8,6 +8,8 @@ Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
 ## Fixed-input cached-reservoir policies
 
+Current GPU-1 replacement: the [camera-driven visual tanh reservoir](../concepts/visual-reservoir.md), launched with `configs/connectome/suites/ppo_visual_tanh_100b.yaml`. The earlier LIF processes described below were stopped at the user's direction. The visual run retains proprioception and uses actual MaleCNS optic columns; its larger graph requires a separately validated 384-environment batch.
+
 The fixed-reservoir contract removes learned input adapters and PPO backpropagation through MaleCNS. The exact fixed population map, memory boundary and biological caveats are in [Fixed-input MaleCNS reservoir controller](../concepts/fixed-reservoir-controller.md). The current replacement retains the 144-value Rotation-6D task, four held-input neural updates, LF/1.0 experience reuse, entropy scale `.005`, actor KL target `.004`, LR range `[1e-6,.001]`, 12,288 environments and the privileged central critic. Its Gaussian distribution, coefficient-conditioned scale, sigma-three ceiling and auxiliary actor value loss match the dense-input Gaussian control.
 
 Run the completed matched-Gaussian two-epoch integration gate from the repository root with an empty output directory:

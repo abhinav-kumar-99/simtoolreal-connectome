@@ -6,6 +6,12 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] implement and launch | Raw-camera visual CNS reservoir
+
+At the user's correction, implemented actual MaleCNS L1/L2 visual populations and measured optic-to-motor paths rather than an image code injected into the small front-leg circuit. Added SHA-pinned YAML graph extraction (162,796 cells, 6,144,284 stored edges), fixed anatomical-column image sampling, per-environment raw evaluation-angle cameras, hidden goal visualization actors, retained proprioception, explicit desired-goal input and a nine-update tanh profile. Added YAML-owned 96/384-environment smoke gates, full run, camera/sensitivity audit and video watcher. The 93 network/initial-retina tests passed; both smokes passed checkpoint reload. The simulator audit showed byte-identical images under a goal-only change, distinct environment cameras and a small measurable motor response to brightness. Fixed optical alignment and tanh dynamics remain modeling assumptions; the exact evidence and limitations are recorded in the visual-reservoir concept page.
+
+Stopped only LIF suite/trainer/watcher PIDs 450554/450610/450997 and preserved artifacts. Launched full visual tanh suite/trainer PIDs 468643/468686 and watcher 469141 on physical GPU 1. Added `visual_tanh_100b` to the existing port-6008 TensorBoard without restart. The GPU-0 learned-adapter Gaussian trainer 261951 remains active. The warm 384-environment smoke ran at about 1,518 steps/s. Early full-run actor/central value losses, entropy and KL were finite with zero invalid-KL flags. Branch `feature/vision-reservoir` records `feature/malecns-connectome-actor` as its base; unrelated `.vscode/` and `tmp/` remain untouched.
+
 ## [2026-09-16] launch | Replace no-auxiliary tanh reservoir with LIF
 
 Stopped only the GPU-1 no-auxiliary fixed-reservoir suite/trainer/watcher PIDs 430585/430658/431147 near frame 301.4M and preserved its artifacts, including the completed 250M three-video evaluation. The dense learned-adapter Gaussian suite/trainer/watcher PIDs 261900/261951/262494 on GPU 0 remained live and were not signaled.

@@ -1,0 +1,27 @@
+defaults:
+  - SimToolRealConnectome1952FixedReservoirRotation6DGaussianSigma3SAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      artifact_path: data/connectomes/processed/malecns_visual/biological.npz
+      expected: {neurons: 162796, edges: 6144284, sensory_neurons: 3918, descending_neurons: 157, motor_neurons: 135}
+      observations:
+        policy_size: 5283
+        sensory_size: 58
+        context_size: 5213
+        goal_size: 12
+        sensory_ranges: [[0, 58]]
+        context_ranges: [[58, 87], [99, 5283]]
+        goal_ranges: [[87, 99]]
+      dynamics:
+        activation: tanh
+        neural_updates: 9
+      fixed_input_encoder:
+        descending_mappings:
+          - {source_range: [58, 87], target_offset: 0, encoding: signed_tanh, scale: 1.0}
+          - {source_range: [87, 99], target_offset: 29, encoding: opponent_tanh, scale: 1.0}
+        retina: {image_start: 99, height: 54, width: 96, gain: 1.0}
+  config:
+    name: ${resolve_default:SimToolRealVisualReservoirGaussianSAPG,${....experiment}}
