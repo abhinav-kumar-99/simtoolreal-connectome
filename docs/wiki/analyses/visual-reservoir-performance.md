@@ -54,6 +54,39 @@ The first production preflight rejected the resume-offset epoch budget because t
 
 ## Reproduction
 
+### Capacity sweep
+
+At the user's request to fill GPU 1, `configs/connectome/profiling/visual_capacity.yaml` extends the sweep above 1,536 environments using the production frozen/fused/no-capture implementation. The prior GPU-1 trainer and watcher were stopped for isolated probes; GPU-0 training was preserved. The latest saved full-state checkpoint for continuation is epoch 351/frame 2,359,296 in the fast run's named best checkpoint. Simulator episodes reset on continuation; learned actor/critic and optimizer state are retained.
+
+The initial 3,072-environment probe died with native `SIGSEGV` before any PPO epoch. No explicit CUDA OOM was printed, so its cause is not established as VRAM exhaustion. An accompanying `nvidia-smi` query timed out and exposed a benchmark-monitor failure; that is now caught and recorded without abandoning the child. The original failed logs remain under `profiles/connectome/visual_capacity/batch3072/`. The amended sweep brackets the failure using intermediate batches. This is a capacity/throughput experiment, not evidence that larger batches learn faster.
+
+```bash
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 CC=/usr/bin/gcc CXX=/usr/bin/g++ .venv/bin/python scripts/benchmark_visual_reservoir.py --config configs/connectome/profiling/visual_capacity.yaml
+```
+
+The same entrypoint now supports `monitor_memory`, `continue_on_failure` and per-case `timeout_seconds`. It samples total device memory once per second (including graphics and the unrelated GPU-0 trainer's small GPU-1 context), so reported peaks are sampled device occupancy, not exact allocator peaks. `memory_samples.json` persists telemetry during each case; `process_result.json` records exit status and query failures. Owned subprocess groups are terminated on timeout; unrelated processes are not signaled. With resume and continue-on-failure enabled, attempted failures are preserved and skipped; use a new case name to retry. Two orchestration tests cover telemetry timeout and process-group timeout handling.
+
+The 12-epoch capacity measurements, discarding the first two epochs, are:
+
+| Environments | Total FPS | Sampled device memory (MiB) |
+| --- | ---: | ---: |
+| 1,920 | 3,647.5 | 16,458 |
+| 2,304 | 3,610.5 | 18,894 |
+| 2,688 | 3,510.0 | 21,376 |
+| 3,072 | No completed epoch | Native initialization crash; peak not recovered |
+
+All three successful cases passed checkpoint reload with finite actions. The card exposes 24,564 MiB. Thus 2,688 uses about 87% before video evaluation, versus 8,679 MiB device occupancy in the earlier live 768-environment snapshot. It is about 4.8% slower than the earlier 3,688-FPS 768 test: available VRAM was not evidence that more environments would improve throughput. These are short single-run comparisons, not matched learning curves or a precise search for the absolute maximum batch size.
+
+The capacity continuation uses `ppo_full_cns_tanh_vision_capacity_100b.yaml`: 2,688 environments, six 448-environment SAPG blocks, 10,752-sample minibatches and the same Gaussian, CV, camera and nine-update dynamics. The checkpoint source is the stopped 768-environment run's full-state checkpoint described above. Its watcher YAML retains three videos per 1M frames. The optional `visual_capacity_headroom.yaml` runs a real 60-step marker-video worker from the old 2M inference checkpoint to check memory coexistence, not to measure learning progress.
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_full_cns_tanh_vision_capacity_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_full_cns_tanh_vision_capacity_100b_milestones.yaml
+CUDA_VISIBLE_DEVICES=1 PYTHONPATH=rl_games:. OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 CC=/usr/bin/gcc CXX=/usr/bin/g++ .venv/bin/python dextoolbench/eval_worker_isaacgym.py --config configs/connectome/evaluation/visual_capacity_headroom.yaml
+```
+
+The suite/watcher are normal long-running entrypoints and should not be launched twice into the same output directory. The helper video worker is normally launched by the watcher; its diagnostic YAML pins the source checkpoint, task, video dimensions, 60-step duration and separate output files. Keep it off the GPU during throughput benchmarks, and run at most one video worker alongside the capacity trainer. Full checkpoint files grow with recurrent batch state; benchmark artifacts are retained rather than silently deleted.
+
 ```bash
 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 CC=/usr/bin/gcc CXX=/usr/bin/g++ .venv/bin/python scripts/benchmark_visual_reservoir.py --config configs/connectome/profiling/visual_optimizations.yaml
 CUDA_VISIBLE_DEVICES=1 CC=/usr/bin/gcc CXX=/usr/bin/g++ .venv/bin/python scripts/audit_visual_reservoir.py --config configs/connectome/full_cns_visual_fast_audit.yaml

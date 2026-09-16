@@ -1,0 +1,24 @@
+# Short real video worker to validate memory headroom beside the capacity run.
+# Uses the existing 2M inference checkpoint, not a new learning evaluation.
+policy: visual_capacity_headroom
+metric: paper_task_progress
+policy_config_path: train_dir/connectome/vision/ppo_full_cns_tanh_vision_fast_100b/00_ppo_full_cns_tanh_vision_fast_100b_visual_tanh_fast_seed42/resolved_config.yaml
+checkpoint_path: train_dir/connectome/vision/ppo_full_cns_tanh_vision_fast_100b/00_ppo_full_cns_tanh_vision_fast_100b_visual_tanh_fast_seed42/rl_runs/00_ppo_full_cns_tanh_vision_fast_100b_visual_tanh_fast_seed42/nn/milestone_target_000002000000_actual_000002002944_ep_000322.pth
+object_category: marker
+object_name: sharpie_marker
+task_name: write_c
+trajectory_path: dextoolbench/trajectories/marker/sharpie_marker/write_c.json
+table_urdf: urdf/table_narrow.urdf
+success_tolerance: 0.02
+num_episodes: 1
+downsample_factor: 1
+z_offset: 0.03
+max_steps: 60
+action_selection: mean
+deterministic_actions: true
+record_video: true
+video_fps: 20
+video_frame_interval: 3
+camera_resolution_reduction_factor: 2
+video_path: profiles/connectome/visual_capacity/headroom/rollout.mp4
+output_path: profiles/connectome/visual_capacity/headroom/eval.json
