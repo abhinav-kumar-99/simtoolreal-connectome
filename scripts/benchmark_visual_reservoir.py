@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import statistics
 import subprocess
 import sys
@@ -157,6 +158,10 @@ def sweep(cfg, output):
         if completed.exists() and cfg.get('resume', False):
             print('Already complete', case['name'], flush=True)
             continue
+        if (cfg.get('resume', False) and cfg.get('continue_on_failure', False)
+                and (directory / 'process_result.json').exists()):
+            print('Already attempted', case['name'], '(use a new case name to retry)', flush=True)
+            continue
         directory.mkdir(parents=True, exist_ok=cfg.get('resume', False))
         child['output_directory'] = str(directory)
         path = directory / 'benchmark.yaml'
@@ -192,10 +197,47 @@ def sweep(cfg, output):
                 environment.pop('CUDA_VISIBLE_DEVICES', None)
             else:
                 environment['CUDA_VISIBLE_DEVICES'] = str(cfg.get('gpu', 1))
-            result = subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
-                                    env=environment)
-            print('Finished', case['name'], 'exit', result.returncode, flush=True)
-            if result.returncode:
+            process = subprocess.Popen(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
+                                       env=environment, start_new_session=True)
+            started = time.monotonic()
+            memory = []
+            monitor_errors = []
+            timed_out = False
+            while process.poll() is None:
+                if cfg.get('monitor_memory', False):
+                    try:
+                        sample = subprocess.run([
+                            'nvidia-smi', '--id=' + str(cfg.get('gpu', 1)),
+                            '--query-gpu=memory.used,memory.total', '--format=csv,noheader,nounits',
+                        ], capture_output=True, text=True, timeout=10)
+                        if sample.returncode == 0:
+                            used, total = map(int, sample.stdout.strip().split(','))
+                            memory.append(dict(seconds=time.monotonic()-started, used_mib=used, total_mib=total))
+                        else:
+                            monitor_errors.append(sample.stderr)
+                    except (subprocess.TimeoutExpired, OSError, ValueError) as exc:
+                        # Driver queries can stall during native simulator failures.
+                        # A telemetry failure must not orphan the training child.
+                        monitor_errors.append(str(exc))
+                    (directory / 'memory_samples.json').write_text(json.dumps(
+                        dict(samples=memory, errors=monitor_errors), indent=2))
+                if time.monotonic() - started > cfg.get('timeout_seconds', 1800):
+                    timed_out = True
+                    os.killpg(process.pid, signal.SIGTERM)
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    break
+                time.sleep(1)
+            returncode = process.wait()
+            result = dict(returncode=returncode, timed_out=timed_out,
+                          elapsed_seconds=time.monotonic()-started, memory_samples=memory,
+                          monitor_errors=monitor_errors,
+                          peak_gpu_used_mib=max((s['used_mib'] for s in memory), default=None))
+            (directory / 'process_result.json').write_text(json.dumps(result, indent=2))
+            print('Finished', case['name'], 'exit', returncode, 'peak GPU MiB', result['peak_gpu_used_mib'], flush=True)
+            if returncode and not cfg.get('continue_on_failure', False):
                 raise RuntimeError('Benchmark failed; inspect ' + str(log_path))
     summarize(cfg, output)
 
@@ -211,6 +253,11 @@ def summarize(cfg, output):
                 continue
             content = logs[-1].read_text()
             row = dict(case=case['name'], batch=case['batch'])
+            result_path = directory / 'process_result.json'
+            if result_path.exists():
+                result = json.loads(result_path.read_text())
+                row.update(returncode=result['returncode'], timed_out=result['timed_out'],
+                           peak_gpu_used_mib=result['peak_gpu_used_mib'])
             for label, key in [('fps step', 'step_fps'),
                                ('fps step + policy inference', 'rollout_fps'),
                                ('fps total', 'total_fps')]:
