@@ -7,7 +7,7 @@ import yaml
 from torch.utils.tensorboard import SummaryWriter
 
 from scripts.run_connectome_numerical_fallback import checkpoint_health, scan_event_file
-from scripts.run_connectome_success_handoff import select_closest_point
+from scripts.run_connectome_success_handoff import configure_target_state, select_closest_point
 
 
 def test_event_scanner_detects_only_new_nonfinite_scalars(tmp_path: Path) -> None:
@@ -208,7 +208,7 @@ def test_success_handoff_candidate_contracts_compose() -> None:
     ).read_text())
     assert handoff['comparison'] == {
         'tag': 'mean_successes/frame',
-        'target_step': 1_000_000_000,
+        'target_step': 1_250_000_000,
         'point_selection': 'closest_after_crossing',
         'comparator': 'strict_less',
     }
@@ -228,3 +228,24 @@ def test_success_handoff_closest_point_waits_for_crossing_and_prefers_lower_tie(
         'after': {'step': target + 10, 'value': 2.0},
     }, target)
     assert selected == {'step': target - 10, 'value': 1.0}
+
+
+def test_success_handoff_retarget_clears_old_brackets() -> None:
+    state = {
+        'status': 'monitoring',
+        'comparison_target_step': 1_000_000_000,
+        'metrics': {'candidate': {
+            'before': {'step': 999_948_288, 'value': 0.1},
+            'after': {'step': 1_000_144_896, 'value': 0.2},
+            'selected': {'step': 999_948_288, 'value': 0.1},
+            'event_offsets': {'events': 123},
+        }},
+        'transitions': [],
+    }
+    configure_target_state(state, 1_250_000_000)
+    assert state['comparison_target_step'] == 1_250_000_000
+    assert state['metrics'] == {}
+    history = state['target_change_history'][-1]
+    assert history['previous_target_step'] == 1_000_000_000
+    assert history['new_target_step'] == 1_250_000_000
+    assert history['prior_points']['candidate']['selected']['step'] == 999_948_288

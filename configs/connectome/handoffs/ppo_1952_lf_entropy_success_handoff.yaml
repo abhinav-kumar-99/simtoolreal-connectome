@@ -1,11 +1,11 @@
-# Compare fresh candidates to the fixed 1x LF policy at 1G frames.
+# Compare fresh candidates to the fixed 1x LF policy at 1.25G frames.
 schema_version: 1
 output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/lf_entropy_success_handoff
 poll_interval_seconds: 30
 shutdown_timeout_seconds: 60
 comparison:
   tag: mean_successes/frame
-  target_step: 1000000000
+  target_step: 1250000000
   point_selection: closest_after_crossing
   comparator: strict_less
 reference:

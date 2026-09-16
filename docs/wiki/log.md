@@ -519,3 +519,7 @@ Added a YAML-owned monitor that leaves the active 5x LF run untouched until it c
 ## [2026-09-15] launch | Start staged LF entropy success monitor
 
 Launched `run_connectome_success_handoff.py` in tmux session `connectome-lf-entropy-success-handoff` with PID 35283. The first status persisted `monitoring`, the fixed 1x reference bracket/selection, the latest 5x point at frame 304,152,576/value .0006510417, and exact live candidate suite/trainer/watcher PIDs 9553/9610/9904. Because 5x had no at-or-above-1G point, no comparison or replacement occurred. The 1x suite/trainer/watcher PIDs 4102855/4102915/4103035 remained live and untouched. Generated status is ignored; implementation commit: `b80406c2`.
+
+## [2026-09-15] configure | Raise both LF entropy success gates to 1.25G
+
+Superseded the 1G comparison contract before it made any decision or transition. Changed the shared YAML target to 1,250,000,000 frames, which applies first to 5x and then independently to a newly launched 3x candidate. Added target-aware state migration: on a pre-transition retarget, the monitor archives the prior bracket summary, clears target-dependent metric offsets and rescans both histories, while refusing retargets after a transition or terminal decision. The new fixed 1x reference selects frame 1,250,033,664/value .0086263027; 5x was only near 339M and remained ineligible for comparison. The focused handoff tests passed, and no trainer or video watcher was stopped.

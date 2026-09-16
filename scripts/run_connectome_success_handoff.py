@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply YAML-owned, staged 1G success gates to connectome training jobs."""
+"""Apply YAML-owned, staged success gates to connectome training jobs."""
 
 from __future__ import annotations
 
@@ -94,6 +94,34 @@ def select_closest_point(metric_state: dict[str, Any], target: int) -> dict[str,
     return min(candidates, key=lambda point: (abs(int(point["step"]) - target), int(point["step"])))
 
 
+def configure_target_state(state: dict[str, Any], target: int) -> None:
+    """Reset target-dependent brackets when a monitoring contract is retargeted."""
+    stored_target = state.get("comparison_target_step")
+    if stored_target == target:
+        return
+    if stored_target is not None or state.get("metrics"):
+        if state.get("status") != "monitoring" or state.get("transitions"):
+            raise RuntimeError(
+                "Cannot change comparison target after a terminal decision or transition"
+            )
+        prior_points = {
+            name: {
+                key: metric.get(key)
+                for key in ("before", "after", "selected")
+                if metric.get(key) is not None
+            }
+            for name, metric in state.get("metrics", {}).items()
+        }
+        state.setdefault("target_change_history", []).append({
+            "previous_target_step": stored_target,
+            "new_target_step": target,
+            "changed_at_utc": datetime.now(timezone.utc).isoformat(),
+            "prior_points": prior_points,
+        })
+        state["metrics"] = {}
+    state["comparison_target_step"] = target
+
+
 def _scan_source(
     source: dict[str, Any], metric_state: dict[str, Any], tag: str, target: int
 ) -> None:
@@ -171,6 +199,8 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
     output = _repository_path(config["output_directory"])
     state_path = output / "status.json"
     stage_by_name = {str(stage["name"]): stage for stage in config["stages"]}
+    tag = str(config["comparison"]["tag"])
+    target = int(config["comparison"]["target_step"])
     state = json.loads(state_path.read_text()) if state_path.is_file() else {
         "schema_version": 1,
         "status": "monitoring",
@@ -178,15 +208,15 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
         "started_at_utc": datetime.now(timezone.utc).isoformat(),
         "metrics": {},
         "transitions": [],
+        "comparison_target_step": target,
     }
+    configure_target_state(state, target)
     if state.get("status") in {
         "candidate_retained", "terminal_replacement_launched",
         "replacement_failed_to_start",
     }:
         return state
 
-    tag = str(config["comparison"]["tag"])
-    target = int(config["comparison"]["target_step"])
     reference_name = str(config["reference"]["name"])
     poll_seconds = float(config.get("poll_interval_seconds", 30))
     shutdown_timeout = float(config.get("shutdown_timeout_seconds", 60))
