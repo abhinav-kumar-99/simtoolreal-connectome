@@ -231,6 +231,12 @@ Start with learned weights inside the mask rather than fixed hand-designed tunin
 
 Object/context, goal and the SAPG embedding form a 70-value descending input. A learned descending projection maps that vector to the 157 descending cells. Routing object context here treats it as task/context information rather than fabricated peripheral sensation. Because this is an engineering interpretation, include an ablation that retains the old dense sensory routing rather than presenting it as biology.
 
+Use separate architecture choices for the two input routes. The body-to-proprioceptor projection should initially be masked linear: this keeps the declared robot-group structure exact and prevents a shared hidden layer from reconstructing arbitrary cross-group mixing before the connectome. The context/goal-to-descending projection may use a small MLP because pose relations are nonlinear and descending cells are already an engineered task/context interface. Keep the action readout architecture unchanged for the first routing comparison. The current single `interface_projections.architecture` option applies one architecture to all interfaces, so the structured profile needs per-route architecture keys rather than changing existing profile semantics.
+
+Rotation representation is a separate experimental factor. The current actor receives absolute palm and object unit quaternions in Isaac Gym `xyzw` order at indices `90:94` and `94:98`. The noisy/delayed object quaternion is used to construct the observed object keypoints, while rl_games also normalizes the four raw quaternion components independently. Raw quaternions have the `q` versus `-q` double-cover ambiguity, and a linear layer cannot itself form relative rotations. The existing keypoint-relative-palm and keypoint-relative-goal fields already provide continuous task geometry and partially reduce dependence on the raw quaternions.
+
+Retain the current quaternion fields in the first routing experiment so a result is attributable to routing rather than a simultaneous observation change. Then test rotation encoding independently: replace each absolute quaternion with the first two columns of its rotation matrix (the continuous six-dimensional representation), or supply an explicitly computed palm-to-object relative rotation in that representation. This changes observation dimensions and normalization state, so it requires a fresh profile/checkpoint and regenerated named-field ranges. Do not silently canonicalize quaternion sign inside an old profile: although choosing one sign removes duplicate representations, every sign convention has a discontinuity somewhere.
+
 The proposed YAML contract is conceptually:
 
 ```yaml
@@ -239,6 +245,7 @@ params:
     connectome:
       sensory_adapter:
         mode: grouped_linear
+        architecture: linear
         groups:
           arm: {dof_indices: [0, 7]}
           thumb: {dof_indices: [7, 12]}
@@ -248,6 +255,9 @@ params:
           pinky: {dof_indices: [24, 29]}
         proprioceptor_allocation: proportional_sorted_body_id
         tactile_direct_drive: none
+      descending_adapter:
+        architecture: mlp
+        hidden_size: 128
       observations:
         body_efference_ranges: [[0, 87], [98, 113]]
         context_ranges: [[87, 98], [113, 125], [137, 140]]
