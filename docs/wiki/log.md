@@ -523,3 +523,7 @@ Launched `run_connectome_success_handoff.py` in tmux session `connectome-lf-entr
 ## [2026-09-15] configure | Raise both LF entropy success gates to 1.25G
 
 Superseded the 1G comparison contract before it made any decision or transition. Changed the shared YAML target to 1,250,000,000 frames, which applies first to 5x and then independently to a newly launched 3x candidate. Added target-aware state migration: on a pre-transition retarget, the monitor archives the prior bracket summary, clears target-dependent metric offsets and rescans both histories, while refusing retargets after a transition or terminal decision. The new fixed 1x reference selects frame 1,250,033,664/value .0086263027; 5x was only near 339M and remained ineligible for comparison. The focused handoff tests passed, and no trainer or video watcher was stopped.
+
+## [2026-09-15] launch | Restart success monitor at 1.25G target
+
+Stopped only the old handoff monitor PID 35283 through its tmux session and restarted the updated contract in the same `connectome-lf-entropy-success-handoff` session as PID 38375. The migrated status records target 1,250,000,000, archives the prior 1G bracket points, selects the fixed reference at frame 1,250,033,664/value .0086263027, and leaves the 5x selection null at frame 343,867,392 because it has not crossed the target. Both candidate and reference suite/trainer/watcher PID triples remained unchanged at 9553/9610/9904 and 4102855/4102915/4103035. No training or video process was stopped. Contract commit: `f768df1a`.
