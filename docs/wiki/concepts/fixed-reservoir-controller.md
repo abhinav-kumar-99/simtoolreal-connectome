@@ -50,7 +50,7 @@ I = 0.9\,g_{in}\odot W(g_{out}\odot s) + 1.5\,r(x) + b,
 v' = e^{-\Delta t/\tau_m}v + (1-e^{-\Delta t/\tau_m})I.
 \]
 
-A non-refractory cell emits `s'=1` when `v' >= 1`, resets its membrane to zero and sets a 2 ms refractory timer; otherwise it emits zero. Four updates divide one 60 Hz robot interval, giving `dt=4.1667 ms`, and `tau_m=10 ms`. Refractory time is decremented in physical milliseconds before threshold evaluation. The fused Triton implementation matches the dense reference on CUDA.
+A non-refractory cell emits `s'=1` when `v' >= 0.25`, resets its membrane to zero and sets a 2 ms refractory timer; otherwise it emits zero. Four updates divide one 60 Hz robot interval, giving `dt=4.1667 ms`, and `tau_m=10 ms`. Refractory time is decremented in physical milliseconds before threshold evaluation. The fused Triton implementation matches the dense reference on CUDA. A full 1,952-cell inference probe caught that threshold one produced finite internal spikes but silent motor features; the configured `.25` threshold produced nonzero motor rates without changing the tanh job. This is an operating-point smoke check, not a task-performance calibration.
 
 The fixed encoder supplies rates in `[0,1]`. Existing opponent codes are already nonnegative and are unchanged. A signed code `z=tanh(x/scale)` becomes `(z+1)/2`, so zero is a half-rate baseline and negative values suppress rather than require non-biological negative spikes. Unmapped population cells, including tactile cells without measurements, remain exactly zero instead of receiving that baseline. The action readout receives each motor cell's mean binary spike count across all four updates, not merely its last substep.
 

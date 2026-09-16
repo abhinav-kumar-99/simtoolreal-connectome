@@ -502,7 +502,7 @@ def test_fixed_reservoir_lif_changes_only_recurrent_dynamics_contract() -> None:
     assert graph.dynamics.neural_updates == 4
     assert graph.dynamics.control_frequency_hz == 60.0
     assert graph.dynamics.membrane_time_constant_ms == 10.0
-    assert graph.dynamics.spike_threshold == 1.0
+    assert graph.dynamics.spike_threshold == 0.25
     assert graph.dynamics.refractory_period_ms == 2.0
     assert graph.dynamics.input_current_scale == 1.5
     assert graph.fixed_input_encoder.mode == "population_code_v1"

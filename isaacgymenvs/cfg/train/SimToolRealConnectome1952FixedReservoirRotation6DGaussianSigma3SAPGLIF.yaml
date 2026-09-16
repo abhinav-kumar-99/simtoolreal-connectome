@@ -11,7 +11,7 @@ params:
         activation: lif
         control_frequency_hz: 60.0
         membrane_time_constant_ms: 10.0
-        spike_threshold: 1.0
+        spike_threshold: 0.25
         refractory_period_ms: 2.0
         input_current_scale: 1.5
   config:
