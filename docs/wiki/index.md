@@ -20,13 +20,13 @@ Related: [Overview](overview.md), [Log](log.md)
 ## Concepts
 
 - [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics, implemented structured sensory routing and 6D orientation, exact central-critic inputs, connectome-versus-LSTM auxiliary value gradients, propagation delay and saturation boundaries. Last updated 2026-09-16.
-- [Fixed-input reservoir controller](concepts/fixed-reservoir-controller.md) — Parameter-free robot-to-MaleCNS population coding, cached motor features, no-BPTT PPO boundary, exact channel map and smoke evidence. Last updated 2026-09-16.
+- [Fixed-input reservoir controller](concepts/fixed-reservoir-controller.md) — Parameter-free robot-to-MaleCNS population coding, cached motor features, no-BPTT PPO boundary, optional hard-spiking LIF dynamics, exact channel map and smoke evidence. Last updated 2026-09-16.
 - [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, adapters-only default, and GPU implementation. Last updated 2026-09-14.
 - [Training and evaluation success metrics](concepts/success-metrics.md) — TensorBoard populations, tolerance scaling, policy-ID mismatch and milestone Task Progress. Last updated 2026-09-15.
 
 ## Workflows
 
-- [Experiment workflow](workflows/connectome-experiments.md) — Structured 6D-input suites, four-update Beta training, milestone videos, LF entropy runs, and the staged 1.25G true-objective handoff. Last updated 2026-09-16.
+- [Experiment workflow](workflows/connectome-experiments.md) — Fixed-reservoir tanh/no-aux/LIF suites, structured 6D-input suites, milestone videos, LF entropy runs, and the staged 1.25G true-objective handoff. Last updated 2026-09-16.
 - [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, early gain audit, and stopped-run status. Last updated 2026-09-14.
 
 ## Analyses

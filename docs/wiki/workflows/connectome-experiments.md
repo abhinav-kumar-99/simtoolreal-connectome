@@ -22,6 +22,24 @@ Launch the fresh 100B job with:
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_fixed_reservoir_rot6d_gaussian_lf_entropy1x_sigma3_100b.yaml
 ```
 
+The matched tanh control without the actor-side auxiliary value objective uses:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_fixed_reservoir_rot6d_gaussian_lf_entropy1x_sigma3_noaux_smoke.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_fixed_reservoir_rot6d_gaussian_lf_entropy1x_sigma3_noaux_100b.yaml
+```
+
+The full no-auxiliary contract differs from the existing fixed-reservoir tanh job only in output identity and `use_experimental_cv: false`. It retains the tanh circuit, fixed population map, cached motor features, Gaussian/SAPG distribution, LF reuse, entropy incentive, KL/LR settings, central critic, seed, batch geometry and 100B budget. Disabling the flag removes actor `c_loss`; it does not disable `cval_loss`, GAE, reward learning or the privileged central critic.
+
+The hard-spiking LIF alternative is implemented but intentionally deferred until the user requests its launch:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_fixed_reservoir_rot6d_gaussian_lif_lf_entropy1x_sigma3_smoke.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_fixed_reservoir_rot6d_gaussian_lif_lf_entropy1x_sigma3_100b.yaml
+```
+
+Those LIF suites select `SimToolRealConnectome1952FixedReservoirRotation6DGaussianSigma3SAPGLIF`. `activation: lif` switches the recurrent state to membrane/refractory/spikes; `control_frequency_hz` and `neural_updates` determine the internal timestep; `membrane_time_constant_ms` controls passive voltage decay; `spike_threshold` and `refractory_period_ms` control events; and `input_current_scale` calibrates the fixed `[0,1]` population-rate drive. All PPO, task and output-readout settings stay matched to the tanh job. The LIF milestone watcher is configured in `configs/connectome/evaluation/ppo_1952_fixed_reservoir_rot6d_gaussian_lif_lf_entropy1x_sigma3_100b_milestones.yaml`, but it should be started only with the corresponding full run.
+
 `scripts/run_connectome_suite.py` is the only training entry point. It reads GPU placement, profile, environment count, budgets, checkpoint cadence, optimizer settings and task overrides from the selected YAML. `scripts/prepare_malecns_connectome.py` verifies/prepares the pinned graph artifact. `connectome_network_builder.py` constructs and validates the parameter-free population encoders, runs the live reservoir and exposes cached motor features; `a2c_common.py` stores those 135-value features and presents them as a feed-forward PPO dataset. These helpers are imported by the entry point and are not run separately.
 
 Important settings are:
@@ -32,7 +50,7 @@ Important settings are:
 - `reservoir_readout`: selects cached motor features, the 128-unit readout and SAPG conditioning at the readout rather than inside MaleCNS.
 - `normalize_input: false`: prevents running normalization from changing the fixed physical encoding.
 - `dynamics.neural_updates: 4`: recurrent passes per environment control decision.
-- `use_experimental_cv: true`: matches the dense Gaussian and trains the separate actor value head on cached motor features plus the SAPG embedding; the privileged central critic remains enabled.
+- `use_experimental_cv`: `true` trains the separate actor value head on cached motor features plus the SAPG embedding; the matched no-auxiliary suite sets it to `false`. The privileged central critic remains enabled in either case.
 
 The Gaussian smoke completed both epochs, 393,216 frames and checkpoint deployment verification. Its warm update took .263 seconds versus about .92 seconds in the stopped structured/BPTT job. `c_loss` and `cval_loss` were independently nonzero, confirming both the actor-side auxiliary value head and privileged central critic trained. Earlier Beta integration artifacts remain preserved, including two initial failed smoke gates whose auxiliary-buffer and gradient-telemetry bugs were fixed.
 

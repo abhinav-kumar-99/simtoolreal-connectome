@@ -23,6 +23,14 @@ The README describes a learned 31-to-13 projection. The executed [encoder](https
 
 The useful principle is sparse modality-specific population coding, optionally with small learned calibration. Alphabetical assignments, coordinate bins, random augmentation and drive amplitudes are engineering choices.
 
+## Spiking implementation boundary
+
+`brain_wordle.py` is a genuine hard-threshold leaky integrate-and-fire simulation rather than a rate-RNN mislabeled as spiking. It retains membrane voltage, final-substep binary spikes and a refractory timer; each 0.2 ms step sums `W @ spikes`, leak toward -65 mV, external drive, a -50 mV threshold, hard reset to -65 mV and a 2 ms refractory period. These state/reset mechanics are useful for a frozen reservoir that is not differentiated through.
+
+Its numerical calibration is application-specific rather than directly transferable. Synapse weights are multiplied by `0.045`; encoder rates are multiplied by `0.012` and then added as a voltage increment on every 0.2 ms step, as is recurrent input, without a current/time conversion. The source claims physiological constants but provides no calibration linking those two scales to the shipped graph. The trainer uses 20 substeps, or 4 ms per Wordle decision. Although `step` accumulates spikes across that window for telemetry, `get_descending_rates` returns only the binary final-substep vector.
+
+The robot LIF variant therefore reuses membrane/spike/reset/refractory semantics but not these scales. It derives its timestep from the 60 Hz control interval and configured recurrent-update count, uses the repository's already spectral-normalized signed MaleCNS operator, maps fixed signed inputs to nonnegative baseline-modulated rates, and exposes mean motor spike counts across the complete control interval. This is still an engineered LIF operating point, not a reproduction of measured fly electrophysiology.
+
 ## Dopamine is not in the learning path
 
 In [train.py](https://github.com/Quantum-Coded/fruitfly/blob/e1a2089a1dcc312df446379ca9cd30193575f4db/wordle/backend/train.py), a completed game yields reward `1 + 0.25*(6-guesses)` for a win or `-1` for failure. A positive-only drive stimulates the dopamine mask and a random mushroom-body subset for 25 substeps. Then Adam updates only the readout using `loss = -reward * sum(log_probs)`.
