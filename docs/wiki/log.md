@@ -6,6 +6,12 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] implement and launch | Add multirate lower-resolution fly vision
+
+Added explicit YAML profiles for 64x36 policy cameras rendered once every four 60 Hz control steps. The environment caches luminance between renders while proprioception, goal/previous-action channels and all nine CNS updates remain fresh. The actor observation shrank from 5,283 to 2,403 values while all 3,534 L1/L2 cells retain fixed bilinear sampling. Added matched smoke, 100B, audit and milestone-watcher YAMLs; made the audit derive image dimensions from resolved configuration. All 32 focused tests passed. The two-epoch smoke completed finite checkpoint reload; its warmed epoch reached 4,880 step FPS and 2,934 total FPS. The corrected audit passed distinct/nonblank images, goal-image invariance and measurable response in 115 motor cells.
+
+Stopped only the former 96x54 full-CNS suite/trainer/watcher PIDs 475520/475598/475523 at 1,480,704 frames after the 1M video evaluation completed. Launched the replacement suite/trainer PIDs 484220/484301 and watcher PID 484223 on GPU 1; the GPU-0 learned-adapter Gaussian run remained untouched. Early full-run throughput was about 5,900 step FPS and 3,250 total FPS, roughly 2.2 times the former end-to-end rate. Added `full_cns_tanh_vision64x36_r4_100b` to the existing port-6008 TensorBoard without restarting it.
+
 ## [2026-09-16] audit | Decompose full-CNS vision throughput
 
 Traced RL Games timing and the live full-CNS event stream. `step_fps` times only `env_step`, which includes synchronous rendering and GPU access for 384 independent 96x54 cameras; fly inference is outside that timer. The full-CNS run had median 1,913 step FPS and 1,539 step-plus-inference FPS, essentially identical to the preceding visual-path graph's 1,917/1,542. A representative epoch spent 3.18 seconds in environment steps, 3.95 seconds collecting the rollout and only 0.064 seconds updating PPO. Documented that the remaining-neuron expansion is not the throughput cause, the non-camera 12,288-environment run is not a matched control, and a same-size camera-off benchmark is needed to quantify rendering cost precisely. No process or training configuration changed.

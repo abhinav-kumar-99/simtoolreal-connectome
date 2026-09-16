@@ -1,6 +1,6 @@
 # Camera-driven MaleCNS reservoir
 
-The visual policy drives real L1/L2 optic-column neurons from raw camera luminance, preserves robot proprioception and trains only the readout of a fixed tanh CNS circuit.
+The visual policy drives real L1/L2 optic-column neurons from cached raw-camera luminance, preserves fresh robot proprioception and trains only the readout of a fixed tanh CNS circuit.
 
 Last updated: 2026-09-16
 
@@ -12,7 +12,7 @@ Related: [Fixed reservoir](fixed-reservoir-controller.md), [Experiment workflow]
 
 At the user's subsequent direction, `configs/connectome/malecns_full_cns.yaml` selects `all_traced_neurons`: exactly all 165,122 body IDs with `status: Traced` in the pinned annotation table, including isolated neurons. There is no visual-path pruning in this mode; `maximum_path_edges` is used only for reachability diagnostics. The five-synapse edge floor and existing transmitter model remain, so all neurons does not mean every weak synaptic edge is retained. Glia, other reconstruction statuses and endpoints without annotations are excluded explicitly. This adds 7,955 traced neurons and removes 5,629 non-Traced/unannotated nodes from the previous artifact. Exact body-ID equality with the full Traced set was verified, as were unchanged visual, proprioceptive, descending input and motor output identities.
 
-The new artifact has 6,235,682 stored edges, 6,185,843 nonzero fast-current edges, 3,534 L1/L2 input cells and SHA-256 `389953b5b28c70a1cbd84ef0cd32b66c7cda37ead88056b936776ce068b42f04`. Its spectral radius before normalization is 3549.6069472. `SimToolRealFullCNSVisualReservoirGaussianSAPG` retains the previous camera/proprioception/goal contract, nine tanh updates, cached features, Gaussian settings and auxiliary actor value objective. The two-epoch smoke completed 12,288 frames and finite checkpoint reload at about 1,500 warm steps/s. The full-CNS audit again passed goal-image invariance and distinct-environment-camera checks; its dark/bright motor delta was about `2.34e-5`, with 117 motor cells above `1e-8`. Adding all traced cells alone has not substantially strengthened the initial visual response.
+The new artifact has 6,235,682 stored edges, 6,185,843 nonzero fast-current edges, 3,534 L1/L2 input cells and SHA-256 `389953b5b28c70a1cbd84ef0cd32b66c7cda37ead88056b936776ce068b42f04`. Its spectral radius before normalization is 3549.6069472. The current `SimToolRealFullCNSVisualReservoirGaussianSAPGVision64x36R4` profile retains the same proprioception, goal routing, nine tanh updates, cached features, Gaussian settings and auxiliary actor value objective while using the lower-rate camera contract described below. The preceding 96x54 every-step profile remains reproducible, but its live run was stopped at 1,480,704 frames after its 1M evaluation completed.
 
 ### Output population audit
 
@@ -30,17 +30,17 @@ A descending readout would expose signals before the fly-specific VNC-to-muscle 
 
 Important confound: reading all descending cells also exposes the 53 directly driven goal/previous-action cells. A readout can exploit that route without relying on visual processing. Compare motor-only, descending-plus-motor, and descending-plus-motor excluding those 53 directly driven cells (1,261 remaining descending cells), with blank/shuffled-camera controls. Exclusion removes direct input/readout overlap, not all indirect nonvisual information. No architecture or running job was changed for this explanation.
 
-The prior visual-path run and watcher were stopped with artifacts preserved. The replacement entrypoints are:
+The current multirate replacement entrypoints are:
 
 ```bash
 .venv/bin/python scripts/prepare_malecns_connectome.py --config configs/connectome/malecns_full_cns.yaml
-.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_full_cns_tanh_smoke.yaml
-CUDA_VISIBLE_DEVICES=1 .venv/bin/python scripts/audit_visual_reservoir.py --config configs/connectome/full_cns_visual_audit.yaml
-.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_full_cns_tanh_100b.yaml
-.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_full_cns_tanh_100b_milestones.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_full_cns_tanh_vision64x36_r4_smoke.yaml
+CUDA_VISIBLE_DEVICES=1 .venv/bin/python scripts/audit_visual_reservoir.py --config configs/connectome/full_cns_visual_64x36_r4_audit.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_full_cns_tanh_vision64x36_r4_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_full_cns_tanh_vision64x36_r4_100b_milestones.yaml
 ```
 
-The helper responsibilities described below are unchanged; `selection_mode` now owns the full-neuron selection and the helper rejects any selection omitting an existing interface cell. The full training/watcher contracts retain 384 environments, six 64-environment SAPG blocks, minibatch 1,536, GPU 1, 100B cap and 1M video checkpoints. TensorBoard alias: `full_cns_tanh_100b`. Full runs and smoke runs refuse existing output directories.
+The helper responsibilities described below are unchanged; `selection_mode` owns the full-neuron selection and the helper rejects any selection omitting an existing interface cell. The full training/watcher contracts retain 384 environments, six 64-environment SAPG blocks, minibatch 1,536, GPU 1, 100B cap and 1M video checkpoints. TensorBoard alias: `full_cns_tanh_vision64x36_r4_100b`. Full runs and smoke runs refuse existing output directories.
 
 ### Historical visual-path artifact and count correction
 
@@ -58,11 +58,11 @@ Unlike Wordle's five symbolic feedback bins, this interface samples a real image
 
 ## Image and nonvisual input contract
 
-Each environment has its own 96x54 GPU RGB sensor at the same environment-local pose and default field of view as evaluation video: position `(0,-1,1.03)`, target `(0,0,.53)`. Both camera constructors use `simtoolreal_camera_pose`. Graphics advance before each capture. The sensor image is converted to luminance using fixed RGB coefficients `[.299,.587,.114]`; there are no object detectors, segmentation masks or learned image adapters.
+Each environment has its own 64x36 GPU RGB sensor at the same environment-local pose and default field of view as evaluation video: position `(0,-1,1.03)`, target `(0,0,.53)`. Both camera constructors use `simtoolreal_camera_pose`. The current profile renders once every four 60 Hz control steps, or 15 camera frames/s, and reuses the last luminance image between renders. Proprioception, previous targets, desired goal and all nine recurrent fly updates remain fresh at 60 Hz. Graphics advance before each actual capture. The sensor image is converted to luminance using fixed RGB coefficients `[.299,.587,.114]`; there are no object detectors, segmentation masks or learned image adapters. The 2,304 image samples still exceed the 1,767 cells in either the L1 or L2 input population, although the two eyes continue to sample the same external view.
 
 The green goal visualization actor is parked below the scene before indexed state updates; logical goal tensors remain independent and drive rewards and the explicit task channel. Debug annotations and the blue target robot are rejected for this profile. Image capture does not apply video annotations. Ordinary resets are required; success-state replay and state-file recording are rejected because hidden visualization actors cannot serve as logical goal snapshots.
 
-The actor observation has 5,283 values:
+The actor observation has 2,403 values:
 
 | Range | Meaning | Fixed neural input |
 | --- | --- | --- |
@@ -70,7 +70,7 @@ The actor observation has 5,283 values:
 | 29:58 | Joint velocity | Original proprioceptor opponent code |
 | 58:87 | Previous joint target | Descending slots 0:29 |
 | 87:99 | Desired fixed-size world-space goal keypoints | Descending opponent slots 29:53 |
-| 99:5283 | Raw camera luminance | L1/L2 visual columns |
+| 99:2403 | Cached raw camera luminance | L1/L2 visual columns |
 
 Actual object pose, object-relative keypoints and object-to-goal error are absent from actor inputs. The goal keypoints encode desired position/orientation without revealing the current object pose; the privileged central critic retains its original state inputs. The actor has no running input normalization. Fixed encoding and all neural recurrence are frozen, while Gaussian output heads, SAPG embedding and actor auxiliary value head train normally (`use_experimental_cv: true`).
 
@@ -78,30 +78,32 @@ Annotated hex columns are embedded as `(h1-.5*h2, sqrt(3)/2*h2)` and each eye's 
 
 ## Validation and current run
 
-The network regression and initial retina tests passed (93 tests); the added profile test verifies that privileged object state cannot enter the actor observation. The 96- and 384-environment smoke suites each completed two PPO epochs and checkpoint reload with finite 29-action outputs. At 384 environments the warm epoch took about 4.05 seconds, approximately 1,518 environment steps/s. This much larger circuit plus rendering is substantially slower than the earlier small reservoir.
+The prior network regression and initial retina tests passed (93 tests); the focused multirate/configuration suite adds another profile-contract check and passed 32 tests. The 64x36/render-every-four smoke completed two PPO epochs and checkpoint reload with finite 29-action outputs. Its warmed 384-environment epoch reached 4,880 environment step FPS and 2,934 total FPS.
 
-`scripts/audit_visual_reservoir.py` checked independent environment images, nonblank pixels and byte-identical raw images after moving only the logical goal/goal visualization actor. The PNGs at `profiles/connectome/visual_audit/` were inspected. After 16 constant-image control decisions, changing dark to bright input yielded maximum motor delta about `2.34e-5`, mean `2.24e-6`, with 117 cells exceeding `1e-8` in the latest probe. The response is small: these checks establish a functioning visual path and no tested goal-image leakage, not strong visual features or successful control. Contrast sensitivity and learned task performance remain evaluation questions.
+`scripts/audit_visual_reservoir.py` now reads policy-camera dimensions from the resolved configuration. The 64x36 audit checked independent environment images, nonblank pixels and byte-identical raw images after moving only the logical goal/goal visualization actor. After 16 constant-image control decisions, changing dark to bright input yielded maximum motor delta about `2.34e-5`, mean `2.23e-6`, with 115 cells exceeding `1e-8`. The response is small: these checks establish a functioning visual path and no tested goal-image leakage, not strong visual features or successful control. Contrast sensitivity and learned task performance remain evaluation questions.
 
 ### Throughput decomposition
 
-`performance/step_fps` is environment-only throughput: RL Games starts its timer immediately before `env_step()` and stops it afterward, outside policy inference. In the vision profile, observation construction synchronously calls `fetch_results`, `step_graphics`, `render_all_camera_sensors`, and image-tensor access on every control step. It then stacks 384 separate 96x54 RGBA camera tensors, converts them to float and calculates luminance. Thus the fly recurrence cannot directly explain low `step_fps`; it appears in the difference between step-only and step-plus-inference timing.
+`performance/step_fps` is environment-only throughput: RL Games starts its timer immediately before `env_step()` and stops it afterward, outside policy inference. In the historical every-step vision profile, observation construction synchronously called `fetch_results`, `step_graphics`, `render_all_camera_sensors`, and image-tensor access on every control step, then stacked 384 separate 96x54 RGBA camera tensors, converted them to float and calculated luminance. Thus the fly recurrence could not directly explain low `step_fps`; it appeared in the difference between step-only and step-plus-inference timing.
 
-At the 2026-09-16 audit snapshot, the full-CNS run's median across 153 logged epochs was about 1,913 step FPS and 1,539 step-plus-inference FPS. A representative 6,144-frame epoch spent 3.18 seconds in environment steps, 3.95 seconds for the full rollout, and 0.064 seconds in the PPO update. The optimizer is cheap because cached reservoir features avoid rerunning or backpropagating through the CNS during PPO minibatches. The preceding 162,796-node visual-path run was effectively identical at median 1,917/1,542 FPS, so adding the remaining Traced neurons did not cause the slowdown.
+At the 2026-09-16 audit snapshot, the 96x54 full-CNS run's median across 153 logged epochs was about 1,913 step FPS and 1,539 step-plus-inference FPS. A representative 6,144-frame epoch spent 3.18 seconds in environment steps, 3.95 seconds for the full rollout, and 0.064 seconds in the PPO update. The optimizer is cheap because cached reservoir features avoid rerunning or backpropagating through the CNS during PPO minibatches. The preceding 162,796-node visual-path run was effectively identical at median 1,917/1,542 FPS, so adding the remaining Traced neurons did not cause the slowdown.
 
-The non-camera 1,952-neuron reservoir is not a matched timing control: it uses 12,288 environments rather than 384. Its latest approximately 202K aggregate step FPS combines 32 times more simultaneous environments with a roughly three-times-shorter environment-step phase. A proper camera-cost measurement requires a same-384-environment, same-policy benchmark with camera rendering toggled off. The code boundary and equal speeds of the two large visual graphs nevertheless show that the current step-only bottleneck is on the rendered-environment side, not the extra full-CNS cells. At roughly 1.5K total FPS, one billion frames would take approximately 7.5 days and the nominal 100B cap about two years, so the cap should not be interpreted as a practical target without a faster visual-input path.
+The 64x36/render-every-four replacement completed its two-epoch smoke and finite 29-action checkpoint reload. Its warmed epoch reached 4,880 step FPS and 2,934 total FPS. Early in the full run it stabilized near 5,900 step FPS, 3,390 step-plus-inference FPS and 3,250 total FPS, roughly 2.2 times the old end-to-end rate. Lower resolution and multirate rendering changed together, so this does not attribute their individual gains.
 
-The former LIF suite/trainer/watcher PIDs 450554/450610/450997 were stopped. The fresh full visual tanh suite/trainer are 468643/468686 on physical GPU 1; watcher PID 469141 records three videos at each 1M-frame milestone. The GPU-0 learned-adapter Gaussian trainer PID 261951 remains live. Port 6008 exposes `visual_tanh_100b` through a summaries symlink without a server restart. At frame 55,296, actor value loss was 1.2072, entropy 41.1306 and KL .0101824; central value loss was .110878 at 61,440 and both invalid-KL flags were zero. This is launch validation only.
+The non-camera 1,952-neuron reservoir is not a matched timing control: it uses 12,288 environments rather than 384. Its latest approximately 202K aggregate step FPS combines 32 times more simultaneous environments with a roughly three-times-shorter environment-step phase. A proper camera-cost measurement requires a same-384-environment, same-policy benchmark with camera rendering toggled off. The code boundary and equal speeds of the two large visual graphs nevertheless show that the step-only bottleneck was on the rendered-environment side, not the extra full-CNS cells. Even at roughly 3.25K total FPS, one billion frames takes approximately 3.6 days and the nominal 100B cap about one year, so the cap remains an upper bound rather than a practical target.
+
+The 96x54 full-CNS suite/trainer/watcher PIDs 475520/475598/475523 were stopped with artifacts preserved. The multirate suite/trainer PIDs 484220/484301 and watcher PID 484223 run on physical GPU 1; the watcher records three videos at each 1M-frame milestone. The GPU-0 learned-adapter Gaussian trainer PID 261951 remains live. Port 6008 exposes `full_cns_tanh_vision64x36_r4_100b` through a summaries symlink without a server restart. At frame 55,296, actor and critic losses were finite, entropy was 41.1281, KL was .009295 and both invalid-KL flags were zero. This is launch validation only.
 
 ## Reproduction and helper responsibilities
 
-Run from the repository root (the full training command is already running; its YAML refuses output-directory reuse):
+Run from the repository root (the new full training command is already running; its YAML refuses output-directory reuse):
 
 ```bash
-.venv/bin/python scripts/prepare_malecns_connectome.py --config configs/connectome/malecns_visual.yaml
-.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_visual_tanh_smoke384.yaml
-CUDA_VISIBLE_DEVICES=1 .venv/bin/python scripts/audit_visual_reservoir.py --config configs/connectome/visual_audit.yaml
-.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_visual_tanh_100b.yaml
-.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_visual_tanh_100b_milestones.yaml
+.venv/bin/python scripts/prepare_malecns_connectome.py --config configs/connectome/malecns_full_cns.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_full_cns_tanh_vision64x36_r4_smoke.yaml
+CUDA_VISIBLE_DEVICES=1 .venv/bin/python scripts/audit_visual_reservoir.py --config configs/connectome/full_cns_visual_64x36_r4_audit.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_full_cns_tanh_vision64x36_r4_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_full_cns_tanh_vision64x36_r4_100b_milestones.yaml
 ```
 
-The audit YAML currently references the original 96-environment smoke checkpoint, so run `ppo_visual_tanh_smoke.yaml` first for that exact audit, or change both audit paths to a validated replacement. The preparation YAML owns source hashes, input cell types, eye sides, minimum synapses, path depth and transmitter policy; its helper `simtoolreal_shared/visual_connectome.py` extracts and verifies the immutable NPZ. `retina.py` performs fixed bilinear sampling and population scatter and has no trainable parameters. The environment owns rendering and goal-actor suppression. The suite YAML owns 384 environments, six 64-environment SAPG blocks, minibatch 1,536, Gaussian sigma cap three, LF/1 reuse, KL `.004`, entropy scale `.005`, auxiliary CV, a 100B upper budget and 1M inference checkpoints. The train profile owns artifact counts, nine neural updates and retinal geometry. The audit entrypoint loads an environment/player, runs leakage/sensitivity assertions and writes JSON/PNGs; its `sensitivity_control_steps` controls the static-image probe duration. The watcher YAML owns the matched policy config, GPU and three deterministic task-video cases. Helpers are imported, not separately launched.
+The audit YAML references the multirate smoke checkpoint, so that smoke must complete before rerunning the audit. The preparation YAML owns source hashes, input cell types, eye sides, minimum synapses, path depth and transmitter policy; its helper `simtoolreal_shared/visual_connectome.py` extracts and verifies the immutable NPZ. `retina.py` performs fixed bilinear sampling and population scatter and has no trainable parameters. The task YAML owns 64x36 geometry and the four-step render interval; the environment owns image caching and goal-actor suppression. The suite YAML owns 384 environments, six 64-environment SAPG blocks, minibatch 1,536, Gaussian sigma cap three, LF/1 reuse, KL `.004`, entropy scale `.005`, auxiliary CV, a 100B upper budget and 1M inference checkpoints. The train profile owns artifact counts, nine neural updates and matching retinal geometry. The audit entrypoint loads an environment/player, derives camera dimensions from the resolved YAML, runs leakage/sensitivity assertions and writes JSON/PNGs; its `sensitivity_control_steps` controls the static-image probe duration. The watcher YAML owns the matched policy config, GPU and three deterministic task-video cases. Helpers are imported, not separately launched.
