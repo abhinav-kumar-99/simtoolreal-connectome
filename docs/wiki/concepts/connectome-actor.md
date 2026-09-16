@@ -207,76 +207,72 @@ The 29 policy outputs are normalized commands rather than joint angles. With the
 
 followed by the configured moving average. The final 22 commands are mapped linearly from `[-1, 1]` to each hand joint's physical limits and then smoothed and clamped. Isaac Gym receives the resulting 29-vector as its DOF position target. Observation and action delay queues remain those of the original SimToolReal environment.
 
-## Proposed structured sensory adapter
+## Structured sensory adapter with 6D orientation
 
-The first structured interface should be a separate YAML-selected profile, not a replacement for the dense adapter and not a claim of joint-to-fly-neuron homology. The compact artifact supports one defensible distinction: its 384-cell sensory port is the union of 92 proprioceptor-labelled and 292 tactile-labelled cells. It does not provide verified claw/hook/club tuning for every proprioceptor, nor a mapping from a fly front leg to a robot finger.
+The structured interface is implemented as separate YAML-selected profiles, not a replacement for the dense adapter and not a claim of joint-to-fly-neuron homology. The compact artifact now persists a verified partition of its 384-cell sensory port into 92 proprioceptor-labelled and 292 tactile-labelled cells. It does not provide verified claw/hook/club tuning for every proprioceptor, nor a mapping from a fly front leg to a robot finger.
 
-The recommended first experiment routes the existing 140 policy observations as follows:
+The structured task converts the absolute palm and object `xyzw` quaternions to the first two rotation-matrix columns before rl_games normalization. Its 144 policy observations route as follows:
 
 | Input channel | Observation fields | Size | Direct target |
 | --- | --- | ---: | --- |
 | Body/efference | joint position, joint velocity, previous action targets, fingertip positions relative to palm | 102 | 92 proprioceptor-labelled cells |
-| Object/context | palm position/quaternion, object quaternion, object keypoints relative to palm, object scale | 26 | 157 descending cells |
+| Object/context | palm position/6D rotation, object 6D rotation, object keypoints relative to palm, object scale | 30 | 157 descending cells |
 | Goal | object keypoints relative to goal | 12 | 157 descending cells |
 | SAPG identity | learned exploration-member embedding | 32 | 157 descending cells |
 | Touch | none in the current actor observation | 0 | no direct drive to the 292 tactile-labelled cells |
 
-This preserves every existing observation but changes where it enters the circuit. Tactile cells remain recurrently active; they are not removed or clamped. Giving them zero direct input is preferable to relabelling kinematics or object pose as touch. Adding force/contact channels is a separate policy-observation and real-deployment contract and should be evaluated separately.
+This preserves every existing physical observation while replacing two four-value orientation encodings with two six-value encodings and changing where signals enter the circuit. Tactile cells remain recurrently active; they are not removed or clamped. Giving them zero direct input is preferable to relabelling kinematics or object pose as touch. Adding force/contact channels is a separate policy-observation and real-deployment contract and should be evaluated separately.
 
 ### Initial parameterization
 
-Use one masked learned linear map from the 102 body/efference features to the 92 proprioceptor cells. Its mask should be YAML-owned and group robot DOFs as arm, thumb, index, middle, ring and pinky, following the asset order of seven arm plus 22 hand DOFs. The corresponding position, velocity and previous-target features for a group may drive only that group's allocated proprioceptor block; the five three-coordinate fingertip vectors drive their corresponding finger blocks. Allocate the 92 cells deterministically by sorted body ID, approximately in proportion to each robot group's feature count. This is a stable engineering assignment, not inferred anatomy.
+Six learned linear modules map the 102 body/efference features to the 92 proprioceptor cells. Their YAML-owned groups are arm, thumb, index, middle, ring and pinky, following the asset order of seven arm plus 22 hand DOFs. The corresponding position, velocity and previous-target features for a group may drive only that group's allocated proprioceptor block; the five three-coordinate fingertip vectors drive their corresponding finger blocks. The implementation allocates the 92 cells deterministically by sorted body ID, approximately in proportion to each robot group's feature count. This is a stable engineering assignment, not inferred anatomy.
 
 Start with learned weights inside the mask rather than fixed hand-designed tuning. A later profile can replace or augment those weights with fixed opponent codes for normalized position, signed velocity and target error, plus per-cell gains and a tightly constrained masked residual. This separates the value of population structure from the value of a particular hand-designed code.
 
-Object/context, goal and the SAPG embedding form a 70-value descending input. A learned descending projection maps that vector to the 157 descending cells. Routing object context here treats it as task/context information rather than fabricated peripheral sensation. Because this is an engineering interpretation, include an ablation that retains the old dense sensory routing rather than presenting it as biology.
+Object/context, goal and the SAPG embedding form a 74-value descending input. A `74 -> 128 -> 157` ELU MLP maps that vector to the descending cells. Routing object context here treats it as task/context information rather than fabricated peripheral sensation. Because this is an engineering interpretation, include an ablation that retains the old dense sensory routing rather than presenting it as biology.
 
 Use separate architecture choices for the two input routes. The body-to-proprioceptor projection should initially be masked linear: this keeps the declared robot-group structure exact and prevents a shared hidden layer from reconstructing arbitrary cross-group mixing before the connectome. The context/goal-to-descending projection may use a small MLP because pose relations are nonlinear and descending cells are already an engineered task/context interface. Keep the action readout architecture unchanged for the first routing comparison. The current single `interface_projections.architecture` option applies one architecture to all interfaces, so the structured profile needs per-route architecture keys rather than changing existing profile semantics.
 
-Rotation representation is a separate experimental factor. The current actor receives absolute palm and object unit quaternions in Isaac Gym `xyzw` order at indices `90:94` and `94:98`. The noisy/delayed object quaternion is used to construct the observed object keypoints, while rl_games also normalizes the four raw quaternion components independently. Raw quaternions have the `q` versus `-q` double-cover ambiguity, and a linear layer cannot itself form relative rotations. The existing keypoint-relative-palm and keypoint-relative-goal fields already provide continuous task geometry and partially reduce dependence on the raw quaternions.
+The conversion is applied in `SimToolReal` before actor and central-critic observations are concatenated, delayed observations are normalized, or the connectome sees them. It concatenates rotation-matrix column one followed by column two, making `q` and `-q` identical. The new task has 144 actor observations and 166 privileged state values; with the 32-value critic-side SAPG embedding, the central critic consumes 198 values. These profiles require fresh checkpoints and normalization state. The released 140-value task and all existing profiles remain unchanged.
 
-Retain the current quaternion fields in the first routing experiment so a result is attributable to routing rather than a simultaneous observation change. Then test rotation encoding independently: replace each absolute quaternion with the first two columns of its rotation matrix (the continuous six-dimensional representation), or supply an explicitly computed palm-to-object relative rotation in that representation. This changes observation dimensions and normalization state, so it requires a fresh profile/checkpoint and regenerated named-field ranges. Do not silently canonicalize quaternion sign inside an old profile: although choosing one sign removes duplicate representations, every sign convention has a discontinuity somewhere.
-
-The proposed YAML contract is conceptually:
+The implemented train-profile contract is:
 
 ```yaml
 params:
   network:
     connectome:
-      sensory_adapter:
+      structured_input_adapter:
         mode: grouped_linear
-        architecture: linear
         groups:
-          arm: {dof_indices: [0, 7]}
-          thumb: {dof_indices: [7, 12]}
-          index: {dof_indices: [12, 16]}
-          middle: {dof_indices: [16, 20]}
-          ring: {dof_indices: [20, 24]}
-          pinky: {dof_indices: [24, 29]}
-        proprioceptor_allocation: proportional_sorted_body_id
-        tactile_direct_drive: none
-      descending_adapter:
-        architecture: mlp
-        hidden_size: 128
+          - {name: arm, dof_range: [0, 7], fingertip_index: null}
+          - {name: thumb, dof_range: [7, 12], fingertip_index: 3}
+          - {name: index, dof_range: [12, 16], fingertip_index: 0}
+          - {name: middle, dof_range: [16, 20], fingertip_index: 1}
+          - {name: ring, dof_range: [20, 24], fingertip_index: 2}
+          - {name: pinky, dof_range: [24, 29], fingertip_index: 4}
+        descending_projection:
+          architecture: mlp
+          hidden_size: 128
       observations:
-        body_efference_ranges: [[0, 87], [98, 113]]
-        context_ranges: [[87, 98], [113, 125], [137, 140]]
-        goal_ranges: [[125, 137]]
+        policy_size: 144
+        sensory_ranges: [[0, 87], [102, 117]]
+        context_ranges: [[87, 102], [117, 129], [141, 144]]
+        goal_ranges: [[129, 141]]
 ```
 
-Production YAML should also record the exact generated feature-to-cell mask or its hash so resumes cannot silently change the assignment. The existing `observations.sensory_ranges`/`goal_ranges` contract remains the default for old profiles and checkpoints.
+The exact group feature indices and proprioceptor positions are persistent checkpoint buffers, so a resume cannot silently substitute another assignment. The existing `observations.sensory_ranges`/`goal_ranges` contract remains the default for old profiles and checkpoints.
 
-### Required implementation seams
+### Implementation contract
 
-1. Extend compact graph preparation to persist `front_proprioceptors_indices` and `front_tactile_indices` in the NPZ. Validate bounds, disjointness and that their union exactly equals `sensory_indices`. Increment or explicitly extend the artifact schema; structured profiles must fail clearly on an old artifact, while dense profiles remain backward compatible.
-2. Add a structured adapter module in `connectome_network_builder.py`. It gathers named feature ranges, applies the fixed mask to trainable weights, and scatters its 92 outputs into the full 384-value sensory-drive vector. The other 292 entries are zero. The existing fused and non-fused recurrent paths can then remain unchanged.
-3. Extend the descending adapter input from goal-plus-embedding to context-plus-goal-plus-embedding only in the structured profile. Keep the dense profile's parameter names and dimensions unchanged so its checkpoints still load exactly.
-4. Validate the full observation partition at network construction: no overlap, no dropped fields and an exact union of indices `0:140`. Do not maintain duplicated magic indices in Python and YAML without a test against `SimToolReal.yaml::obsList` and the environment's field sizes.
-5. Initially reject `connectome_eligibility` with `grouped_linear`. Its current trace implementation assumes a standard dense `sensory_adapter.weight` and the same full sensory input for every sensory row. Supporting the grouped adapter requires masked/group-specific trace equations and checkpoint-state tests; ordinary PPO/SAPG autograd needs no such special case.
+1. Compact graph preparation persists `front_proprioceptors_indices` and `front_tactile_indices`, validates the graph before an atomic backward-compatible artifact upgrade, and the actor verifies that the arrays are disjoint and exactly partition `sensory_indices`.
+2. Six independent bias-free linear modules cover arm, thumb, index, middle, ring and pinky inputs. The 92 proprioceptor cells are allocated proportionally by feature count as `[19, 16, 14, 14, 13, 16]` in sorted-body-ID order. Their outputs are scattered into the full 384-value sensory drive; tactile positions are exact zeros.
+3. The structured actor validates that sensory, context and goal ranges form a disjoint exact partition of `0:144`. Existing dense profile parameter names, observation dimensions and checkpoint loading remain unchanged.
+4. The existing fused and non-fused recurrent kernels are unchanged because they still receive a 384-value sensory drive and 157-value descending drive.
+5. `connectome_eligibility` explicitly rejects the structured adapter. Its trace implementation assumes a standard dense `sensory_adapter.weight`; supporting grouped modules requires new trace equations and checkpoint-state tests. PPO/SAPG uses ordinary autograd and is supported.
 
 ### Evaluation contract
 
-The minimum matched comparison is current dense linear, grouped learned linear, and grouped learned linear with a fixed shuffled cell allocation. Keep graph, PPO/SAPG settings, action distribution, entropy settings, `use_experimental_cv`, critic, neural update count, seeds and frame budget identical. The shuffle control preserves sparsity and parameter count while testing whether the chosen population assignment matters. A fixed-code-plus-calibration profile should be a later fourth condition, not folded into the first structured result.
+The two supplied suites match the currently running capped-Gaussian and restricted-Beta LF contracts respectively, including graph, PPO/SAPG settings, entropy scale, `use_experimental_cv`, four neural updates, seed and frame budget. They intentionally change both routing and rotation representation. A later causal matrix should independently test the current dense interface, grouped learned interface, quaternion-versus-6D encoding, and grouped interface with a fixed shuffled cell allocation. The shuffle control preserves sparsity and parameter count while testing whether the chosen population assignment matters.
 
 Record per-population direct-drive RMS, recurrent preactivation RMS and saturation, hidden-state RMS, adapter gradient norms, and current-observation-to-motor sensitivity. Assert that tactile direct drive and cross-group masked weights remain exactly zero. Primary outcome comparisons remain matched Task Progress/success cohorts and sample efficiency; lower saturation or a biologically suggestive layout alone is not evidence of better control.
 
@@ -285,6 +281,8 @@ Record per-population direct-drive RMS, recurrent preactivation RMS and saturati
 - `SimToolRealConnectomeSAPG`: biological topology with learned adapters and heads, frozen core.
 - `SimToolRealConnectomeMLPSAPG`: the same 4,310-cell frozen-core profile with 256-unit MLP input/output projections.
 - `SimToolRealConnectome1952AdaptersMLPSAPG`: compact 1,952-cell frozen-core profile with 256-unit MLP projections.
+- `SimToolRealConnectome1952StructuredRotation6DGaussianSigma3SAPG`: compact structured input profile with 6D orientations and capped Gaussian actions.
+- `SimToolRealConnectome1952StructuredRotation6DBetaSAPG`: the matched structured profile with restricted-Beta actions when the suite supplies `beta_min_shape: 1`.
 - `SimToolRealConnectome1952GainsMLPSAPG`: compact 1,952-cell neuron-gains profile with 256-unit MLP projections.
 - `SimToolRealConnectomeGainsDynamicsSAPG`: previous primary behavior with learned gains, leak, and bias.
 - `SimToolRealConnectomeGainsSAPG`, `SimToolRealConnectomeLowRankSAPG`, `SimToolRealConnectomeEdgewiseSAPG`: alternative weight adaptations with frozen dynamics.

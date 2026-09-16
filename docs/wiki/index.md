@@ -12,20 +12,20 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Sources
 
-- [Quantum-Coded Fruitfly](sources/summaries/quantum-coded-fruitfly.md) — Fixed population encoding, non-learning dopamine pulse, 100-word neural-input ablation, and proposed structured adapters. Last updated 2026-09-16.
+- [Quantum-Coded Fruitfly](sources/summaries/quantum-coded-fruitfly.md) — Fixed population encoding, non-learning dopamine pulse, 100-word neural-input ablation, and the resulting structured-adapter direction. Last updated 2026-09-16.
 
 - [MaleCNS front-leg circuit](sources/summaries/malecns-front-leg-circuit.md) — Data identity, provenance, and anatomical-data versus executable-dynamics boundary. Last updated 2026-09-15.
 - [SimToolReal training references](sources/summaries/simtoolreal-training-references.md) — Published curve, critic-ablation contract, paper/code value-loss boundary, upstream numerical study export, and released checkpoint metadata. Last updated 2026-09-15.
 
 ## Concepts
 
-- [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics, interfaces, proposed structured sensory routing, exact central-critic inputs, connectome-versus-LSTM auxiliary value gradients, propagation delay and saturation boundaries. Last updated 2026-09-16.
+- [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics, implemented structured sensory routing and 6D orientation, exact central-critic inputs, connectome-versus-LSTM auxiliary value gradients, propagation delay and saturation boundaries. Last updated 2026-09-16.
 - [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, adapters-only default, and GPU implementation. Last updated 2026-09-14.
 - [Training and evaluation success metrics](concepts/success-metrics.md) — TensorBoard populations, tolerance scaling, policy-ID mismatch and milestone Task Progress. Last updated 2026-09-15.
 
 ## Workflows
 
-- [Experiment workflow](workflows/connectome-experiments.md) — Four-update Beta training, milestone videos, LF entropy runs, and the staged 1.25G true-objective handoff. Last updated 2026-09-16.
+- [Experiment workflow](workflows/connectome-experiments.md) — Structured 6D-input suites, four-update Beta training, milestone videos, LF entropy runs, and the staged 1.25G true-objective handoff. Last updated 2026-09-16.
 - [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, early gain audit, and stopped-run status. Last updated 2026-09-14.
 
 ## Analyses

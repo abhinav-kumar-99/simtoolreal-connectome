@@ -6,6 +6,39 @@ Last updated: 2026-09-16
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
+## Structured sensory routing with 6D orientation
+
+Two fresh 100B suite contracts match the Gaussian and Beta jobs that were live when the structured interface was implemented. They retain seed 42, 12,288 environments, LF experience reuse at ratio one, entropy scale `.005`, KL target `.004`, LR range `[1e-6,.001]`, auxiliary actor value loss, four neural updates, batch sizes, force settings, checkpoint cadence and action-distribution parameters. They change the observation/interface contract and output identity only: palm/object orientation uses 6D rotation-matrix columns, body/efference signals enter grouped proprioceptor adapters, tactile cells receive no direct fabricated input, and context/goal/SAPG enter a 128-hidden-unit descending MLP.
+
+Do not point these profiles at an existing 140-observation checkpoint. Both start fresh with `checkpoint.mode: none` and `on_existing: fail`. The configured devices are GPU 0 for Gaussian and GPU 1 for Beta; do not start them while the existing jobs still occupy those GPUs unless the resource plan is deliberately changed in YAML.
+
+From the repository root, launch the capped-Gaussian experiment with:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_structured_rot6d_gaussian_lf_entropy1x_sigma3_100b.yaml
+```
+
+Launch the restricted-Beta experiment with:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_structured_rot6d_restricted_beta_lf_100b.yaml
+```
+
+`run_connectome_suite.py` is the executable entry point. Each YAML first invokes the preparation stage and then launches exactly one trainer. The preparation helper `scripts/prepare_malecns_connectome.py` verifies the pinned source hashes and graph identity; when necessary, it atomically upgrades the generated NPZ with the proprioceptor/tactile subpopulation arrays. It does not alter recurrent edges or weights. `simtoolreal_shared/compact_connectome.py` performs the deterministic graph/subpopulation construction, while `connectome_network_builder.py` validates the arrays and builds the grouped adapters at policy initialization; neither helper is launched separately for normal training.
+
+Important YAML parameters are:
+
+- `training.task_profile`: selects the 144-value 6D-orientation environment contract.
+- `training.train_profiles`: selects structured capped Gaussian or structured restricted Beta.
+- `training.gpu_assignments`: physical GPU assignment; currently `[0]` and `[1]` respectively.
+- `training.epochs` and `max_frames`: 508,626 rollouts and the 100B-frame cap.
+- `training.checkpoint`: `none` means a fresh policy and fresh normalization state.
+- `training.overrides`: owns KL/LR, LF reuse, entropy scale, four neural updates, Beta floor or Gaussian cap, and task randomization.
+- `params.network.connectome.observations` in the train profile: owns the exact 102/30/12 sensory/context/goal partition.
+- `structured_input_adapter.groups`: owns robot DOF and fingertip grouping. The listed fingertip indices follow environment order index, middle, ring, thumb, pinky.
+
+No milestone-evaluation watcher is supplied yet because deployment/evaluation observation builders that still emit the released 140-value quaternion vector must first opt into the same 144-value conversion. Training checkpoint verification is dimension-aware. The two suites were composed and both actor distributions completed real 1,952-cell CPU forward/backward checks, but no new trainer was launched during implementation.
+
 ## Four-update Beta versus clipped Gaussian (2026-09-15)
 
 **Budget correction:** the user requested **100 billion total environment frames per job**, not 1B. The initial 1B pair was stopped and its epoch-10 / 1,966,080-frame checkpoints are the per-policy resume sources in `configs/connectome/suites/ppo_1952_4update_beta_gaussian_100b.yaml`. Run that YAML with the same suite entrypoint below. Its `epochs: 508626` reaches 99,999,940,608 frames (the largest whole rollout below `max_frames: 100000000000`), with unchanged neural updates, objectives, GPU assignment and save cadence. Per-profile `overrides.checkpoint` and `checkpoint_load_mode: resume_training_state` restore the policy, critic, optimizers and counters while starting fresh simulator episodes; the shared `checkpoint.mode: none` merely avoids adding a second shared checkpoint override. The first full `resume` attempts both exited with SIGSEGV before training; their artifacts remain in the original `_100b` tree. The active retry uses the separate `_100b_training_state` output tree under the existing TensorBoard port 6008. Historical 1B artifacts also remain preserved.
