@@ -219,7 +219,9 @@ def test_structured_rotation6d_profiles_and_live_matched_suites_compose() -> Non
     for live_name, structured_name, distribution in pairs:
         live = yaml.safe_load((suite_root / live_name).read_text())
         structured = yaml.safe_load((suite_root / structured_name).read_text())
-        ignored = {"task_profile", "train_profiles", "wandb"}
+        # GPU placement is operational: both structured alternatives target GPU 1
+        # because the dense capped-Gaussian control remains active on GPU 0.
+        ignored = {"task_profile", "train_profiles", "wandb", "gpu_assignments"}
         assert {
             key: value
             for key, value in structured["training"].items()
@@ -230,6 +232,7 @@ def test_structured_rotation6d_profiles_and_live_matched_suites_compose() -> Non
             if key not in ignored
         }
         assert structured["preparation"] == live["preparation"]
+        assert structured["training"]["gpu_assignments"] == [1]
         assert structured["training"]["task_profile"] == (
             "SimToolRealLSTMAsymmetricRotation6D"
         )

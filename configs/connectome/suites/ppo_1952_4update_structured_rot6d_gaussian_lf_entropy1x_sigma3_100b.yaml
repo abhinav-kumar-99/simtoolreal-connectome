@@ -1,4 +1,4 @@
-# Structured sensory routing and 6D orientation, matched to the live capped Gaussian LF job.
+# Structured sensory routing and 6D orientation, replacing the GPU-1 structured Beta job.
 schema_version: 1
 name: ppo_1952_4update_structured_rot6d_gaussian_lf_entropy1x_sigma3_100b
 stages: [prepare, train]
@@ -16,7 +16,7 @@ training:
   train_profiles:
     - {name: structured_rot6d_gaussian_lf_entropy1x_sigma3, train_profile: SimToolRealConnectome1952StructuredRotation6DGaussianSigma3SAPG}
   seeds: [42]
-  gpu_assignments: [0]
+  gpu_assignments: [1]
   max_parallel: 1
   num_envs: 12288
   sapg_block_size: 2048
