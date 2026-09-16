@@ -44,6 +44,14 @@ The combined network, retinal and configuration regression suite passed 127 test
 
 `ppo_full_cns_tanh_vision_fast_100b.yaml` selects six 128-environment SAPG blocks and 3,072-sample actor/critic minibatches. Full checkpoint saves occur every 100 epochs, retaining the previous approximately 1.23M-frame interval. It resumes epoch 318/frame 1,953,792 from the previous run's best full checkpoint using `resume_training_state`: actor, critic, both optimizers, normalization statistics and counters are retained; simulator episodes and recurrent rollout states reset. The newer 2,002,944-frame milestone is inference-only and cannot preserve both optimizers/critic weights. Existing run artifacts are not overwritten. Gaussian/SAPG/KL settings, 64x36 camera at 15 Hz, all 165,122 neurons, nine updates at 60 Hz, goals and proprioception are unchanged.
 
+## Live launch snapshot
+
+The replacement suite/trainer are PIDs 495083/495124 on physical GPU 1 in tmux `connectome-visual-fast-100b`; watcher PID 494868 is in `connectome-visual-fast-videos`. The old visual suite/trainer/watcher 484220/484301/484223 were stopped with artifacts retained. GPU-0 Gaussian trainer 261951 and TensorBoard server 3172043 were preserved. The existing port-6008 server discovers `full_cns_tanh_vision_fast_100b` through a summaries symlink without restart. The watcher began evaluating the new 2M milestone at actual frame 2,002,944.
+
+At the first checked scalar snapshot, frame 2,015,232, total throughput was 3,603 FPS, actor value loss 1.3244 and privileged critic loss .01764; both invalid-KL flags were zero. Aggregate `info/kl` was finite but volatile (.10777 at that snapshot); do not equate it with scheduler KL or attribute it to the restart without a controlled comparison. By frame 2,174,976, scheduler mini-epoch-1 KL was .0007523, in the old run's recent .00065–.00088 range, while aggregate KL was .05027. These are launch/numerical checks, not evidence of task learning. The critic loss uses a newly started critic-local frame axis; it is not the actor's resumed global-frame counter. Later video evaluation competes for GPU 1 and can temporarily depress training FPS.
+
+The first production preflight rejected the resume-offset epoch budget because the suite checks `epochs * batch * horizon` against the frame cap without subtracting restored progress. No trainer started on that failed attempt. The YAML now uses conservative `epochs: 8138020` and retains the 100B upper frame cap; failed preflight logs are preserved. Implementation checkpoint `c3f24946`, epoch-budget correction `e8bea153`.
+
 ## Reproduction
 
 ```bash
