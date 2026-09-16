@@ -8,6 +8,32 @@ Related: [Fixed reservoir](fixed-reservoir-controller.md), [Experiment workflow]
 
 ## Circuit and evidence boundary
 
+### Current full-neuron replacement
+
+At the user's subsequent direction, `configs/connectome/malecns_full_cns.yaml` selects `all_traced_neurons`: exactly all 165,122 body IDs with `status: Traced` in the pinned annotation table, including isolated neurons. There is no visual-path pruning in this mode; `maximum_path_edges` is used only for reachability diagnostics. The five-synapse edge floor and existing transmitter model remain, so all neurons does not mean every weak synaptic edge is retained. Glia, other reconstruction statuses and endpoints without annotations are excluded explicitly. This adds 7,955 traced neurons and removes 5,629 non-Traced/unannotated nodes from the previous artifact. Exact body-ID equality with the full Traced set was verified, as were unchanged visual, proprioceptive, descending input and motor output identities.
+
+The new artifact has 6,235,682 stored edges, 6,185,843 nonzero fast-current edges, 3,534 L1/L2 input cells and SHA-256 `389953b5b28c70a1cbd84ef0cd32b66c7cda37ead88056b936776ce068b42f04`. Its spectral radius before normalization is 3549.6069472. `SimToolRealFullCNSVisualReservoirGaussianSAPG` retains the previous camera/proprioception/goal contract, nine tanh updates, cached features, Gaussian settings and auxiliary actor value objective. The two-epoch smoke completed 12,288 frames and finite checkpoint reload at about 1,500 warm steps/s. The full-CNS audit again passed goal-image invariance and distinct-environment-camera checks; its dark/bright motor delta was about `2.34e-5`, with 117 motor cells above `1e-8`. Adding all traced cells alone has not substantially strengthened the initial visual response.
+
+### Output population audit
+
+All 135 readout cells are annotated `vnc_motor`, `somaNeuromere: T1`: 68 left and 67 right. Their annotated types include tibial/trochanteral flexors and extensors, tarsal levators/depressors and proximal leg muscles. They therefore remain a defensible downstream foreleg motor population after the circuit expands. They are not intrinsically mapped to robot joints: the learned 167-input (135 motor plus 32 SAPG) readout converts activity to 29 robot commands. Using all CNS neurons does not require reading every neuron as an output.
+
+The full annotated population contains 708 VNC motor neurons, 107 central-brain motor neurons and 1,314 descending neurons. A motor-only versus descending-plus-front-motor comparison would test whether higher-level commands retain useful visual information lost before the final motor stage. Reading all motor types would also mix other body functions into the controller. The current 135-cell choice is biologically motivated but not empirically optimal; no readout expansion was silently included in this full-neuron experiment.
+
+The prior visual-path run and watcher were stopped with artifacts preserved. The replacement entrypoints are:
+
+```bash
+.venv/bin/python scripts/prepare_malecns_connectome.py --config configs/connectome/malecns_full_cns.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_full_cns_tanh_smoke.yaml
+CUDA_VISIBLE_DEVICES=1 .venv/bin/python scripts/audit_visual_reservoir.py --config configs/connectome/full_cns_visual_audit.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_full_cns_tanh_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_full_cns_tanh_100b_milestones.yaml
+```
+
+The helper responsibilities described below are unchanged; `selection_mode` now owns the full-neuron selection and the helper rejects any selection omitting an existing interface cell. The full training/watcher contracts retain 384 environments, six 64-environment SAPG blocks, minibatch 1,536, GPU 1, 100B cap and 1M video checkpoints. TensorBoard alias: `full_cns_tanh_100b`. Full runs and smoke runs refuse existing output directories.
+
+### Historical visual-path artifact and count correction
+
 **Count correction from the subsequent annotation audit:** 162,796 is a graph-node count, not a verified-neuron count. The local annotation table has 211,577 entries, of which 165,122 have `status: Traced`. The current artifact includes 157,167 traced entries, 4,060 annotated entries with another status and 1,569 IDs absent from that annotation table. The 4,060 include 2,177 Orphan, 1,317 missing-status, 240 Assign, 220 Anchor, 64 Glia and 42 Unimportant entries. The extractor uses connectivity endpoints without a status/glia filter; therefore the earlier description of every node as a neuron was too strong. The published approximately 166K denominator is not interchangeable with this artifact's endpoint count. No running job was changed during this audit.
 
 Of the 165,122 locally traced entries, 7,955 are excluded: 2,937 optic-lobe intrinsic cells, 950 optic sensory cells, 1,162 central-brain sensory cells, 896 VNC sensory cells, 532 central-brain intrinsic cells, 187 VNC intrinsic cells, 477 VNC motor cells, 43 central-brain motor cells and 771 other/unassigned cells. Common excluded types include T1 (1,659), R1-R6 (715), BM_InOm (495), Dm3b (400), Lawf2 (295), Dm3a (182) and L4 (161). These counts were computed by body-ID set difference against the saved NPZ and `annotations.feather`. Exclusion means failing the chosen L1/L2-to-front-motor path criterion (maximum eight edges after a five-synapse edge threshold), except that the original core is retained explicitly. It does not establish that those neurons are unimportant for vision or behavior. In particular, starting at L1/L2 bypasses photoreceptor processing. A future cleaned artifact should explicitly select permitted reconstruction statuses and resolve missing-annotation endpoints before claiming biological neuron coverage.

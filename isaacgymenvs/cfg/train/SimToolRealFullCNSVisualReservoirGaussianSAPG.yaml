@@ -1,0 +1,11 @@
+defaults:
+  - SimToolRealVisualReservoirGaussianSAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      artifact_path: data/connectomes/processed/malecns_full_cns/biological.npz
+      expected: {neurons: 165122, edges: 6235682, sensory_neurons: 3918, descending_neurons: 157, motor_neurons: 135}
+  config:
+    name: ${resolve_default:SimToolRealFullCNSVisualReservoirGaussianSAPG,${....experiment}}

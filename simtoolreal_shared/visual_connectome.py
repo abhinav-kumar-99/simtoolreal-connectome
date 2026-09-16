@@ -47,7 +47,15 @@ def prepare_visual_connectome(config_path, repository_root):
     forward = distances(graph, np.searchsorted(ids, visual.index), depth)
     backward = distances(graph.T.tocsr(), np.searchsorted(ids, motor_ids), depth)
     keep = (forward.astype(np.int32) + backward <= depth)
-    selected = np.union1d(ids[keep], core_arrays['body_ids'])
+    selection_mode = cfg.get('selection_mode', 'visual_paths')
+    if selection_mode == 'all_traced_neurons':
+        # Include every traced neuron, even isolated cells and cells outside the
+        # visual/motor paths. Do not silently include glia or unknown endpoints.
+        selected = np.sort(annotations.index[annotations.status.eq('Traced')].to_numpy(dtype=np.int64))
+    elif selection_mode == 'visual_paths':
+        selected = np.union1d(ids[keep], core_arrays['body_ids'])
+    else:
+        raise ValueError(f'Unknown selection mode: {selection_mode}')
     visual = visual.loc[visual.index.intersection(selected)].sort_index()
     edge_mask = np.isin(weights.body_pre, selected) & np.isin(weights.body_post, selected)
     edges = weights.loc[edge_mask]
@@ -61,6 +69,11 @@ def prepare_visual_connectome(config_path, repository_root):
                             shape=(len(selected), len(selected))).tocsr()
     matrix, radius, scale = _spectral_normalize(src, dst,
         edges.weight.to_numpy(dtype=np.float32) * signs[src], len(selected), cfg['normalization_target'])
+    ports = ['sensory_indices', 'descending_indices', 'motor_indices',
+             'front_proprioceptors_indices', 'front_tactile_indices']
+    for key in ports:
+        if not np.isin(core_arrays['body_ids'][core_arrays[key]], selected).all():
+            raise ValueError(f'Selection omits an interface neuron: {key}')
     arrays = {k: np.searchsorted(selected, core_arrays['body_ids'][core_arrays[k]])
               for k in ['sensory_indices', 'descending_indices', 'motor_indices',
                         'front_proprioceptors_indices', 'front_tactile_indices']}
@@ -93,6 +106,8 @@ def prepare_visual_connectome(config_path, repository_root):
     effective.data = np.ones(effective.nnz, dtype=bool)
     effective_distance = distances(effective, arrays['visual_indices'], depth)[arrays['motor_indices']]
     manifest = dict(observed=observed, sources=cfg['sources'], artifact_sha256=sha256_file(artifact),
+                    selection_mode=selection_mode,
+                    status_counts=annotations.reindex(selected).status.fillna('missing').value_counts().to_dict(),
                     visual_neurons=len(visual), visual_types=visual.type.value_counts().to_dict(),
                     maximum_path_edges=depth, raw_spectral_radius=radius, scale=scale,
                     anatomical_reachable_motors=int((forward[np.searchsorted(ids, motor_ids)] <= depth).sum()),

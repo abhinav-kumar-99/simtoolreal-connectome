@@ -19,7 +19,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Concepts
 
-- [Camera-driven MaleCNS reservoir](concepts/visual-reservoir.md) — Actual L1/L2 column inputs, 162,796-neuron visual/proprioceptive tanh circuit, raw cameras without goal annotations, validation and launch commands. Last updated 2026-09-16.
+- [Camera-driven MaleCNS reservoir](concepts/visual-reservoir.md) — All 165,122 traced neurons, actual L1/L2 column inputs, raw cameras without goal annotations, retained proprioception and audited front-leg motor readout. Last updated 2026-09-16.
 
 - [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics, implemented structured sensory routing and 6D orientation, exact central-critic inputs, connectome-versus-LSTM auxiliary value gradients, propagation delay and saturation boundaries. Last updated 2026-09-16.
 - [Fixed-input reservoir controller](concepts/fixed-reservoir-controller.md) — Parameter-free robot-to-MaleCNS population coding, cached motor features, no-BPTT PPO boundary, optional hard-spiking LIF dynamics, exact channel map and smoke evidence. Last updated 2026-09-16.

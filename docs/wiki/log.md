@@ -6,6 +6,12 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] implement and launch | Include all traced CNS neurons and audit outputs
+
+Added explicit `all_traced_neurons` artifact selection, preserving the earlier visual-path mode and checking that interface cells are retained. The separate SHA-pinned artifact contains exactly 165,122 Traced body IDs and 6,235,682 stored edges; all glia/non-Traced/unannotated endpoints are excluded. Relative to the preceding run it adds 7,955 traced neurons and removes 5,629 other nodes. Verified exact full-population equality and identical visual/proprioceptive/goal-input/motor-output body IDs. The motor audit identified all 135 output cells as T1 VNC motor neurons (68 left, 67 right); documented descending-plus-motor readout as an unimplemented comparison, not a necessary consequence of full-CNS simulation.
+
+The 384-environment two-epoch smoke completed 12,288 frames and finite deployment reload. Camera audit again passed goal-image invariance and distinct environment views; visual sensitivity remained small at about 2.34e-5 maximum motor delta. Stopped only visual-path suite/trainer/watcher 468643/468686/469141, preserving artifacts, and launched the fresh full-CNS tanh suite/watcher as 475520/475523 on GPU 1. The learned-adapter Gaussian trainer on GPU 0 remained untouched. New YAMLs own the full artifact, profile, smoke/full budgets, audit and video watcher; the workflow documents commands and retained parameters.
+
 ## [2026-09-16] audit | Correct visual-reservoir neuron coverage denominator
 
 Compared all 162,796 artifact body IDs against the pinned 211,577-row annotation table. Of 165,122 locally Traced entries, 157,167 are included and 7,955 excluded; documented the excluded superclass and type breakdown. Found 4,060 included annotated non-Traced entries (including 64 Glia) and 1,569 included IDs absent from the annotations. The visual extractor has no reconstruction-status filter, so the previous graph-node count must not be presented as confirmed-neuron coverage of the published approximately 166K CNS. Recorded this limitation and the need for an explicitly cleaned artifact. This was a read-only data audit plus documentation; no training process, graph artifact or implementation was changed.
