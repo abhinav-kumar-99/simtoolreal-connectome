@@ -87,6 +87,7 @@ from isaacgymenvs.utils.torch_jit_utils import (
 )
 from simtoolreal_shared.action_config import validate_privileged_actions
 from simtoolreal_shared.pose_html import portable_visual_urdf, render_pose_html
+from simtoolreal_shared.rotation_transforms import quaternion_xyzw_to_rotation_6d
 
 DATETIME_STR = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 VIEWER_PUBLIC_RAW_BASE = "https://raw.githubusercontent.com/tylerlum/simtoolreal/main/"
@@ -314,14 +315,29 @@ class SimToolReal(VecTask):
 
         print("Obs type:", self.obs_type)
 
+        self.orientation_observation_representation = self.cfg["env"].get(
+            "orientationObservationRepresentation", "quaternion_xyzw"
+        )
+        if self.orientation_observation_representation not in {
+            "quaternion_xyzw",
+            "rotation_6d",
+        }:
+            raise ValueError(
+                "orientationObservationRepresentation must be quaternion_xyzw "
+                "or rotation_6d"
+            )
+        orientation_size = (
+            6 if self.orientation_observation_representation == "rotation_6d" else 4
+        )
+
         self.obs_type_size_dict = {
             "joint_pos": self.num_hand_arm_dofs,
             "joint_vel": self.num_hand_arm_dofs,
             "prev_action_targets": self.num_hand_arm_dofs,
             "palm_pos": 3,
-            "palm_rot": 4,
+            "palm_rot": orientation_size,
             "palm_vel": 6,
-            "object_rot": 4,
+            "object_rot": orientation_size,
             "object_vel": 6,
             "fingertip_pos_rel_palm": 3 * self.num_fingertips,
             "keypoints_rel_palm": 3 * self.num_keypoints,
@@ -3079,6 +3095,11 @@ class SimToolReal(VecTask):
             self.closest_keypoint_max_dist_fixed_size,
         )
 
+    def _orientation_observation(self, quaternion_xyzw: Tensor) -> Tensor:
+        if self.orientation_observation_representation == "quaternion_xyzw":
+            return quaternion_xyzw
+        return quaternion_xyzw_to_rotation_6d(quaternion_xyzw)
+
     def populate_obs_and_states_buffers(self) -> None:
         num_dofs = self.num_hand_arm_dofs
         obs_dict = {}
@@ -3100,9 +3121,13 @@ class SimToolReal(VecTask):
         # palm pos
         obs_dict["palm_pos"] = self.palm_center_pos
         # palm rot
-        obs_dict["palm_rot"] = self._palm_state[:, 3:7]
+        obs_dict["palm_rot"] = self._orientation_observation(
+            self._palm_state[:, 3:7]
+        )
         # object rot
-        obs_dict["object_rot"] = self.object_state[:, 3:7]
+        obs_dict["object_rot"] = self._orientation_observation(
+            self.object_state[:, 3:7]
+        )
         # keypoint distances relative to the palm of the hand
         keypoint_rel_pos_size = 3 * self.num_keypoints
         obs_dict["keypoints_rel_palm"] = self.keypoints_rel_palm.reshape(
@@ -3160,7 +3185,9 @@ class SimToolReal(VecTask):
         use_object_state_delay_noise = self.cfg["env"]["useObjectStateDelayNoise"]
         if use_object_state_delay_noise:
             # Add noise
-            obs_dict["object_rot"] = self.observed_object_state[:, 3:7]
+            obs_dict["object_rot"] = self._orientation_observation(
+                self.observed_object_state[:, 3:7]
+            )
             obs_dict["object_vel"] = (
                 self.observed_object_state[:, 7:13] * self.turn_off_object_vel_obs_scale
             )

@@ -219,6 +219,14 @@ def prepare_compact_connectome(config_path: Path, repository_root: Path):
         src, dst, raw, len(ids), float(config['normalization']['target']))
     raw_csr = sparse.coo_matrix((raw, (dst, src)), shape=matrix.shape).tocsr()
     raw_csr.sort_indices()
+    artifact_populations = dict(populations)
+    for name, groups in config['selection'].get(
+        'artifact_population_groups', {}
+    ).items():
+        members = group_union(neurons, groups)
+        artifact_populations[name] = np.flatnonzero(
+            np.isin(ids, sorted(members))
+        ).astype(np.int64)
     output = repository_root / config['output_directory']
     artifact = output / 'biological.npz'
     # Never replace a different existing graph underneath a running policy.
@@ -227,12 +235,19 @@ def prepare_compact_connectome(config_path: Path, repository_root: Path):
             for key, value in {'body_ids': ids, 'values': matrix.data,
                                'raw_values': raw_csr.data, 'col_indices': matrix.indices,
                                'crow_indices': matrix.indptr, **{
-                                   f'{name}_indices': ix for name, ix in populations.items()
+                                   f'{name}_indices': ix for name, ix in artifact_populations.items()
                                }}.items():
-                if not np.array_equal(old[key], value):
+                if key in old and not np.array_equal(old[key], value):
                     raise FileExistsError(f'Different artifact already exists: {artifact}')
+            requires_upgrade = any(
+                f'{name}_indices' not in old for name in artifact_populations
+            )
+        if requires_upgrade:
+            _save_artifact(
+                artifact, matrix, raw_csr.data, ids, artifact_populations
+            )
     else:
-        _save_artifact(artifact, matrix, raw_csr.data, ids, populations)
+        _save_artifact(artifact, matrix, raw_csr.data, ids, artifact_populations)
     membership['consensus_nt'] = labels.to_numpy()
     membership.to_csv(output / 'neurons.csv', index=False)
     edges.to_csv(output / 'edges.csv.gz', index=False)
@@ -250,6 +265,9 @@ def prepare_compact_connectome(config_path: Path, repository_root: Path):
         'config_sha256': sha256_file(config_path), 'scipy_version': scipy.__version__,
         'orientation': 'CSR rows postsynaptic; columns presynaptic',
         'interface': interface,
+        'artifact_population_groups': config['selection'].get(
+            'artifact_population_groups', {}
+        ),
         'transmitter_counts': {str(k): int(v) for k, v in labels.value_counts().items()},
         'transmitter_signs': config['transmitter_signs'],
         'sign_caveat': 'Non-ACh negative, including unclear/missing, is a model assumption.',

@@ -68,6 +68,22 @@ def test_approved_local_graph_identity_and_signed_csr():
     np.testing.assert_array_equal(ids, saved['body_ids'])
     for name, ix in ports.items():
         np.testing.assert_array_equal(ix, saved[name + '_indices'])
+    source_neurons = pd.read_csv(path).fillna('')
+    for name, groups in config['selection']['artifact_population_groups'].items():
+        members = set(source_neurons.loc[
+            source_neurons[groups].any(axis=1), 'bodyId'
+        ].astype(int))
+        expected_indices = np.flatnonzero(np.isin(ids, sorted(members)))
+        np.testing.assert_array_equal(saved[name + '_indices'], expected_indices)
+    assert not np.intersect1d(
+        saved['front_proprioceptors_indices'], saved['front_tactile_indices']
+    ).size
+    np.testing.assert_array_equal(
+        np.sort(np.concatenate((
+            saved['front_proprioceptors_indices'], saved['front_tactile_indices']
+        ))),
+        saved['sensory_indices'],
+    )
     dst = np.repeat(ids, np.diff(saved['crow_indices']))
     src = ids[saved['col_indices']]
     reconstructed = pd.DataFrame({'source': src, 'destination': dst,

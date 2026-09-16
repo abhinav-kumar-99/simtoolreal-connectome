@@ -1,0 +1,6 @@
+defaults:
+  - SimToolRealLSTMAsymmetric
+  - _self_
+
+env:
+  orientationObservationRepresentation: rotation_6d

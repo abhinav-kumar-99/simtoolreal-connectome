@@ -125,15 +125,22 @@ def _verify_checkpoint(
 
     from deployment.rl_player import RlPlayer
 
+    num_observations = int(
+        OmegaConf.select(
+            resolved,
+            "train.params.network.connectome.observations.policy_size",
+            default=140,
+        )
+    )
     player = RlPlayer(
-        num_observations=140,
+        num_observations=num_observations,
         num_actions=29,
         config_path=str(resolved_config_path),
         checkpoint_path=str(checkpoint_path),
         device=device,
         num_envs=1,
     )
-    observation = torch.zeros((1, 140), device=device)
+    observation = torch.zeros((1, num_observations), device=device)
     action = player.get_normalized_action(observation, deterministic_actions=True)
     if action.shape != (1, 29) or not torch.isfinite(action).all():
         raise RuntimeError(f"Invalid deployment action after reload: {action.shape}")

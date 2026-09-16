@@ -5,6 +5,7 @@ import torch
 from simtoolreal_shared.rotation_transforms import (
     axis_angle_to_matrix,
     matrix_to_quaternion,
+    quaternion_xyzw_to_rotation_6d,
     quaternion_to_matrix,
 )
 
@@ -27,4 +28,25 @@ def test_zero_axis_angle_is_identity() -> None:
     quaternions = matrix_to_quaternion(matrices)
     torch.testing.assert_close(
         quaternions, torch.tensor([[1.0, 0.0, 0.0, 0.0]]).expand(4, 4)
+    )
+
+
+def test_xyzw_rotation_6d_uses_matrix_columns_and_removes_double_cover() -> None:
+    half = torch.tensor(0.5).sqrt()
+    xyzw = torch.tensor(
+        [
+            [0.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, half, half],
+        ]
+    )
+    encoded = quaternion_xyzw_to_rotation_6d(xyzw)
+    expected = torch.tensor(
+        [
+            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0, -1.0, 0.0, 0.0],
+        ]
+    )
+    torch.testing.assert_close(encoded, expected, atol=1.0e-6, rtol=0.0)
+    torch.testing.assert_close(
+        quaternion_xyzw_to_rotation_6d(-xyzw), encoded, atol=0.0, rtol=0.0
     )

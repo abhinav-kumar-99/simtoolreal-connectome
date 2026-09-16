@@ -231,10 +231,13 @@ def _save_artifact(
         "values": matrix.data.astype(np.float32),
         "raw_values": np.asarray(raw_values, dtype=np.float32),
         "body_ids": body_ids,
-        "sensory_indices": population_indices["sensory"],
-        "descending_indices": population_indices["descending"],
-        "motor_indices": population_indices["motor"],
     }
+    arrays.update(
+        {
+            f"{name}_indices": np.asarray(indices, dtype=np.int64)
+            for name, indices in population_indices.items()
+        }
+    )
     temporary = path.with_suffix(path.suffix + ".part")
     with zipfile.ZipFile(
         temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9

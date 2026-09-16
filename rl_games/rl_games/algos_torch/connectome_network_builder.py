@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Iterable
@@ -77,6 +78,113 @@ def _interface_projection(
     )
 
 
+class _GroupedSensoryAdapter(nn.Module):
+    """Block-sparse body/efference projection into proprioceptor rows."""
+
+    def __init__(
+        self,
+        input_size: int,
+        sensory_size: int,
+        proprioceptor_positions: np.ndarray,
+        groups: list[dict[str, Any]],
+        dof_count: int,
+        fingertip_count: int,
+        bias: bool,
+    ) -> None:
+        super().__init__()
+        if not groups:
+            raise ValueError("structured_input_adapter.groups must not be empty")
+        if input_size != 3 * dof_count + 3 * fingertip_count:
+            raise ValueError(
+                "Structured body/efference size must equal three DOF blocks plus "
+                "three coordinates per fingertip"
+            )
+        proprioceptor_positions = np.asarray(
+            proprioceptor_positions, dtype=np.int64
+        )
+        if len(proprioceptor_positions) < len(groups):
+            raise ValueError("Need at least one proprioceptor per robot group")
+        self.input_size = input_size
+        self.sensory_size = sensory_size
+        self.register_buffer(
+            "proprioceptor_positions", torch.from_numpy(proprioceptor_positions)
+        )
+
+        group_features: list[np.ndarray] = []
+        covered_dofs: list[int] = []
+        covered_fingertips: list[int] = []
+        self.group_names: list[str] = []
+        for index, group in enumerate(groups):
+            name = str(group.get("name", f"group_{index}"))
+            if name in self.group_names:
+                raise ValueError(f"Duplicate structured input group {name!r}")
+            dof_start, dof_stop = (int(value) for value in group["dof_range"])
+            if dof_start < 0 or dof_stop <= dof_start or dof_stop > dof_count:
+                raise ValueError(f"Invalid DOF range for structured group {name!r}")
+            dofs = np.arange(dof_start, dof_stop, dtype=np.int64)
+            covered_dofs.extend(dofs.tolist())
+            feature_parts = [
+                dofs,
+                dof_count + dofs,
+                2 * dof_count + dofs,
+            ]
+            fingertip_index = group.get("fingertip_index")
+            if fingertip_index is not None:
+                fingertip_index = int(fingertip_index)
+                if fingertip_index < 0 or fingertip_index >= fingertip_count:
+                    raise ValueError(
+                        f"Invalid fingertip index for structured group {name!r}"
+                    )
+                covered_fingertips.append(fingertip_index)
+                start = 3 * dof_count + 3 * fingertip_index
+                feature_parts.append(np.arange(start, start + 3, dtype=np.int64))
+            group_features.append(np.concatenate(feature_parts))
+            self.group_names.append(name)
+        if sorted(covered_dofs) != list(range(dof_count)):
+            raise ValueError("Structured groups must partition every robot DOF once")
+        if sorted(covered_fingertips) != list(range(fingertip_count)):
+            raise ValueError(
+                "Structured finger groups must assign every fingertip exactly once"
+            )
+
+        feature_counts = np.asarray(
+            [len(features) for features in group_features], dtype=np.float64
+        )
+        quotas = len(proprioceptor_positions) * feature_counts / feature_counts.sum()
+        allocations = np.floor(quotas).astype(np.int64)
+        remaining = len(proprioceptor_positions) - int(allocations.sum())
+        order = sorted(
+            range(len(groups)), key=lambda i: (-(quotas[i] - allocations[i]), i)
+        )
+        for index in order[:remaining]:
+            allocations[index] += 1
+        if np.any(allocations < 1) or int(allocations.sum()) != len(
+            proprioceptor_positions
+        ):
+            raise ValueError("Invalid proportional proprioceptor allocation")
+        self.group_allocations = tuple(int(value) for value in allocations)
+
+        self.group_adapters = nn.ModuleList()
+        for index, (features, output_size) in enumerate(
+            zip(group_features, self.group_allocations)
+        ):
+            self.register_buffer(
+                f"group_feature_indices_{index}", torch.from_numpy(features)
+            )
+            self.group_adapters.append(
+                nn.Linear(len(features), output_size, bias=bias)
+            )
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        compact_outputs = []
+        for index, adapter in enumerate(self.group_adapters):
+            features = getattr(self, f"group_feature_indices_{index}")
+            compact_outputs.append(adapter(inputs.index_select(1, features)))
+        compact = torch.cat(compact_outputs, dim=-1)
+        output = inputs.new_zeros((inputs.shape[0], self.sensory_size))
+        return output.index_copy(1, self.proprioceptor_positions, compact)
+
+
 class ConnectomeBuilder(network_builder.NetworkBuilder):
     """Builds a continuous actor whose recurrent state is the MaleCNS circuit."""
 
@@ -147,6 +255,11 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 raise ValueError(
                     "Connectome sparse recurrence currently requires dtype: float32"
                 )
+            structured_input = connectome.get("structured_input_adapter")
+            if structured_input is not None and not isinstance(
+                structured_input, Mapping
+            ):
+                raise TypeError("structured_input_adapter must be a YAML mapping")
             artifact_path = _resolve_artifact(connectome["artifact_path"])
             if not artifact_path.exists():
                 raise FileNotFoundError(
@@ -161,6 +274,35 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 descending_indices = artifact["descending_indices"].astype(np.int64)
                 motor_indices = artifact["motor_indices"].astype(np.int64)
                 body_ids = artifact["body_ids"].astype(np.int64)
+                if structured_input is not None:
+                    proprioceptor_key = str(
+                        structured_input.get(
+                            "proprioceptor_artifact_key",
+                            "front_proprioceptors_indices",
+                        )
+                    )
+                    tactile_key = str(
+                        structured_input.get(
+                            "tactile_artifact_key", "front_tactile_indices"
+                        )
+                    )
+                    missing = [
+                        key
+                        for key in (proprioceptor_key, tactile_key)
+                        if key not in artifact
+                    ]
+                    if missing:
+                        raise ValueError(
+                            f"Structured input artifact is missing arrays {missing}; "
+                            "rerun scripts/prepare_malecns_connectome.py"
+                        )
+                    proprioceptor_indices = artifact[proprioceptor_key].astype(
+                        np.int64
+                    )
+                    tactile_indices = artifact[tactile_key].astype(np.int64)
+                else:
+                    proprioceptor_indices = None
+                    tactile_indices = None
 
             expected = connectome["expected"]
             self.neuron_count = int(expected["neurons"])
@@ -190,6 +332,20 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             ):
                 if np.any(indices < 0) or np.any(indices >= self.neuron_count):
                     raise ValueError(f"Invalid {population_name} population indices")
+            if structured_input is not None:
+                assert proprioceptor_indices is not None and tactile_indices is not None
+                if np.intersect1d(proprioceptor_indices, tactile_indices).size:
+                    raise ValueError(
+                        "Structured proprioceptor and tactile populations overlap"
+                    )
+                structured_union = np.sort(
+                    np.concatenate((proprioceptor_indices, tactile_indices))
+                )
+                if not np.array_equal(structured_union, np.sort(sensory_indices)):
+                    raise ValueError(
+                        "Structured proprioceptor and tactile populations must exactly "
+                        "partition sensory_indices"
+                    )
 
             self.register_buffer("crow_indices", torch.from_numpy(crow_indices))
             self.register_buffer("col_indices", torch.from_numpy(col_indices))
@@ -221,19 +377,49 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 observations["sensory_ranges"], "sensory_ranges"
             )
             self.goal_ranges = _as_ranges(observations["goal_ranges"], "goal_ranges")
+            self.context_ranges = (
+                _as_ranges(observations["context_ranges"], "context_ranges")
+                if structured_input is not None
+                else ()
+            )
             self.policy_observation_size = int(observations["policy_size"])
             sensory_size = sum(stop - start for start, stop in self.sensory_ranges)
             goal_size = sum(stop - start for start, stop in self.goal_ranges)
+            context_size = sum(stop - start for start, stop in self.context_ranges)
             if sensory_size != int(observations["sensory_size"]):
                 raise ValueError("Sensory observation ranges do not match sensory_size")
             if goal_size != int(observations["goal_size"]):
                 raise ValueError("Goal observation ranges do not match goal_size")
+            if structured_input is not None and context_size != int(
+                observations["context_size"]
+            ):
+                raise ValueError("Context observation ranges do not match context_size")
             if (
-                max(stop for _, stop in self.sensory_ranges + self.goal_ranges)
+                max(
+                    stop
+                    for _, stop in (
+                        self.sensory_ranges
+                        + self.context_ranges
+                        + self.goal_ranges
+                    )
+                )
                 > self.policy_observation_size
             ):
                 raise ValueError(
                     "Observation range exceeds the policy observation size"
+                )
+            covered_observations = [
+                index
+                for start, stop in (
+                    self.sensory_ranges + self.context_ranges + self.goal_ranges
+                )
+                for index in range(start, stop)
+            ]
+            if sorted(covered_observations) != list(
+                range(self.policy_observation_size)
+            ):
+                raise ValueError(
+                    "Sensory, context, and goal ranges must partition policy observations"
                 )
 
             self.coef_embedding_size = 0
@@ -300,20 +486,71 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             # later YAML architecture switch cannot expose a latent bad value.
             _interface_activation(self.projection_activation)
             input_bias = bool(adapter.get("bias", False))
-            self.sensory_adapter = _interface_projection(
-                sensory_size,
-                len(sensory_indices),
-                self.projection_architecture,
-                self.projection_hidden_size,
-                self.projection_activation,
-                bias=input_bias,
-            )
+            if structured_input is None:
+                self.sensory_adapter_mode = "dense"
+                self.sensory_adapter = _interface_projection(
+                    sensory_size,
+                    len(sensory_indices),
+                    self.projection_architecture,
+                    self.projection_hidden_size,
+                    self.projection_activation,
+                    bias=input_bias,
+                )
+                descending_architecture = self.projection_architecture
+                descending_hidden_size = self.projection_hidden_size
+                descending_activation = self.projection_activation
+            else:
+                self.sensory_adapter_mode = str(
+                    structured_input.get("mode", "grouped_linear")
+                ).lower()
+                if self.sensory_adapter_mode != "grouped_linear":
+                    raise ValueError(
+                        "structured_input_adapter.mode must be grouped_linear"
+                    )
+                assert proprioceptor_indices is not None
+                sensory_positions = {
+                    int(neuron): position
+                    for position, neuron in enumerate(sensory_indices)
+                }
+                proprioceptor_positions = np.asarray(
+                    [sensory_positions[int(neuron)] for neuron in proprioceptor_indices],
+                    dtype=np.int64,
+                )
+                self.sensory_adapter = _GroupedSensoryAdapter(
+                    input_size=sensory_size,
+                    sensory_size=len(sensory_indices),
+                    proprioceptor_positions=proprioceptor_positions,
+                    groups=list(structured_input["groups"]),
+                    dof_count=int(structured_input.get("dof_count", 29)),
+                    fingertip_count=int(
+                        structured_input.get("fingertip_count", 5)
+                    ),
+                    bias=input_bias,
+                )
+                descending_projection = structured_input.get(
+                    "descending_projection", {}
+                )
+                descending_architecture = str(
+                    descending_projection.get("architecture", "mlp")
+                ).lower()
+                descending_hidden_size = int(
+                    descending_projection.get("hidden_size", 128)
+                )
+                if descending_hidden_size < 1:
+                    raise ValueError(
+                        "structured descending projection hidden_size must be positive"
+                    )
+                descending_activation = str(
+                    descending_projection.get("activation", "elu")
+                ).lower()
+                _interface_activation(descending_activation)
+            self.descending_projection_architecture = descending_architecture
             self.descending_adapter = _interface_projection(
-                goal_size + self.coef_embedding_size,
+                context_size + goal_size + self.coef_embedding_size,
                 len(descending_indices),
-                self.projection_architecture,
-                self.projection_hidden_size,
-                self.projection_activation,
+                descending_architecture,
+                descending_hidden_size,
+                descending_activation,
                 bias=input_bias,
             )
 
@@ -641,17 +878,21 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 observations = observations.float()
                 hidden = hidden.float()
                 sensory = _select_ranges(observations, self.sensory_ranges)
-                goal = _select_ranges(observations, self.goal_ranges)
-                if self.net_type == "extra_param":
-                    goal = torch.cat(
-                        (
-                            goal,
-                            self.extra_params[self._coefficient_rows(observations)],
-                        ),
-                        dim=-1,
+                descending_inputs = []
+                if self.context_ranges:
+                    descending_inputs.append(
+                        _select_ranges(observations, self.context_ranges)
                     )
+                descending_inputs.append(
+                    _select_ranges(observations, self.goal_ranges)
+                )
+                if self.net_type == "extra_param":
+                    descending_inputs.append(
+                        self.extra_params[self._coefficient_rows(observations)]
+                    )
+                descending_input = torch.cat(descending_inputs, dim=-1)
                 sensory_drive = self.sensory_adapter(sensory)
-                descending_drive = self.descending_adapter(goal)
+                descending_drive = self.descending_adapter(descending_input)
                 leak = self.substep_leaks()
                 incoming = self.incoming_gains()
                 if self.operator_backend == "triton_fused":

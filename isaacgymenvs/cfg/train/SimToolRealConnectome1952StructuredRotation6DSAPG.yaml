@@ -1,0 +1,35 @@
+defaults:
+  - SimToolRealConnectome1952AdaptersMLPSAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      observations:
+        policy_size: 144
+        sensory_size: 102
+        context_size: 30
+        goal_size: 12
+        sensory_ranges: [[0, 87], [102, 117]]
+        context_ranges: [[87, 102], [117, 129], [141, 144]]
+        goal_ranges: [[129, 141]]
+      structured_input_adapter:
+        mode: grouped_linear
+        proprioceptor_artifact_key: front_proprioceptors_indices
+        tactile_artifact_key: front_tactile_indices
+        dof_count: 29
+        fingertip_count: 5
+        # Fingertip order in SimToolReal is index, middle, ring, thumb, pinky.
+        groups:
+          - {name: arm, dof_range: [0, 7], fingertip_index: null}
+          - {name: thumb, dof_range: [7, 12], fingertip_index: 3}
+          - {name: index, dof_range: [12, 16], fingertip_index: 0}
+          - {name: middle, dof_range: [16, 20], fingertip_index: 1}
+          - {name: ring, dof_range: [20, 24], fingertip_index: 2}
+          - {name: pinky, dof_range: [24, 29], fingertip_index: 4}
+        descending_projection:
+          architecture: mlp
+          hidden_size: 128
+          activation: elu
+  config:
+    name: ${resolve_default:SimToolRealConnectome1952StructuredRotation6DSAPG,${....experiment}}

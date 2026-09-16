@@ -19,6 +19,8 @@ class LocalEligibility:
         self.net, self.config = network, dict(config)
         if network.weight_mode not in {"adapters_only", "neuron_gains"} or network.learn_dynamics:
             raise ValueError("Eligibility requires adapters_only/neuron_gains and frozen dynamics")
+        if network.sensory_adapter_mode != "dense":
+            raise ValueError("Eligibility currently requires the dense sensory adapter")
         if network.projection_architecture != "linear":
             raise ValueError("Eligibility currently requires linear interface projections")
         if network.sensory_adapter.bias is not None or network.descending_adapter.bias is not None:

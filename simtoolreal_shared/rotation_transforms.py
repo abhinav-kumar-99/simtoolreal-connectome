@@ -33,6 +33,21 @@ def quaternion_to_matrix(quaternions: Tensor) -> Tensor:
     ).reshape(quaternions.shape[:-1] + (3, 3))
 
 
+def quaternion_xyzw_to_rotation_6d(quaternions: Tensor) -> Tensor:
+    """Convert Isaac-style ``(..., x, y, z, w)`` quaternions to 6D rotations.
+
+    The result concatenates the first and second rotation-matrix columns. It is
+    invariant to the quaternion double cover: ``q`` and ``-q`` map identically.
+    """
+    if quaternions.shape[-1] != 4:
+        raise ValueError(f"Expected (..., 4) xyzw quaternions, got {quaternions.shape}")
+    real_first = torch.cat((quaternions[..., 3:], quaternions[..., :3]), dim=-1)
+    matrix = quaternion_to_matrix(real_first)
+    return matrix[..., :, :2].transpose(-1, -2).reshape(
+        quaternions.shape[:-1] + (6,)
+    )
+
+
 def axis_angle_to_matrix(axis_angle: Tensor) -> Tensor:
     if axis_angle.shape[-1] != 3:
         raise ValueError(f"Expected (..., 3) axis angles, got {axis_angle.shape}")

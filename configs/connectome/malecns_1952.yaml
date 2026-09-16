@@ -20,6 +20,11 @@ selection:
     sensory: [front_proprioceptors, front_tactile]
     descending: [grooming_dn_type_candidates, front_specific_descending]
     motor: [front_motors]
+  # Persist these subpopulation ports for structured robot input routing. Their
+  # union must remain the sensory port selected above.
+  artifact_population_groups:
+    front_proprioceptors: [front_proprioceptors]
+    front_tactile: [front_tactile]
 expected: {neurons: 1952, edges: 33720, sensory_neurons: 384, descending_neurons: 157, motor_neurons: 135}
 expected_selection:
   seed_neurons: 1285

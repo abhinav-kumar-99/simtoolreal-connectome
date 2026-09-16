@@ -199,6 +199,85 @@ def test_compact_profiles_compose_with_explicit_adaptation_modes() -> None:
                 assert "log_std_bounds" not in config.train.params.model
 
 
+def test_structured_rotation6d_profiles_and_live_matched_suites_compose() -> None:
+    from scripts.run_connectome_suite import _compose_resolved, _training_overrides
+
+    root = Path(__file__).resolve().parents[2]
+    suite_root = root / "configs/connectome/suites"
+    pairs = (
+        (
+            "ppo_1952_4update_gaussian_lf_entropy1x_sigma3_100b.yaml",
+            "ppo_1952_4update_structured_rot6d_gaussian_lf_entropy1x_sigma3_100b.yaml",
+            "gaussian",
+        ),
+        (
+            "ppo_1952_4update_restricted_beta_lf_100b.yaml",
+            "ppo_1952_4update_structured_rot6d_restricted_beta_lf_100b.yaml",
+            "beta",
+        ),
+    )
+    for live_name, structured_name, distribution in pairs:
+        live = yaml.safe_load((suite_root / live_name).read_text())
+        structured = yaml.safe_load((suite_root / structured_name).read_text())
+        ignored = {"task_profile", "train_profiles", "wandb"}
+        assert {
+            key: value
+            for key, value in structured["training"].items()
+            if key not in ignored
+        } == {
+            key: value
+            for key, value in live["training"].items()
+            if key not in ignored
+        }
+        assert structured["preparation"] == live["preparation"]
+        assert structured["training"]["task_profile"] == (
+            "SimToolRealLSTMAsymmetricRotation6D"
+        )
+        entry = structured["training"]["train_profiles"][0]
+        config = _compose_resolved(
+            _training_overrides(
+                structured["training"],
+                entry["train_profile"],
+                42,
+                entry["name"],
+                root / structured["output_directory"],
+            )
+        )
+        assert config.task.env.orientationObservationRepresentation == "rotation_6d"
+        actor = config.train.params.network
+        graph = actor.connectome
+        assert graph.observations.policy_size == 144
+        assert graph.observations.sensory_size == 102
+        assert graph.observations.context_size == 30
+        assert graph.observations.goal_size == 12
+        assert list(graph.observations.sensory_ranges) == [[0, 87], [102, 117]]
+        assert list(graph.observations.context_ranges) == [
+            [87, 102],
+            [117, 129],
+            [141, 144],
+        ]
+        assert list(graph.observations.goal_ranges) == [[129, 141]]
+        adapter = graph.structured_input_adapter
+        assert adapter.mode == "grouped_linear"
+        assert adapter.descending_projection.architecture == "mlp"
+        assert adapter.descending_projection.hidden_size == 128
+        assert len(adapter.groups) == 6
+        assert graph.adaptation.weight_mode == "adapters_only"
+        assert graph.adaptation.learn_dynamics is False
+        assert graph.dynamics.neural_updates == 4
+        assert config.train.params.config.use_experimental_cv is True
+        assert config.train.params.config.use_others_experience == "lf"
+        assert config.train.params.config.off_policy_ratio == 1.0
+        assert config.train.params.config.kl_threshold == 0.004
+        assert config.train.params.config.expl_reward_coef_scale == 0.005
+        assert actor.space.continuous.distribution == distribution
+        if distribution == "gaussian":
+            assert actor.space.continuous.max_sigma == 3.0
+        else:
+            assert actor.space.continuous.beta_min_shape == 1.0
+            assert actor.space.continuous.beta_initial_shape == 2.0
+
+
 def test_distal_leg_profiles_compose_with_matched_policy_distributions() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     import isaacgymenvs  # noqa: F401 - registers OmegaConf resolvers

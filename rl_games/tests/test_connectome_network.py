@@ -28,6 +28,8 @@ def artifact_path(tmp_path):
         raw_values=matrix.data.astype(np.float32),
         body_ids=np.arange(7, dtype=np.int64),
         sensory_indices=np.asarray([0, 1], dtype=np.int64),
+        front_proprioceptors_indices=np.asarray([0], dtype=np.int64),
+        front_tactile_indices=np.asarray([1], dtype=np.int64),
         descending_indices=np.asarray([2, 3], dtype=np.int64),
         motor_indices=np.asarray([4, 5], dtype=np.int64),
     )
@@ -178,6 +180,78 @@ def test_mlp_interface_projections_have_one_256_unit_hidden_layer(
             assert parameter.grad is not None and torch.isfinite(parameter.grad).all(), name
     assert outputs[0].shape == (6, 2)
     assert outputs[2].shape == (6, 1)
+
+
+def test_structured_adapter_drives_only_proprioceptors_and_uses_context(
+    artifact_path,
+) -> None:
+    params = _network_params(
+        artifact_path,
+        interface_projections={
+            "architecture": "mlp",
+            "hidden_size": 16,
+            "activation": "elu",
+        },
+    )
+    params["connectome"]["observations"] = {
+        "policy_size": 9,
+        "sensory_size": 6,
+        "context_size": 1,
+        "goal_size": 2,
+        "sensory_ranges": [[0, 6]],
+        "context_ranges": [[6, 7]],
+        "goal_ranges": [[7, 9]],
+    }
+    params["connectome"]["structured_input_adapter"] = {
+        "mode": "grouped_linear",
+        "proprioceptor_artifact_key": "front_proprioceptors_indices",
+        "tactile_artifact_key": "front_tactile_indices",
+        "dof_count": 1,
+        "fingertip_count": 1,
+        "groups": [
+            {"name": "limb", "dof_range": [0, 1], "fingertip_index": 0}
+        ],
+        "descending_projection": {
+            "architecture": "mlp",
+            "hidden_size": 8,
+            "activation": "elu",
+        },
+    }
+    params["connectome"].pop("plasticity_mode")
+    params["connectome"]["adaptation"] = {
+        "weight_mode": "adapters_only",
+        "learn_dynamics": False,
+    }
+    builder = ConnectomeBuilder()
+    builder.load(params)
+    network = builder.build(
+        "structured",
+        actions_num=2,
+        input_shape=(10,),
+        num_seqs=2,
+        value_size=1,
+        type="extra_param",
+        coef_ids=torch.tensor([50.0, 0.0]),
+        coef_id_idx=9,
+    )
+    assert network.sensory_adapter_mode == "grouped_linear"
+    assert network.sensory_adapter.group_names == ["limb"]
+    assert network.sensory_adapter.group_allocations == (1,)
+    assert network.descending_projection_architecture == "mlp"
+    assert network.descending_adapter[0].in_features == 7
+    assert network.descending_adapter[0].out_features == 8
+
+    observations = torch.randn(6, 10)
+    observations[:, 9] = torch.tensor([50.0, 0.0] * 3)
+    sensory = network.sensory_adapter(observations[:, :6])
+    assert sensory.shape == (6, 2)
+    assert torch.count_nonzero(sensory[:, 1]) == 0
+    outputs = network({"obs": observations, "seq_length": 3})
+    loss = outputs[0].square().sum() + outputs[2].square().sum()
+    loss.backward()
+    for adapter in network.sensory_adapter.group_adapters:
+        assert adapter.weight.grad is not None
+        assert torch.isfinite(adapter.weight.grad).all()
 
 
 @pytest.mark.parametrize(
