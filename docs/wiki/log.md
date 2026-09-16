@@ -666,3 +666,8 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 
 - Updated `docs/wiki/concepts/visual-reservoir.md` to distinguish simulating all traced neurons from exposing all neuron states to the trainable policy readout.
 - Recorded the nine-update reachability caveat, direct-input shortcut risk, and rollout-cache costs for motor-only, all-neuron and non-direct descending-plus-motor readouts.
+
+## [2026-09-16] query | Specify anatomical pooling and compact hybrid readout
+
+- Defined a fixed signed-mean anatomical pooling candidate that excludes externally driven cells and preserves coarse optic topography without adding BPTT.
+- Audited the 1,952-neuron artifact: it contains 177 annotated descending neurons, including its 157 input ports, plus 135 motor neurons. Recorded the 312-feature hybrid, memory cost, and direct-input controls.
