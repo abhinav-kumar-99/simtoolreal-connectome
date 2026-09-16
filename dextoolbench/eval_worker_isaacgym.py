@@ -116,9 +116,11 @@ def run(config: dict) -> dict:
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     checkpoint_state = checkpoint.get(0, checkpoint)
     env.set_env_state(checkpoint_state.get("env_state"))
+    num_observations = int(env.num_obs)
+    num_actions = int(env.num_acts)
     policy = RlPlayer(
-        num_observations=140,
-        num_actions=29,
+        num_observations=num_observations,
+        num_actions=num_actions,
         config_path=str(config_path),
         checkpoint_path=str(checkpoint_path),
         device=device,
@@ -127,7 +129,7 @@ def run(config: dict) -> dict:
 
     episode_results = []
     all_video_frames = []
-    zero_action = torch.zeros((1, 29), device=device)
+    zero_action = torch.zeros((1, num_actions), device=device)
     obs = env.step(zero_action)[0]["obs"]
     max_steps = int(config.get("max_steps", env.cfg["env"]["episodeLength"] + 1))
     for episode in range(int(config["num_episodes"])):
