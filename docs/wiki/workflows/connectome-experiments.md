@@ -10,7 +10,7 @@ Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
 Two fresh 100B suite contracts match the Gaussian and Beta jobs that were live when the structured interface was implemented. They retain seed 42, 12,288 environments, LF experience reuse at ratio one, entropy scale `.005`, KL target `.004`, LR range `[1e-6,.001]`, auxiliary actor value loss, four neural updates, batch sizes, force settings, checkpoint cadence and action-distribution parameters. They change the observation/interface contract and output identity only: palm/object orientation uses 6D rotation-matrix columns, body/efference signals enter grouped proprioceptor adapters, tactile cells receive no direct fabricated input, and context/goal/SAPG enter a 128-hidden-unit descending MLP.
 
-Do not point these profiles at an existing 140-observation checkpoint. Both start fresh with `checkpoint.mode: none` and `on_existing: fail`. The configured devices are GPU 0 for Gaussian and GPU 1 for Beta; do not start them while the existing jobs still occupy those GPUs unless the resource plan is deliberately changed in YAML.
+Do not point these profiles at an existing 140-observation checkpoint. Both start fresh with `checkpoint.mode: none` and `on_existing: fail`. The Gaussian and Beta alternatives now both target physical GPU 1, so they are replacement contracts and must not be run concurrently. The older dense-input capped Gaussian remains separately assigned to GPU 0.
 
 From the repository root, launch the capped-Gaussian experiment with:
 
@@ -30,7 +30,7 @@ Important YAML parameters are:
 
 - `training.task_profile`: selects the 144-value 6D-orientation environment contract.
 - `training.train_profiles`: selects structured capped Gaussian or structured restricted Beta.
-- `training.gpu_assignments`: physical GPU assignment; currently `[0]` and `[1]` respectively.
+- `training.gpu_assignments`: physical GPU assignment; both structured alternatives currently use `[1]` so either can replace the other without colliding with the dense-input Gaussian on GPU 0.
 - `training.epochs` and `max_frames`: 508,626 rollouts and the 100B-frame cap.
 - `training.checkpoint`: `none` means a fresh policy and fresh normalization state.
 - `training.overrides`: owns KL/LR, LF reuse, entropy scale, four neural updates, Beta floor or Gaussian cap, and task randomization.
@@ -39,7 +39,9 @@ Important YAML parameters are:
 
 No milestone-evaluation watcher YAML was requested or supplied with these two training contracts. A future Isaac Gym watcher must load each run's resolved task/profile so it reconstructs the 144-value environment. External deployment and Isaac Sim observation builders that still emit the released 140-value quaternion vector require the same explicit 6D conversion before they can consume these checkpoints. Training checkpoint verification is dimension-aware. The two suites were composed and both actor distributions completed real 1,952-cell CPU forward/backward checks before launch.
 
-The structured restricted-Beta suite was launched fresh on 2026-09-16 after terminating only the prior dense-input Beta suite/trainer/watcher PIDs 4102855/4102915/4103035. Their artifacts remain preserved. The replacement started in tmux session `connectome-structured-rot6d-beta-lf-100b` with suite PID 319189 and trainer PID 319244 on physical GPU 1; no structured milestone watcher was started. Its saved resolved configuration confirms the 144-value rotation-6D task, grouped linear proprioceptive adapters, zero direct tactile drive, 128-hidden-unit descending MLP, Beta minimum shape 1.0, initialization 2.0, K=4, auxiliary actor value loss, LF/1.0 reuse, entropy scale .005, KL target .004 and 100B cap. At frame 3,735,552, entropy 16.47404, aggregate KL .00160879 and mini-epoch KLs .00098026/.00223732 were finite with both invalid-KL flags zero. This establishes launch health only. The pre-existing capped-Gaussian suite/trainer/watcher PIDs 261900/261951/262494 remained live and were not signaled.
+The structured restricted-Beta suite was launched fresh on 2026-09-16 after terminating only the prior dense-input Beta suite/trainer/watcher PIDs 4102855/4102915/4103035. Its artifacts remain preserved. It ran in tmux session `connectome-structured-rot6d-beta-lf-100b` with suite PID 319189 and trainer PID 319244 on physical GPU 1 and stopped at frame 163,381,248 when the user selected Gaussian actions. Its last TensorBoard point was finite: entropy 12.85896, aggregate KL .01079517, actor loss .00127945 and critic loss .07226394.
+
+The fresh replacement uses the structured capped-Gaussian YAML above in tmux session `connectome-structured-rot6d-gaussian-lf-100b`, with suite PID 332402 and trainer PID 332463 on physical GPU 1. Its saved resolved configuration preserves the new 144-value rotation-6D task, grouped linear proprioceptive adapters, zero direct tactile drive and 128-hidden-unit descending MLP. It changes only the policy family to the same Gaussian contract as the existing dense run: `continuous_a2c_logstd`, coefficient-conditioned log standard deviations, hard-clipped executed actions and a differentiable per-coordinate `max_sigma: 3.0` cap. K=4, auxiliary actor value loss, LF/1.0 reuse, entropy scale .005, KL target .004, LR range, task settings and 100B cap remain matched. At frame 3,735,552, entropy 41.30614, aggregate KL .00194340, actor loss -.00479462 and critic loss .16932771 were finite. This establishes launch health only. No structured milestone watcher was started. The pre-existing dense capped-Gaussian suite/trainer/watcher PIDs 261900/261951/262494 remained live on GPU 0 and were not signaled.
 
 ## Four-update Beta versus clipped Gaussian (2026-09-15)
 
