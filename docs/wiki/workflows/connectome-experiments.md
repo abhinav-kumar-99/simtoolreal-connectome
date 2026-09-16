@@ -6,20 +6,20 @@ Last updated: 2026-09-16
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
-## Fixed-input cached-reservoir Beta
+## Fixed-input cached-reservoir policies
 
-The fixed-reservoir contract removes learned input adapters and PPO backpropagation through MaleCNS. The exact fixed population map, memory boundary and biological caveats are in [Fixed-input MaleCNS reservoir controller](../concepts/fixed-reservoir-controller.md). It retains the 144-value Rotation-6D task, four held-input neural updates, restricted Beta actions, LF/1.0 experience reuse, entropy scale `.005`, actor KL target `.004`, LR range `[1e-6,.001]`, 12,288 environments and the privileged central critic. It changes `use_experimental_cv` to false because there is no reason to train the unused actor-side value head through this readout-only policy.
+The fixed-reservoir contract removes learned input adapters and PPO backpropagation through MaleCNS. The exact fixed population map, memory boundary and biological caveats are in [Fixed-input MaleCNS reservoir controller](../concepts/fixed-reservoir-controller.md). The current replacement retains the 144-value Rotation-6D task, four held-input neural updates, LF/1.0 experience reuse, entropy scale `.005`, actor KL target `.004`, LR range `[1e-6,.001]`, 12,288 environments and the privileged central critic. Its Gaussian distribution, coefficient-conditioned scale, sigma-three ceiling and auxiliary actor value loss match the dense-input Gaussian control.
 
-Run the completed two-epoch integration gate from the repository root with an empty output directory:
+Run the completed matched-Gaussian two-epoch integration gate from the repository root with an empty output directory:
 
 ```bash
-.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_fixed_reservoir_rot6d_beta_lf_smoke.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_fixed_reservoir_rot6d_gaussian_lf_entropy1x_sigma3_smoke.yaml
 ```
 
 Launch the fresh 100B job with:
 
 ```bash
-.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_fixed_reservoir_rot6d_beta_lf_100b.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_fixed_reservoir_rot6d_gaussian_lf_entropy1x_sigma3_100b.yaml
 ```
 
 `scripts/run_connectome_suite.py` is the only training entry point. It reads GPU placement, profile, environment count, budgets, checkpoint cadence, optimizer settings and task overrides from the selected YAML. `scripts/prepare_malecns_connectome.py` verifies/prepares the pinned graph artifact. `connectome_network_builder.py` constructs and validates the parameter-free population encoders, runs the live reservoir and exposes cached motor features; `a2c_common.py` stores those 135-value features and presents them as a feed-forward PPO dataset. These helpers are imported by the entry point and are not run separately.
@@ -32,13 +32,13 @@ Important settings are:
 - `reservoir_readout`: selects cached motor features, the 128-unit readout and SAPG conditioning at the readout rather than inside MaleCNS.
 - `normalize_input: false`: prevents running normalization from changing the fixed physical encoding.
 - `dynamics.neural_updates: 4`: recurrent passes per environment control decision.
-- `use_experimental_cv: false`: disables the auxiliary actor value loss while leaving the privileged central critic enabled.
+- `use_experimental_cv: true`: matches the dense Gaussian and trains the separate actor value head on cached motor features plus the SAPG embedding; the privileged central critic remains enabled.
 
-The smoke completed both epochs, 393,216 frames and checkpoint deployment verification. Its warm update took 0.267 seconds versus about 0.92 seconds in the stopped structured/BPTT job. Two earlier smoke attempts are preserved under `train_dir/connectome/fixed_reservoir/*failed*`: one exposed an auxiliary-buffer shape bug before epoch 1, and one completed epoch 1 before exposing variable-width gradient telemetry when the actor value head had no gradient. Both runtime seams were fixed before the successful gate.
+The Gaussian smoke completed both epochs, 393,216 frames and checkpoint deployment verification. Its warm update took .263 seconds versus about .92 seconds in the stopped structured/BPTT job. `c_loss` and `cval_loss` were independently nonzero, confirming both the actor-side auxiliary value head and privileged central critic trained. Earlier Beta integration artifacts remain preserved, including two initial failed smoke gates whose auxiliary-buffer and gradient-telemetry bugs were fixed.
 
 The structured Gaussian suite/trainer PIDs 332402/332463 were stopped at the user's direction and their artifacts were preserved. The dense capped-Gaussian suite/trainer/watcher PIDs 261900/261951/262494 on GPU 0 were not signaled. No fixed-reservoir video watcher exists yet; evaluation must use the saved 144-value Rotation-6D policy profile.
 
-The full job launched fresh in tmux session `connectome-fixed-reservoir-beta-lf-100b` as suite PID 368787 and trainer PID 368865 on physical GPU 1. Its resolved configuration confirms the fixed map, cached motor readout, restricted Beta floor 1, K=4, LF/1.0, entropy scale `.005`, actor KL `.004`, `use_experimental_cv: false` and the 100B cap. At epoch 28/frame 5,308,416 it remained live with 1.086 seconds rollout, .261 seconds update, 1.347 seconds total and 145,946 frames/s. The trainer's process allocation grew from about 6.2 GiB during initialization to about 10.2 GiB after repeated optimizer epochs; neither snapshot is a controlled peak-memory measurement. This is execution and early numerical-health evidence, not learning or dexterity evidence.
+The restricted-Beta full run was stopped at the user's direction near 286M frames; its artifacts and port-6008 TensorBoard history remain preserved. The replacement launched fresh in tmux session `connectome-fixed-reservoir-gaussian-lf-100b` as suite PID 387124 and trainer PID 387180 on physical GPU 1. Its resolved configuration confirms the fixed map, cached motor readout, clipped Gaussian with coefficient-conditioned sigma capped at three, K=4, LF/1.0, entropy scale `.005`, actor KL `.004`, `use_experimental_cv: true` and the 100B cap. At epoch 10/frame 1,769,472 it was live at 145,171 frames/s with a .250-second update; entropy was 41.2216, actor `c_loss` .9566, privileged `cval_loss` .07679 and KL .00310. A symlink exposes this run to the existing port-6008 TensorBoard without restarting it. This is execution and early numerical-health evidence, not learning or dexterity evidence.
 
 ## Structured sensory routing with 6D orientation
 
