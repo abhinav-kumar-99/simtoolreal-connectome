@@ -359,6 +359,7 @@ class SimToolReal(VecTask):
         self.policy_camera_render_interval = 1
         self._policy_camera_observation_index = 0
         self._policy_camera_luminance = None
+        self._policy_camera_rgba = None
         if self.policy_vision_enabled:
             if self.cfg['env'].get('goodResetBoundary', 0) > 0 or self.cfg['env'].get('saveStates', False):
                 raise ValueError('Vision currently requires ordinary resets and saveStates=false: hidden goal actors are not logical goal snapshots')
@@ -3154,10 +3155,22 @@ class SimToolReal(VecTask):
                 render_camera_sensors_for_current_step(self.gym, self.sim, self.device)
                 self.gym.start_access_image_tensors(self.sim)
                 try:
-                    rgb = torch.stack(self.policy_camera_tensors)[..., :3].float() / 255.0
-                    self._policy_camera_luminance = (
-                        rgb * rgb.new_tensor([.299, .587, .114])
-                    ).sum(-1).flatten(1)
+                    if self.vision_config.get('fusedLuminance', False):
+                        from simtoolreal_shared.vision_ops import rgba_luminance
+                        if self._policy_camera_rgba is None:
+                            self._policy_camera_rgba = torch.empty(
+                                (len(self.policy_camera_tensors), *self.policy_camera_tensors[0].shape),
+                                device=self.device, dtype=torch.uint8)
+                        torch.stack(self.policy_camera_tensors, out=self._policy_camera_rgba)
+                        output = (None if self._policy_camera_luminance is None else
+                                  self._policy_camera_luminance.view(self._policy_camera_rgba.shape[:-1]))
+                        self._policy_camera_luminance = rgba_luminance(
+                            self._policy_camera_rgba, output).flatten(1)
+                    else:
+                        rgb = torch.stack(self.policy_camera_tensors)[..., :3].float() / 255.0
+                        self._policy_camera_luminance = (
+                            rgb * rgb.new_tensor([.299, .587, .114])
+                        ).sum(-1).flatten(1)
                 finally:
                     self.gym.end_access_image_tensors(self.sim)
             obs_dict['camera_luminance'] = self._policy_camera_luminance

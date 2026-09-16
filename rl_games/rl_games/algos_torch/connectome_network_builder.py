@@ -359,6 +359,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 )
             self.edge_log_min, self.edge_log_max = map(math.log, bounds)
             self.backend_options = connectome.get("backend_options", {})
+            self._frozen_tanh_runner = None
             if connectome.get("dtype", "float32") != "float32":
                 raise ValueError(
                     "Connectome sparse recurrence currently requires dtype: float32"
@@ -739,6 +740,13 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self.dynamics_activation = str(
                 dynamics.get("activation", "tanh")
             ).lower()
+            if self.backend_options.get('cuda_graph', False) and not self.backend_options.get('frozen_inference', False):
+                raise ValueError('cuda_graph requires frozen_inference')
+            if self.backend_options.get('frozen_inference', False) and (
+                    self.operator_backend != 'triton_fused'
+                    or self.dynamics_activation != 'tanh'
+                    or not self.cache_reservoir_features):
+                raise ValueError('frozen_inference requires a cached tanh reservoir with triton_fused')
             if self.dynamics_activation not in {"tanh", "lif"}:
                 raise ValueError(
                     "Connectome recurrent activation must be tanh or lif"
@@ -973,6 +981,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             return self.recurrent_values * delta.exp()
 
         def _load_from_state_dict(self, *args, **kwargs):
+            self._frozen_tanh_runner = None
             self._cached_recurrent_operator = None
             self._backend_graph = None
             return super()._load_from_state_dict(*args, **kwargs)
@@ -1029,6 +1038,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             )
 
         def _apply(self, fn, recurse: bool = True):
+            self._frozen_tanh_runner = None
             # The cached operator is reconstructed from persistent buffers after
             # device or dtype moves, and is deliberately absent from checkpoints.
             self._cached_recurrent_operator = None
@@ -1259,6 +1269,22 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     from rl_games.algos_torch.connectome_triton import fused_step
 
                     graph = self.backend_graph()
+                    if self.backend_options.get('frozen_inference', False):
+                        if (torch.is_grad_enabled() or not self.cache_reservoir_features
+                                or self.learn_dynamics or self.weight_mode != 'adapters_only'):
+                            raise RuntimeError('frozen_inference requires a frozen cached reservoir under no_grad')
+                        from rl_games.algos_torch.connectome_triton import FrozenTanhRunner
+                        runner = self._frozen_tanh_runner
+                        if runner is None or runner.h.shape != hidden.t().shape or runner.h.device != hidden.device:
+                            runner = FrozenTanhRunner(
+                                graph, step_values, hidden, incoming, outgoing, leak,
+                                self.recurrent_bias, sensory_drive, descending_drive,
+                                self.sensory_indices, self.descending_indices,
+                                self.recurrent_gain, self.neural_updates,
+                                capture=bool(self.backend_options.get('cuda_graph', False)),
+                            )
+                            self._frozen_tanh_runner = runner
+                        return runner(hidden, sensory_drive, descending_drive)
                     for _ in range(self.neural_updates):
                         hidden = fused_step(
                             graph, step_values, hidden, incoming, outgoing, leak,

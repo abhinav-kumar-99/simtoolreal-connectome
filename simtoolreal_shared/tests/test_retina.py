@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import torch
 from scipy import sparse
 from simtoolreal_shared.retina import RetinalPopulationEncoder
@@ -10,6 +11,30 @@ class Body(torch.nn.Module):
         out = x.new_zeros((len(x), 4))
         out[:, 0] = x[:, 0]
         return out
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA kernels')
+def test_fused_vision_matches_reference_and_preserves_proprioception():
+    from simtoolreal_shared.vision_ops import rgba_luminance
+    rgba = torch.randint(0, 256, (3, 36, 64, 4), device='cuda', dtype=torch.uint8)
+    rgb = rgba[..., :3].float() / 255.
+    gray = (rgb * rgb.new_tensor([.299, .587, .114])).sum(-1)
+    out = torch.empty_like(gray)
+    assert rgba_luminance(rgba, out).data_ptr() == out.data_ptr()
+    torch.testing.assert_close(out, gray, atol=2e-7, rtol=2e-6)
+    # Include corner and interior sampling, extra trailing SAPG column and a
+    # noncontiguous row stride, as occur in policy observation views.
+    obs = torch.rand(3, 2307, device='cuda')[:, :2306]
+    regular = RetinalPopulationEncoder(Body(), [1, 2, 3],
+        [[-1, -1], [1, 1], [.24, -.57]], image_start=1, height=36, width=64).cuda()
+    fused = RetinalPopulationEncoder(Body(), [1, 2, 3],
+        [[-1, -1], [1, 1], [.24, -.57]], image_start=1, height=36, width=64, fused=True).cuda()
+    with torch.no_grad():
+        actual = fused(obs)
+        torch.testing.assert_close(actual, regular(obs), atol=1e-5, rtol=2e-5)
+        torch.testing.assert_close(actual[:, 0], obs[:, 0], atol=0, rtol=0)
+    with pytest.raises(RuntimeError, match='no_grad'):
+        fused(obs)
 
 
 def test_retina_uses_spatial_pixels_and_preserves_proprioception():
@@ -69,3 +94,21 @@ def test_multirate_low_resolution_visual_profile_contract():
     assert (net.fixed_input_encoder.retina.height,
             net.fixed_input_encoder.retina.width) == (36, 64)
     assert net.fixed_input_encoder.retina.image_start == 99
+
+
+def test_fast_visual_profile_preserves_camera_and_neural_timing():
+    from pathlib import Path
+    from hydra import compose, initialize_config_dir
+    root = Path(__file__).resolve().parents[2]
+    with initialize_config_dir(version_base=None, config_dir=str(root / 'isaacgymenvs/cfg')):
+        cfg = compose(config_name='config', overrides=[
+            'task=SimToolRealVisionProprio64x36R4',
+            'train=SimToolRealFullCNSVisualReservoirGaussianSAPGFast'])
+    net = cfg.train.params.network.connectome
+    assert net.backend_options.frozen_inference
+    assert not net.backend_options.cuda_graph
+    assert net.fixed_input_encoder.retina.fused
+    assert net.dynamics.neural_updates == 9
+    assert net.reservoir_readout.enabled
+    assert net.observations.policy_size == 2403
+    assert cfg.task.env.policyVision.renderInterval == 4

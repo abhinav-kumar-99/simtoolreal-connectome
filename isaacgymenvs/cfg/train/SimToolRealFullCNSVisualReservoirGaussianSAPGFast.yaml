@@ -1,0 +1,15 @@
+defaults:
+  - SimToolRealFullCNSVisualReservoirGaussianSAPGVision64x36R4
+  - _self_
+
+params:
+  network:
+    connectome:
+      backend_options:
+        frozen_inference: true
+        cuda_graph: false
+      fixed_input_encoder:
+        retina:
+          fused: true
+  config:
+    name: ${resolve_default:SimToolRealFullCNSVisualReservoirGaussianSAPGFast,${....experiment}}

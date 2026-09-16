@@ -6,6 +6,8 @@ Last updated: 2026-09-16
 
 Related: [Fixed reservoir](fixed-reservoir-controller.md), [Experiment workflow](../workflows/connectome-experiments.md), [Fruitfly source audit](../sources/summaries/quantum-coded-fruitfly.md)
 
+The latest performance replacement uses the same biological/input contract with 768 environments and inference-only buffers. See [measured optimizations and current run](../analyses/visual-reservoir-performance.md); the 384-environment launch details below are historical.
+
 ## Circuit and evidence boundary
 
 ### Current full-neuron replacement
@@ -96,7 +98,9 @@ The 96x54 full-CNS suite/trainer/watcher PIDs 475520/475598/475523 were stopped 
 
 ## Reproduction and helper responsibilities
 
-### Further throughput candidates (not implemented)
+### Further throughput candidates (historical proposal, now tested)
+
+The following proposal is superseded by the implemented options and measured experiments in [Visual reservoir performance](../analyses/visual-reservoir-performance.md). It is retained to distinguish predicted bandwidth savings from actual measured speedups.
 
 After the render-rate change, a live timing sample at frame 878,592 measured 1.185 seconds inside environment steps, 1.971 seconds collecting the rollout, and 0.065 seconds for PPO, about 3,018 total FPS. These host timers are not CUDA-event attribution: synchronization inside environment stepping can charge earlier queued GPU work to that phase. Profile GPU work before assigning exact percentages to camera versus CNS computation.
 

@@ -354,6 +354,36 @@ def _build_fixed_reservoir(
     )
 
 
+@pytest.mark.parametrize('capture', [False, True])
+def test_frozen_tanh_matches_rollout_and_invalidates_on_reload(artifact_path, capture):
+    if not torch.cuda.is_available():
+        pytest.skip('CUDA required')
+    reference = _build_fixed_reservoir(artifact_path, operator_backend='triton_fused').cuda()
+    optimized = _build_fixed_reservoir(artifact_path, operator_backend='triton_fused').cuda()
+    optimized.load_state_dict(reference.state_dict())
+    optimized.backend_options.update(frozen_inference=True, cuda_graph=capture)
+    obs = torch.tensor([[1., .25, -.5, 50.], [-1., -.25, .5, 0.]], device='cuda')
+    a_state = tuple(s.cuda() for s in reference.get_default_rnn_state())
+    b_state = tuple(s.cuda() for s in optimized.get_default_rnn_state())
+    for step in range(4):
+        if step == 2:
+            a_state[0][:, 0].zero_()
+            b_state[0][:, 0].zero_()
+        a = reference({'obs': obs, 'rnn_states': a_state})
+        b = optimized({'obs': obs, 'rnn_states': b_state})
+        for x, y in zip(a[:3], b[:3]):
+            torch.testing.assert_close(x, y)
+        torch.testing.assert_close(a[3][0], b[3][0])
+        a_state, b_state = a[3], b[3]
+    assert optimized._frozen_tanh_runner is not None
+    optimized.load_state_dict(reference.state_dict())
+    assert optimized._frozen_tanh_runner is None
+    cached = optimized.last_reservoir_features.clone()
+    output = optimized({'obs': obs, 'reservoir_features': cached})
+    output[0].sum().backward()
+    assert optimized.extra_params.grad is not None
+
+
 def test_fixed_reservoir_encodes_inputs_and_trains_only_cached_readout(
     artifact_path, monkeypatch
 ) -> None:

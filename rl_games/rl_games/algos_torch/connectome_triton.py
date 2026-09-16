@@ -40,6 +40,7 @@ def _sparse_step(
     FUSED: tl.constexpr,
     KB: tl.constexpr = 32,
     EB: tl.constexpr = 32,
+    SAVE_BACKWARD: tl.constexpr = True,
 ):
     row = tl.program_id(0)
     b = tl.program_id(1) * KB + tl.arange(0, KB)
@@ -70,8 +71,9 @@ def _sparse_step(
         leak = tl.load(LEAK + row)
         h0 = tl.load(H + row * B + b, b < B, 0)
         out = (1.0 - leak) * h0 + leak * z
-        tl.store(REC + row * B + b, acc, b < B)
-        tl.store(Z + row * B + b, z, b < B)
+        if SAVE_BACKWARD:
+            tl.store(REC + row * B + b, acc, b < B)
+            tl.store(Z + row * B + b, z, b < B)
     else:
         out = acc
     tl.store(OUT + row * B + b, out, b < B)
@@ -349,6 +351,67 @@ class _Step(torch.autograd.Function):
             None,
             None,
         )
+
+
+class FrozenTanhRunner:
+    """Reusable neuron-major buffers for a fixed, inference-only recurrence.
+
+    Return a copy so a later call cannot overwrite a caller's recurrent state.
+    CUDA graph capture covers only the neural passes, not simulation or inputs.
+    """
+
+    def __init__(self, graph, values, hidden, gi, go, leak, bias,
+                 sensory, descending, si, di, beta, updates, capture=False):
+        self.graph, self.values = graph, values
+        self.gi, self.go, self.leak, self.bias = gi, go, leak, bias
+        self.beta, self.updates = beta, updates
+        self.h = torch.empty_like(hidden.t(), memory_format=torch.contiguous_format)
+        self.other = torch.empty_like(self.h)
+        self.s = torch.empty_like(sensory.t(), memory_format=torch.contiguous_format)
+        self.d = torch.empty_like(descending.t(), memory_format=torch.contiguous_format)
+        self.maps = []
+        for indices in (si, di):
+            mapping = torch.full((hidden.shape[1],), -1, dtype=torch.int64, device=hidden.device)
+            mapping[indices] = torch.arange(indices.numel(), device=hidden.device)
+            self.maps.append(mapping)
+        self.cuda_graph = None
+        self.h.copy_(hidden.t())
+        self.s.copy_(sensory.t())
+        self.d.copy_(descending.t())
+        if capture:
+            stream = torch.cuda.Stream(device=hidden.device)
+            stream.wait_stream(torch.cuda.current_stream(hidden.device))
+            with torch.cuda.stream(stream):
+                self._passes()  # compile outside capture
+            torch.cuda.current_stream(hidden.device).wait_stream(stream)
+            self.cuda_graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(self.cuda_graph, stream=stream):
+                self._passes()
+
+    def _passes(self):
+        n, b = self.h.shape
+        source, dest = self.h, self.other
+        for _ in range(self.updates):
+            _sparse_step[(n, triton.cdiv(b, 32))](
+                self.graph.crow, self.graph.col, self.values, source,
+                self.gi, self.go, self.leak, self.bias, self.s, self.d,
+                self.maps[0], self.maps[1], dest, dest, dest,
+                b, self.beta, True, SAVE_BACKWARD=False,
+            )
+            source, dest = dest, source
+        self.output = source
+
+    def __call__(self, hidden, sensory, descending):
+        if torch.is_grad_enabled():
+            raise RuntimeError('FrozenTanhRunner requires no_grad')
+        self.h.copy_(hidden.t())
+        self.s.copy_(sensory.t())
+        self.d.copy_(descending.t())
+        if self.cuda_graph is None:
+            self._passes()
+        else:
+            self.cuda_graph.replay()
+        return self.output.t().clone()
 
 
 def fused_step(
