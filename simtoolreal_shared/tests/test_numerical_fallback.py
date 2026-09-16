@@ -177,14 +177,18 @@ def test_success_handoff_candidate_contracts_compose() -> None:
     cases = [
         (
             'ppo_1952_4update_restricted_beta_lf_entropy3x_100b.yaml',
-            'continuous_a2c_beta', 'beta', None,
+            'continuous_a2c_beta', 'beta', None, 0.015,
         ),
         (
             'ppo_1952_4update_gaussian_lf_entropy3x_sigma3_100b.yaml',
-            'continuous_a2c_logstd', 'gaussian', 3.0,
+            'continuous_a2c_logstd', 'gaussian', 3.0, 0.015,
+        ),
+        (
+            'ppo_1952_4update_gaussian_lf_entropy1x_sigma3_100b.yaml',
+            'continuous_a2c_logstd', 'gaussian', 3.0, 0.005,
         ),
     ]
-    for filename, model_name, distribution, max_sigma in cases:
+    for filename, model_name, distribution, max_sigma, entropy_scale in cases:
         suite_path = root / 'configs/connectome/suites' / filename
         suite = yaml.safe_load(suite_path.read_text())
         training = suite['training']
@@ -203,9 +207,20 @@ def test_success_handoff_candidate_contracts_compose() -> None:
         assert config.use_experimental_cv is True
         assert config.use_others_experience == 'lf'
         assert config.off_policy_ratio == 1.0
-        assert config.expl_reward_coef_scale == 0.015
+        assert config.expl_reward_coef_scale == entropy_scale
         assert training['gpu_assignments'] == [0]
         assert training['max_frames'] == 100_000_000_000
+
+    replacement_video = yaml.safe_load((
+        root / 'configs/connectome/evaluation/'
+        'ppo_1952_4update_gaussian_lf_entropy1x_sigma3_100b_milestones.yaml'
+    ).read_text())
+    assert replacement_video['training_suite_name'] == (
+        'ppo_1952_4update_gaussian_lf_entropy1x_sigma3_100b'
+    )
+    assert replacement_video['policies'][0]['name'] == 'gaussian_lf_entropy1x_sigma3'
+    assert replacement_video['policies'][0]['gpu'] == 0
+    assert replacement_video['milestone_interval_frames'] == 250_000_000
 
     handoff = yaml.safe_load((
         root / 'configs/connectome/handoffs/ppo_1952_lf_entropy_success_handoff.yaml'
