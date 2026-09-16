@@ -671,3 +671,8 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 
 - Defined a fixed signed-mean anatomical pooling candidate that excludes externally driven cells and preserves coarse optic topography without adding BPTT.
 - Audited the 1,952-neuron artifact: it contains 177 annotated descending neurons, including its 157 input ports, plus 135 motor neurons. Recorded the 312-feature hybrid, memory cost, and direct-input controls.
+
+## [2026-09-16] query | Clarify driven-neuron state semantics
+
+- Corrected the readout discussion: driven neurons receive leak, recurrence, bias and tanh processing on every neural update; their final states are not raw input copies.
+- Reframed driven-cell exclusion as a conservative short-path ablation rather than a requirement or evidence that those cells bypass all CNS dynamics.
