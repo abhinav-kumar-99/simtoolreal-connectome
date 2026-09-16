@@ -6,6 +6,10 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] launch | Start fixed-reservoir Gaussian milestone-video watcher
+
+Added a YAML-owned watcher for the live fixed-input, cached-reservoir Gaussian suite. It uses the exact `fixed_reservoir_gaussian` run identity, saved resolved configuration, physical GPU 1, 250M-frame intervals through 100B, and three deterministic mean-action evaluation cases per milestone. Launched it in tmux `connectome-fixed-reservoir-gaussian-videos` as PID 400161; `milestone_status.json` reports running with 400 expected targets, zero completed and zero failures while it awaits the first inference checkpoint. Suite/trainer PIDs 387124/387180 and all other jobs remained untouched.
+
 ## [2026-09-16] query | Audit whether four fixed-reservoir updates are sufficient
 
 Traced the exact synchronous recurrence and ran a directed breadth-first search over the prepared 1,952-cell artifact using the fixed encoder's 87 proprioceptor and 98 descending targets. K=4 gives same-decision access from sensory, descending and goal inputs to all 130 reachable motor cells; five motor cells are unreachable from every used input and cannot be recovered by increasing K. Recorded that this establishes structural coverage, not sufficient nonlinear mixing or task performance, and defined a matched K ablation with motor-feature diagnostics. No trainer or live run was changed; unrelated `.vscode/` and `tmp/` remain untouched.

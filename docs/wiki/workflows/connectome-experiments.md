@@ -167,6 +167,14 @@ The two active 100B policies have independent restartable video watchers:
 
 Each watcher polls every 30 seconds for inference-only checkpoints at 250M-frame targets through the near-cap 100B target, evaluates on the model's corresponding physical GPU, and resumes from `milestone_status.json`. Each target produces three deterministic mean-action, high-resolution videos: Sharpie `write_c`, eraser `wipe_smile`, and spatula `flip_over`, one episode each with the paper Task Progress tolerance of .02 m. Beta outputs go under `evals/connectome/ppo_1952_4update_beta_100b_milestones`; Gaussian outputs use the parallel `_gaussian_` directory. The YAMLs point at the active `_100b_training_state` run's `resolved_config.yaml`, so RlPlayer enforces K=4. The watcher helper discovers checkpoints and manages target/retry state; the evaluation helper expands YAML cases and schedules workers; the worker runs Isaac Gym and writes result JSON/video. These helper files are imported by the entrypoint and have no separate operator command.
 
+The fixed-input, cached-reservoir Gaussian run has its own watcher and artifact identity:
+
+```bash
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_fixed_reservoir_rot6d_gaussian_lf_entropy1x_sigma3_100b_milestones.yaml
+```
+
+Its YAML points at the live suite's `fixed_reservoir_gaussian` run name and saved `resolved_config.yaml`, evaluates on physical GPU 1, polls every 30 seconds, and targets every 250M frames through 100B. Each milestone writes the same three deterministic mean-action task videos plus metrics beneath `evals/connectome/ppo_1952_fixed_reservoir_rot6d_gaussian_lf_entropy1x_sigma3_100b_milestones`; `milestone_status.json` is its restart state. `run_connectome_milestone_evaluation.py` owns polling, checkpoint discovery and retries; it imports `run_connectome_evaluation.py` to expand the three YAML cases and schedule one worker at a time, while `dextoolbench/eval_worker_isaacgym.py` loads the checkpoint with the saved K=4 policy contract and produces result JSON and MP4 files. The helpers are not separate entrypoints.
+
 ### Guarded Gaussian-to-unrestricted-Beta fallback
 
 Run the one-shot numerical guard from the repository root with:
