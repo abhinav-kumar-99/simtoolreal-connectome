@@ -254,7 +254,9 @@ class _FixedPopulationEncoder(nn.Module):
         if len(set(used_targets)) != len(used_targets):
             raise ValueError("fixed encoder mappings must not overlap target cells")
 
-    def forward(self, observations: torch.Tensor) -> torch.Tensor:
+    def _encode(
+        self, observations: torch.Tensor, *, spike_rates: bool
+    ) -> torch.Tensor:
         if observations.ndim != 2 or observations.shape[1] < self.policy_size:
             raise ValueError(
                 f"Expected fixed encoder observations [batch, >= {self.policy_size}]"
@@ -275,8 +277,20 @@ class _FixedPopulationEncoder(nn.Module):
                     (torch.clamp_min(encoded, 0.0), torch.clamp_min(-encoded, 0.0)),
                     dim=-1,
                 )
+            elif spike_rates:
+                # A signed scalar is represented as modulation around a half-rate
+                # baseline. Opponent codes are already non-negative rates, and
+                # unused population cells remain exactly silent.
+                encoded = 0.5 * (encoded + 1.0)
             output.index_copy_(1, target_indices, encoded)
         return output
+
+    def forward(self, observations: torch.Tensor) -> torch.Tensor:
+        return self._encode(observations, spike_rates=False)
+
+    def spike_rates(self, observations: torch.Tensor) -> torch.Tensor:
+        """Return fixed population codes in the unit interval for LIF drive."""
+        return self._encode(observations, spike_rates=True)
 
 
 class ConnectomeBuilder(network_builder.NetworkBuilder):
@@ -709,8 +723,55 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 raise TypeError("dynamics.neural_updates must be an integer")
             if self.neural_updates < 1:
                 raise ValueError("dynamics.neural_updates must be positive")
-            if dynamics.get("activation") != "tanh":
-                raise ValueError("Connectome recurrent activation must be tanh")
+            self.dynamics_activation = str(
+                dynamics.get("activation", "tanh")
+            ).lower()
+            if self.dynamics_activation not in {"tanh", "lif"}:
+                raise ValueError(
+                    "Connectome recurrent activation must be tanh or lif"
+                )
+            if self.dynamics_activation == "lif":
+                if not self.cache_reservoir_features:
+                    raise ValueError(
+                        "LIF dynamics require the fixed reservoir_readout path so "
+                        "the hard spikes are never differentiated through"
+                    )
+
+                def positive_finite(name: str, default: float) -> float:
+                    value = float(dynamics.get(name, default))
+                    if not math.isfinite(value) or value <= 0.0:
+                        raise ValueError(
+                            f"dynamics.{name} must be finite and positive"
+                        )
+                    return value
+
+                self.control_frequency_hz = positive_finite(
+                    "control_frequency_hz", 60.0
+                )
+                self.membrane_time_constant_ms = positive_finite(
+                    "membrane_time_constant_ms", 10.0
+                )
+                self.spike_threshold = positive_finite("spike_threshold", 1.0)
+                self.refractory_period_ms = positive_finite(
+                    "refractory_period_ms", 2.0
+                )
+                self.input_current_scale = positive_finite(
+                    "input_current_scale", 1.5
+                )
+                self.lif_timestep_ms = 1000.0 / (
+                    self.control_frequency_hz * self.neural_updates
+                )
+                self.membrane_decay = math.exp(
+                    -self.lif_timestep_ms / self.membrane_time_constant_ms
+                )
+            else:
+                self.control_frequency_hz = None
+                self.membrane_time_constant_ms = None
+                self.spike_threshold = None
+                self.refractory_period_ms = None
+                self.input_current_scale = None
+                self.lif_timestep_ms = None
+                self.membrane_decay = None
             self.recurrent_gain = float(dynamics["beta"])
             gain_min, gain_max = (float(value) for value in dynamics["gain_bounds"])
             if legacy is None:
@@ -1052,7 +1113,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             hidden: torch.Tensor,
             operator=None,
             values=None,
-        ) -> torch.Tensor:
+            refractory: torch.Tensor | None = None,
+            spikes: torch.Tensor | None = None,
+        ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
             if hidden.device.type == "cuda":
                 if hasattr(torch, "amp") and hasattr(torch.amp, "autocast"):
                     autocast_disabled = torch.amp.autocast("cuda", enabled=False)
@@ -1066,8 +1129,14 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 observations = observations.float()
                 hidden = hidden.float()
                 if self.sensory_adapter_mode == "fixed_population_code":
-                    sensory_drive = self.sensory_adapter(observations)
-                    descending_drive = self.descending_adapter(observations)
+                    if self.dynamics_activation == "lif":
+                        sensory_drive = self.sensory_adapter.spike_rates(observations)
+                        descending_drive = self.descending_adapter.spike_rates(
+                            observations
+                        )
+                    else:
+                        sensory_drive = self.sensory_adapter(observations)
+                        descending_drive = self.descending_adapter(observations)
                 else:
                     sensory = _select_ranges(observations, self.sensory_ranges)
                     descending_inputs = []
@@ -1085,14 +1154,98 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     descending_input = torch.cat(descending_inputs, dim=-1)
                     sensory_drive = self.sensory_adapter(sensory)
                     descending_drive = self.descending_adapter(descending_input)
-                leak = self.substep_leaks()
                 incoming = self.incoming_gains()
+                step_values = self.effective_values() if values is None else values
+                outgoing = self.outgoing_gains()
+                if self.dynamics_activation == "lif":
+                    if refractory is None or spikes is None:
+                        raise ValueError(
+                            "LIF recurrence requires membrane, refractory, and spike state"
+                        )
+                    refractory = refractory.float()
+                    spikes = spikes.float()
+                    motor_rates = hidden.new_zeros(
+                        (hidden.shape[0], self.reservoir_feature_count)
+                    )
+                    if self.operator_backend == "triton_fused":
+                        from rl_games.algos_torch.connectome_triton import (
+                            fused_lif_step,
+                        )
+
+                        graph = self.backend_graph()
+                        for _ in range(self.neural_updates):
+                            hidden, refractory, spikes = fused_lif_step(
+                                graph,
+                                step_values,
+                                hidden,
+                                refractory,
+                                spikes,
+                                incoming,
+                                outgoing,
+                                self.recurrent_bias,
+                                sensory_drive,
+                                descending_drive,
+                                self.sensory_indices,
+                                self.descending_indices,
+                                self.recurrent_gain,
+                                self.input_current_scale,
+                                self.membrane_decay,
+                                self.spike_threshold,
+                                self.refractory_period_ms,
+                                self.lif_timestep_ms,
+                            )
+                            motor_rates.add_(spikes.index_select(1, self.motor_indices))
+                    else:
+                        drive = hidden.new_zeros(hidden.shape)
+                        drive = drive.index_add(
+                            1, self.sensory_indices, sensory_drive
+                        )
+                        drive = drive.index_add(
+                            1, self.descending_indices, descending_drive
+                        )
+                        for _ in range(self.neural_updates):
+                            recurrent = self._recurrent_multiply(
+                                spikes, operator, step_values
+                            )
+                            current = (
+                                self.recurrent_gain * incoming * recurrent
+                                + self.input_current_scale * drive
+                                + self.recurrent_bias
+                            )
+                            remaining_refractory = torch.clamp_min(
+                                refractory - self.lif_timestep_ms, 0.0
+                            )
+                            available = remaining_refractory <= 0.0
+                            candidate = (
+                                self.membrane_decay * hidden
+                                + (1.0 - self.membrane_decay) * current
+                            )
+                            fired = (candidate >= self.spike_threshold) & available
+                            hidden = torch.where(
+                                available, candidate, torch.zeros_like(candidate)
+                            )
+                            hidden = torch.where(
+                                fired, torch.zeros_like(hidden), hidden
+                            )
+                            refractory = torch.where(
+                                fired,
+                                torch.full_like(
+                                    refractory, self.refractory_period_ms
+                                ),
+                                remaining_refractory,
+                            )
+                            spikes = fired.float()
+                            motor_rates.add_(
+                                spikes.index_select(1, self.motor_indices)
+                            )
+                    motor_rates.mul_(1.0 / self.neural_updates)
+                    return hidden, refractory, spikes, motor_rates
+
+                leak = self.substep_leaks()
                 if self.operator_backend == "triton_fused":
                     from rl_games.algos_torch.connectome_triton import fused_step
 
                     graph = self.backend_graph()
-                    step_values = self.effective_values() if values is None else values
-                    outgoing = self.outgoing_gains()
                     for _ in range(self.neural_updates):
                         hidden = fused_step(
                             graph, step_values, hidden, incoming, outgoing, leak,
@@ -1151,15 +1304,40 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 ).transpose(0, 1)
 
                 states = obs_dict.get("rnn_states")
-                if states is None:
-                    hidden = observations.new_zeros(
-                        (sequence_count, self.neuron_count), dtype=torch.float32
-                    )
+                if self.dynamics_activation == "lif":
+                    if states is None:
+                        hidden, refractory, spikes = (
+                            observations.new_zeros(
+                                (sequence_count, self.neuron_count),
+                                dtype=torch.float32,
+                            )
+                            for _ in range(3)
+                        )
+                    else:
+                        if not isinstance(states, (tuple, list)) or len(states) != 3:
+                            raise ValueError(
+                                "LIF recurrence requires three RNN states: "
+                                "membrane, refractory, and spikes"
+                            )
+                        lif_states = []
+                        for state in states:
+                            if state.ndim == 3:
+                                state = state[0]
+                            lif_states.append(state.float())
+                        hidden, refractory, spikes = lif_states
                 else:
-                    hidden = states[0] if isinstance(states, (tuple, list)) else states
-                    if hidden.ndim == 3:
-                        hidden = hidden[0]
-                    hidden = hidden.float()
+                    refractory = spikes = None
+                    if states is None:
+                        hidden = observations.new_zeros(
+                            (sequence_count, self.neuron_count), dtype=torch.float32
+                        )
+                    else:
+                        hidden = (
+                            states[0] if isinstance(states, (tuple, list)) else states
+                        )
+                        if hidden.ndim == 3:
+                            hidden = hidden[0]
+                        hidden = hidden.float()
                 dones = obs_dict.get("dones")
                 if dones is not None:
                     dones = dones.reshape(
@@ -1170,14 +1348,31 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     outputs = []
                     values = self.effective_values()
                     operator = self.recurrent_matrix(values)
-                    nonlocal hidden
+                    nonlocal hidden, refractory, spikes
                     for step, step_observations in enumerate(sequence):
                         if dones is not None:
-                            hidden = hidden * (1.0 - dones[step].float())
-                        hidden = self._step(
-                            step_observations, hidden, operator, values
-                        )
-                        outputs.append(hidden)
+                            active = 1.0 - dones[step].float()
+                            hidden = hidden * active
+                            if self.dynamics_activation == "lif":
+                                assert refractory is not None and spikes is not None
+                                refractory = refractory * active
+                                spikes = spikes * active
+                        if self.dynamics_activation == "lif":
+                            result = self._step(
+                                step_observations,
+                                hidden,
+                                operator,
+                                values,
+                                refractory,
+                                spikes,
+                            )
+                            hidden, refractory, spikes, motor_rates = result
+                            outputs.append(motor_rates)
+                        else:
+                            hidden = self._step(
+                                step_observations, hidden, operator, values
+                            )
+                            outputs.append(hidden)
                     return torch.stack(outputs).transpose(0, 1).reshape(
                         observations.shape[0], -1
                     )
@@ -1187,8 +1382,17 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                         output = run_reservoir()
                 else:
                     output = run_reservoir()
-                motor = output[:, self.motor_indices].float()
-                returned_states = (hidden.unsqueeze(0),)
+                if self.dynamics_activation == "lif":
+                    motor = output.float()
+                    assert refractory is not None and spikes is not None
+                    returned_states = (
+                        hidden.unsqueeze(0),
+                        refractory.unsqueeze(0),
+                        spikes.unsqueeze(0),
+                    )
+                else:
+                    motor = output[:, self.motor_indices].float()
+                    returned_states = (hidden.unsqueeze(0),)
 
             if self.cache_reservoir_features:
                 self.last_reservoir_features = motor.detach()
@@ -1229,8 +1433,12 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             return True
 
         def get_default_rnn_state(self):
-            return (
-                torch.zeros((1, self.num_seqs, self.neuron_count), dtype=torch.float32),
+            count = 3 if self.dynamics_activation == "lif" else 1
+            return tuple(
+                torch.zeros(
+                    (1, self.num_seqs, self.neuron_count), dtype=torch.float32
+                )
+                for _ in range(count)
             )
 
         def get_value_layer(self):

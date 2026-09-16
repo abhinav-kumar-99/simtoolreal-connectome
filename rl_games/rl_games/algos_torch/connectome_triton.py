@@ -78,6 +78,84 @@ def _sparse_step(
 
 
 @triton.jit
+def _sparse_lif_step(
+    CROW,
+    COL,
+    VAL,
+    MEMBRANE,
+    REFRACTORY,
+    SPIKES,
+    GI,
+    GO,
+    BIAS,
+    S,
+    D,
+    SMAP,
+    DMAP,
+    MEMBRANE_OUT,
+    REFRACTORY_OUT,
+    SPIKES_OUT,
+    B: tl.constexpr,
+    BETA: tl.constexpr,
+    INPUT_SCALE: tl.constexpr,
+    MEMBRANE_DECAY: tl.constexpr,
+    THRESHOLD: tl.constexpr,
+    REFRACTORY_MS: tl.constexpr,
+    DT_MS: tl.constexpr,
+    KB: tl.constexpr = 32,
+    EB: tl.constexpr = 32,
+):
+    row = tl.program_id(0)
+    b = tl.program_id(1) * KB + tl.arange(0, KB)
+    e = tl.arange(0, EB)
+    start = tl.load(CROW + row)
+    end = tl.load(CROW + row + 1)
+    recurrent = tl.full((KB,), 0, tl.float32)
+    for first in range(start, end, EB):
+        edge = first + e
+        src = tl.load(COL + edge, edge < end, 0)
+        weight = tl.load(VAL + edge, edge < end, 0)
+        source_spike = tl.load(
+            SPIKES + src[:, None] * B + b[None, :],
+            (edge[:, None] < end) & (b[None, :] < B),
+            0.0,
+        )
+        gain = tl.load(GO + src, edge < end, 0.0)
+        recurrent += tl.sum(weight[:, None] * gain[:, None] * source_spike, axis=0)
+
+    sensory_index = tl.load(SMAP + row)
+    descending_index = tl.load(DMAP + row)
+    drive = tl.load(
+        S + sensory_index * B + b,
+        (sensory_index >= 0) & (b < B),
+        0.0,
+    )
+    drive += tl.load(
+        D + descending_index * B + b,
+        (descending_index >= 0) & (b < B),
+        0.0,
+    )
+    current = (
+        BETA * tl.load(GI + row) * recurrent
+        + INPUT_SCALE * drive
+        + tl.load(BIAS + row)
+    )
+    offset = row * B + b
+    membrane = tl.load(MEMBRANE + offset, b < B, 0.0)
+    remaining = tl.maximum(
+        tl.load(REFRACTORY + offset, b < B, 0.0) - DT_MS, 0.0
+    )
+    available = remaining <= 0.0
+    candidate = MEMBRANE_DECAY * membrane + (1.0 - MEMBRANE_DECAY) * current
+    fired = available & (candidate >= THRESHOLD)
+    membrane_out = tl.where(available & ~fired, candidate, 0.0)
+    refractory_out = tl.where(fired, REFRACTORY_MS, remaining)
+    tl.store(MEMBRANE_OUT + offset, membrane_out, b < B)
+    tl.store(REFRACTORY_OUT + offset, refractory_out, b < B)
+    tl.store(SPIKES_OUT + offset, fired.to(tl.float32), b < B)
+
+
+@triton.jit
 def _point_backward(
     DY,
     H,
@@ -301,4 +379,104 @@ def fused_step(
             sensory_indices,
             descending_indices,
             beta,
+        )
+
+
+def fused_lif_step(
+    graph,
+    values,
+    membrane,
+    refractory,
+    spikes,
+    gi,
+    go,
+    bias,
+    sensory,
+    descending,
+    sensory_indices,
+    descending_indices,
+    beta,
+    input_scale,
+    membrane_decay,
+    threshold,
+    refractory_ms,
+    dt_ms,
+):
+    """Advance one hard-threshold LIF step without constructing autograd state."""
+    if not membrane.is_cuda:
+        raise RuntimeError("operator_backend: triton_fused requires CUDA")
+    tensors = (
+        values,
+        membrane,
+        refractory,
+        spikes,
+        gi,
+        go,
+        bias,
+        sensory,
+        descending,
+    )
+    if any(tensor.dtype != torch.float32 for tensor in tensors):
+        raise ValueError("Triton LIF recurrence requires FP32")
+    if torch.is_grad_enabled() and any(tensor.requires_grad for tensor in tensors):
+        raise RuntimeError(
+            "Hard LIF recurrence is inference-only; run it under torch.no_grad()"
+        )
+    with torch.cuda.device(membrane.device):
+        membrane_t, refractory_t, spikes_t, sensory_t, descending_t = (
+            tensor.t().contiguous()
+            for tensor in (
+                membrane,
+                refractory,
+                spikes,
+                sensory,
+                descending,
+            )
+        )
+        neuron_count, batch_size = membrane_t.shape
+        key = (sensory_indices.data_ptr(), descending_indices.data_ptr())
+        if key not in graph.population_maps:
+            maps = []
+            for indices in (sensory_indices, descending_indices):
+                mapping = torch.full(
+                    (neuron_count,), -1, dtype=torch.int64, device=membrane.device
+                )
+                mapping[indices] = torch.arange(
+                    indices.numel(), device=membrane.device
+                )
+                maps.append(mapping)
+            graph.population_maps[key] = maps
+        sensory_map, descending_map = graph.population_maps[key]
+        membrane_out = torch.empty_like(membrane_t)
+        refractory_out = torch.empty_like(refractory_t)
+        spikes_out = torch.empty_like(spikes_t)
+        _sparse_lif_step[(neuron_count, triton.cdiv(batch_size, 32))](
+            graph.crow,
+            graph.col,
+            values,
+            membrane_t,
+            refractory_t,
+            spikes_t,
+            gi,
+            go,
+            bias,
+            sensory_t,
+            descending_t,
+            sensory_map,
+            descending_map,
+            membrane_out,
+            refractory_out,
+            spikes_out,
+            batch_size,
+            beta,
+            input_scale,
+            membrane_decay,
+            threshold,
+            refractory_ms,
+            dt_ms,
+        )
+        return (
+            membrane_out.t(),
+            refractory_out.t(),
+            spikes_out.t(),
         )

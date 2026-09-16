@@ -254,9 +254,12 @@ def test_structured_adapter_drives_only_proprioceptors_and_uses_context(
         assert torch.isfinite(adapter.weight.grad).all()
 
 
-def _build_fixed_reservoir(artifact_path, distribution="beta"):
+def _build_fixed_reservoir(
+    artifact_path, distribution="beta", activation="tanh", operator_backend="native_csr"
+):
     params = _network_params(
         artifact_path,
+        operator_backend=operator_backend,
         interface_projections={
             "architecture": "mlp",
             "hidden_size": 16,
@@ -312,6 +315,18 @@ def _build_fixed_reservoir(artifact_path, distribution="beta"):
         "weight_mode": "adapters_only",
         "learn_dynamics": False,
     }
+    params["connectome"]["dynamics"].update(
+        activation=activation,
+        neural_updates=4,
+    )
+    if activation == "lif":
+        params["connectome"]["dynamics"].update(
+            control_frequency_hz=60.0,
+            membrane_time_constant_ms=10.0,
+            spike_threshold=1.0,
+            refractory_period_ms=2.0,
+            input_current_scale=1.5,
+        )
     if distribution == "beta":
         params["space"]["continuous"].update(
             distribution="beta",
@@ -447,6 +462,102 @@ def test_fixed_reservoir_gaussian_reuses_cached_features(
         parameter.grad is not None and torch.isfinite(parameter.grad).all()
         for parameter in network.mu.parameters()
     )
+
+
+def test_fixed_reservoir_lif_uses_rate_codes_and_three_persistent_states(
+    artifact_path,
+) -> None:
+    network = _build_fixed_reservoir(
+        artifact_path, distribution="gaussian", activation="lif"
+    )
+    observations = torch.tensor(
+        [[1.0, 0.25, -0.5, 50.0], [-1.0, -0.25, 0.5, 0.0]]
+    )
+    sensory_rates = network.sensory_adapter.spike_rates(observations)
+    torch.testing.assert_close(
+        sensory_rates[:, 0], 0.5 * (torch.tanh(observations[:, 0] / 2.0) + 1.0)
+    )
+    assert torch.count_nonzero(sensory_rates[:, 1]) == 0
+    states = network.get_default_rnn_state()
+    assert len(states) == 3
+    assert all(state.shape == (1, 2, 7) for state in states)
+
+    outputs = network({"obs": observations, "rnn_states": states})
+    motor_rates = network.last_reservoir_features
+    assert motor_rates.shape == (2, 2)
+    assert torch.all((motor_rates >= 0.0) & (motor_rates <= 1.0))
+    assert len(outputs[3]) == 3
+    membrane, refractory, spikes = outputs[3]
+    assert all(state.shape == (1, 2, 7) for state in outputs[3])
+    assert torch.isfinite(membrane).all()
+    assert torch.all(refractory >= 0.0)
+    assert torch.all((spikes == 0.0) | (spikes == 1.0))
+
+    cached = network(
+        {"obs": observations, "reservoir_features": motor_rates.clone()}
+    )
+    assert cached[3] == ()
+    (cached[0].sum() + cached[1].sum() + cached[2].sum()).backward()
+    assert all(
+        parameter.grad is None
+        for parameter in (
+            network.incoming_gain_raw,
+            network.outgoing_gain_raw,
+            network.leak_raw,
+            network.recurrent_bias,
+        )
+    )
+
+
+def test_lif_requires_fixed_cached_reservoir(artifact_path) -> None:
+    params = _network_params(artifact_path)
+    params["connectome"]["dynamics"]["activation"] = "lif"
+    with pytest.raises(ValueError, match="fixed reservoir_readout"):
+        ConnectomeBuilder.Network(
+            params,
+            actions_num=2,
+            input_shape=(6,),
+            num_seqs=2,
+            type="extra_param",
+            coef_ids=torch.tensor([50.0, 0.0]),
+            coef_id_idx=5,
+        )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+def test_fixed_reservoir_lif_triton_matches_dense(artifact_path) -> None:
+    torch.manual_seed(73)
+    reference = _build_fixed_reservoir(
+        artifact_path,
+        distribution="gaussian",
+        activation="lif",
+        operator_backend="dense",
+    ).cuda()
+    fused = _build_fixed_reservoir(
+        artifact_path,
+        distribution="gaussian",
+        activation="lif",
+        operator_backend="triton_fused",
+    ).cuda()
+    fused.load_state_dict(reference.state_dict())
+    observations = torch.tensor(
+        [[1.0, 0.25, -0.5, 50.0], [-1.0, -0.25, 0.5, 0.0]],
+        device="cuda",
+    )
+    membrane = torch.rand(2, 7, device="cuda")
+    refractory = torch.rand(2, 7, device="cuda") * 3.0
+    spikes = torch.randint(0, 2, (2, 7), device="cuda").float()
+    with torch.no_grad():
+        expected = reference._step(
+            observations, membrane, refractory=refractory, spikes=spikes
+        )
+        actual = fused._step(
+            observations, membrane, refractory=refractory, spikes=spikes
+        )
+    for expected_tensor, actual_tensor in zip(expected, actual):
+        torch.testing.assert_close(
+            actual_tensor, expected_tensor, atol=2.0e-6, rtol=1.0e-5
+        )
 
 
 @pytest.mark.parametrize(

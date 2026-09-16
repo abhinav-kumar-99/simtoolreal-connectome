@@ -435,6 +435,136 @@ def test_fixed_reservoir_gaussian_matches_live_gaussian_contract() -> None:
     assert config.train.params.config.max_lr == 0.001
 
 
+def test_fixed_reservoir_lif_changes_only_recurrent_dynamics_contract() -> None:
+    from scripts.run_connectome_suite import _compose_resolved, _training_overrides
+
+    root = Path(__file__).resolve().parents[2]
+    suite_root = root / "configs/connectome/suites"
+    tanh = yaml.safe_load(
+        (
+            suite_root
+            / "ppo_1952_fixed_reservoir_rot6d_gaussian_lf_entropy1x_sigma3_100b.yaml"
+        ).read_text()
+    )
+    lif = yaml.safe_load(
+        (
+            suite_root
+            / "ppo_1952_fixed_reservoir_rot6d_gaussian_lif_lf_entropy1x_sigma3_100b.yaml"
+        ).read_text()
+    )
+    smoke = yaml.safe_load(
+        (
+            suite_root
+            / "ppo_1952_fixed_reservoir_rot6d_gaussian_lif_lf_entropy1x_sigma3_smoke.yaml"
+        ).read_text()
+    )
+    identity_fields = {"train_profiles", "wandb"}
+    assert {
+        key: value
+        for key, value in lif["training"].items()
+        if key not in identity_fields
+    } == {
+        key: value
+        for key, value in tanh["training"].items()
+        if key not in identity_fields
+    }
+    budget_fields = {
+        "epochs",
+        "max_frames",
+        "inference_checkpoint_interval_frames",
+        "save_frequency",
+        "save_best_after",
+        "on_existing",
+        "wandb",
+    }
+    assert {
+        key: value
+        for key, value in smoke["training"].items()
+        if key not in budget_fields
+    } == {
+        key: value
+        for key, value in lif["training"].items()
+        if key not in budget_fields
+    }
+
+    entry = lif["training"]["train_profiles"][0]
+    config = _compose_resolved(
+        _training_overrides(
+            lif["training"],
+            entry["train_profile"],
+            42,
+            entry["name"],
+            root / lif["output_directory"],
+        )
+    )
+    graph = config.train.params.network.connectome
+    assert graph.dynamics.activation == "lif"
+    assert graph.dynamics.neural_updates == 4
+    assert graph.dynamics.control_frequency_hz == 60.0
+    assert graph.dynamics.membrane_time_constant_ms == 10.0
+    assert graph.dynamics.spike_threshold == 1.0
+    assert graph.dynamics.refractory_period_ms == 2.0
+    assert graph.dynamics.input_current_scale == 1.5
+    assert graph.fixed_input_encoder.mode == "population_code_v1"
+    assert graph.reservoir_readout.enabled is True
+    assert config.train.params.model.name == "continuous_a2c_logstd"
+    assert config.train.params.network.space.continuous.max_sigma == 3.0
+    assert config.train.params.config.normalize_input is False
+    assert config.train.params.config.use_experimental_cv is True
+
+
+def test_fixed_reservoir_noaux_changes_only_auxiliary_value_flag() -> None:
+    from scripts.run_connectome_suite import _compose_resolved, _training_overrides
+
+    root = Path(__file__).resolve().parents[2]
+    suite_root = root / "configs/connectome/suites"
+    baseline = yaml.safe_load(
+        (
+            suite_root
+            / "ppo_1952_fixed_reservoir_rot6d_gaussian_lf_entropy1x_sigma3_100b.yaml"
+        ).read_text()
+    )
+    noaux = yaml.safe_load(
+        (
+            suite_root
+            / "ppo_1952_fixed_reservoir_rot6d_gaussian_lf_entropy1x_sigma3_noaux_100b.yaml"
+        ).read_text()
+    )
+    baseline_training = baseline["training"]
+    noaux_training = noaux["training"]
+    ignored = {"train_profiles", "wandb"}
+    baseline_comparable = {
+        key: value for key, value in baseline_training.items() if key not in ignored
+    }
+    noaux_comparable = {
+        key: value for key, value in noaux_training.items() if key not in ignored
+    }
+    baseline_comparable["overrides"] = dict(baseline_comparable["overrides"])
+    noaux_comparable["overrides"] = dict(noaux_comparable["overrides"])
+    assert baseline_comparable["overrides"].pop(
+        "++train.params.config.use_experimental_cv"
+    ) is True
+    assert noaux_comparable["overrides"].pop(
+        "++train.params.config.use_experimental_cv"
+    ) is False
+    assert noaux_comparable == baseline_comparable
+
+    entry = noaux_training["train_profiles"][0]
+    config = _compose_resolved(
+        _training_overrides(
+            noaux_training,
+            entry["train_profile"],
+            42,
+            entry["name"],
+            root / noaux["output_directory"],
+        )
+    )
+    assert config.train.params.config.use_experimental_cv is False
+    assert config.train.params.network.connectome.dynamics.activation == "tanh"
+    assert config.train.params.network.connectome.reservoir_readout.enabled is True
+    assert config.train.params.config.central_value_config is not None
+
+
 def test_distal_leg_profiles_compose_with_matched_policy_distributions() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     import isaacgymenvs  # noqa: F401 - registers OmegaConf resolvers
