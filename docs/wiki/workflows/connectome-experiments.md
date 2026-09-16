@@ -2,7 +2,7 @@
 
 Experiments are owned by YAML contracts and proceed through data, profile, smoke, and full-training gates.
 
-Last updated: 2026-09-15
+Last updated: 2026-09-16
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
@@ -156,7 +156,18 @@ The dormant 3x suite uses entropy scale `.015`, corresponding to original-block 
 
 The terminal Gaussian fallback retains that same 3x weighting and all other matched settings. Its `SimToolRealConnectome1952AdaptersMLPGaussianSigma3SAPG` profile applies a smooth ceiling to each emitted standard deviation: raw log standard deviation zero still maps to sigma one, and sigma approaches but cannot exceed three with a nonzero gradient below the asymptote. Existing Gaussian profiles omit `max_sigma` and are unchanged. This is a per-coordinate cap: 29 sigmas can sum to at most 87, but 87 is not an entropy bound. At sigma three in every dimension, the unclipped diagonal Gaussian entropy is about 73.01 nats; environment actions are still hard-clipped to `[-1,1]`. The direct suite and watcher configs are `ppo_1952_4update_gaussian_lf_entropy3x_sigma3_100b.yaml` and its matching `_milestones.yaml`, but the handoff launches them only after both Beta candidates lose their own 1.25G comparisons.
 
-The staged handoff completed both comparisons on 2026-09-16. Against the fixed 1x mean `0.0000419941081`, 5x averaged `0.0000221648921` and was replaced by fresh 3x restricted Beta; 3x then averaged `0.0000265286654` and was also lower. The monitor stopped 3x and launched the terminal clipped-Gaussian suite/trainer/watcher as PIDs 177271/177336/177338. The live resolved configuration confirms entropy scale `.015`, LF/1.0 reuse, sigma cap 3, K=4, KL `.004` and auxiliary actor value loss. Status is `terminal_replacement_launched`; the 1x reference trainer remains live.
+The staged handoff completed both comparisons on 2026-09-16. Against the fixed 1x mean `0.0000419941081`, 5x averaged `0.0000221648921` and was replaced by fresh 3x restricted Beta; 3x then averaged `0.0000265286654` and was also lower. The monitor launched the terminal 3x clipped Gaussian, which was later manually superseded at the user's direction. Its final finite TensorBoard point was frame 1,220,345,856 with entropy 55.69760 and aggregate KL .27626; its artifacts remain preserved.
+
+The active GPU-0 replacement is a fresh clipped-Gaussian LF run with baseline entropy scale `.005`, corresponding to coefficients `[.0025,.002,.0015,.001,.0005,0]`. It otherwise retains LF/1.0 reuse, sigma cap 3 per dimension, K=4, KL `.004`, LR ceiling `.001`, auxiliary actor value loss, 250M inference/video cadence and a 100B budget. Its suite/trainer/watcher PIDs at launch were 261900/261951/262494. The saved resolved configuration confirms every retained setting; at frame 1,769,472 entropy 41.20781, aggregate KL .00088270 and actor/value losses were finite. This is launch-health evidence only. The GPU-1 restricted-Beta 1x reference remained live and untouched.
+
+Run the active replacement contracts directly from the repository root with:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_100b_milestones.yaml
+```
+
+The suite YAML owns the fresh output identity, entropy scale, LF reuse, sigma-capped profile, K, optimizer/KL settings, batch geometry, checkpoint cadence, GPU and budget. The evaluation YAML owns the matching resolved-policy path, deterministic mean action, three task cases and video settings. The suite helper prepares/verifies the pinned graph and launches training; the watcher polls inference checkpoints and dispatches evaluations. Imported network and launcher helpers are not separate entrypoints.
 
 ### Interpreting restricted-Beta entropy
 
