@@ -382,6 +382,25 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 continuous["sigma_activation"]
             )
             self.fixed_sigma = continuous["fixed_sigma"]
+            configured_max_sigma = continuous.get("max_sigma")
+            self.max_sigma = (
+                None if configured_max_sigma is None else float(configured_max_sigma)
+            )
+            if self.max_sigma is not None:
+                if self.action_distribution != "gaussian":
+                    raise ValueError("max_sigma is only supported for gaussian policies")
+                if not math.isfinite(self.max_sigma) or self.max_sigma <= 1.0:
+                    raise ValueError(
+                        "max_sigma must be finite and greater than 1 to preserve "
+                        "the unit-sigma initialization"
+                    )
+                max_log_sigma = math.log(self.max_sigma)
+                # Shift the soft ceiling so a raw log standard deviation of zero
+                # still produces sigma=1, matching existing Gaussian checkpoints.
+                self.max_log_sigma = max_log_sigma
+                self.max_sigma_offset = (
+                    math.log(math.expm1(max_log_sigma)) - max_log_sigma
+                )
             if self.action_distribution == "beta":
                 self.beta_initial_shape = float(continuous.get("beta_initial_shape", 2.0))
                 self.beta_min_shape = float(continuous.get("beta_min_shape", 1.0))
@@ -721,6 +740,10 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 sigma = self.sigma_act(self.sigma[self._coefficient_rows(observations)])
             else:
                 sigma = self.sigma_act(self.sigma).expand_as(mu)
+            if self.max_sigma is not None:
+                sigma = self.max_log_sigma - torch.nn.functional.softplus(
+                    self.max_log_sigma - sigma + self.max_sigma_offset
+                )
             return mu, sigma, value, (hidden.unsqueeze(0),)
 
         def is_rnn(self) -> bool:

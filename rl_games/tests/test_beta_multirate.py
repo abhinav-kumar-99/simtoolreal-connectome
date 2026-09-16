@@ -9,11 +9,14 @@ from rl_games.algos_torch.torch_ext import beta_policy_kl
 from .test_connectome_network import artifact_path, _network_params, _observations
 
 
-def network(artifact_path, updates=4, distribution='gaussian', backend='native_csr', beta_min_shape=1.0):
+def network(artifact_path, updates=4, distribution='gaussian', backend='native_csr', beta_min_shape=1.0,
+            max_sigma=None):
     params = _network_params(artifact_path, 'frozen_core', backend)
     params['connectome']['dynamics']['neural_updates'] = updates
     params['space']['continuous']['distribution'] = distribution
     params['space']['continuous']['beta_min_shape'] = beta_min_shape
+    if max_sigma is not None:
+        params['space']['continuous']['max_sigma'] = max_sigma
     return ConnectomeBuilder.Network(params, actions_num=2, input_shape=(6,), num_seqs=2,
                                      type='extra_param', coef_ids=torch.tensor([50., 0.]), coef_id_idx=5)
 
@@ -130,6 +133,37 @@ def test_unrestricted_beta_can_learn_shapes_below_one(artifact_path):
 def test_invalid_beta_min_shape_rejected(artifact_path, minimum):
     with pytest.raises(ValueError, match='beta_min_shape'):
         network(artifact_path, distribution='beta', beta_min_shape=minimum)
+
+
+def test_gaussian_sigma_cap_preserves_initialization_and_has_gradient(artifact_path):
+    net = network(artifact_path, max_sigma=3.0)
+    obs = _observations(2)
+    with torch.no_grad():
+        _, initial_log_sigma, _, _ = net(
+            {'obs': obs, 'rnn_states': None, 'seq_length': 1}
+        )
+    torch.testing.assert_close(
+        initial_log_sigma.exp(), torch.ones_like(initial_log_sigma), atol=1e-7, rtol=0
+    )
+
+    with torch.no_grad():
+        net.sigma.fill_(4.0)
+    _, bounded_log_sigma, _, _ = net(
+        {'obs': obs, 'rnn_states': None, 'seq_length': 1}
+    )
+    bounded_sigma = bounded_log_sigma.exp()
+    assert torch.all(bounded_sigma < 3.0)
+    assert torch.all(bounded_sigma > 2.8)
+    bounded_log_sigma.sum().backward()
+    assert net.sigma.grad is not None
+    assert torch.isfinite(net.sigma.grad).all()
+    assert (net.sigma.grad > 0).all()
+
+
+@pytest.mark.parametrize('maximum', [1.0, 0.5, float('nan')])
+def test_invalid_gaussian_sigma_cap_rejected(artifact_path, maximum):
+    with pytest.raises(ValueError, match='max_sigma'):
+        network(artifact_path, max_sigma=maximum)
 
 
 @pytest.mark.parametrize('scale', [1., 10., 10000.])
