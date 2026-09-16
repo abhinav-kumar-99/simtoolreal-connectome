@@ -6,7 +6,7 @@ Last updated: 2026-09-16
 
 Related: [Fixed reservoir](fixed-reservoir-controller.md), [Experiment workflow](../workflows/connectome-experiments.md), [Fruitfly source audit](../sources/summaries/quantum-coded-fruitfly.md)
 
-The latest performance replacement uses the same biological/input contract with 768 environments and inference-only buffers. See [measured optimizations and current run](../analyses/visual-reservoir-performance.md); the 384-environment launch details below are historical.
+The latest capacity replacement uses the same biological/input contract with 2,304 environments and inference-only buffers, preserving room for its video worker. See [measured optimizations and current run](../analyses/visual-reservoir-performance.md); the 384-environment launch details below are historical.
 
 ## Circuit and evidence boundary
 

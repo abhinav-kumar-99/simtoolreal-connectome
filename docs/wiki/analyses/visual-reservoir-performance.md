@@ -54,6 +54,14 @@ The first production preflight rejected the resume-offset epoch budget because t
 
 ## Reproduction
 
+### How RL systems handle a throughput plateau
+
+The objective is learning progress per wall-clock time, not maximum VRAM allocation. This sweep shows that fitting more environments need not increase collected frames per second, and changing batch size also changes samples between policy updates. Our frozen reservoir already avoids recurrent backpropagation and caches motor features for PPO, making rollout-side work the main optimization target rather than more learner parallelism.
+
+Two relevant systems approaches are GPU-native simulation/data transfer, exemplified by [Isaac Gym](https://arxiv.org/abs/2108.10470), and separation of simulation, policy inference and learning, exemplified by [Sample Factory](https://www.samplefactory.dev/06-architecture/overview/). Asynchronous collection can overlap work with learning, but introduces policy lag and can trade sample efficiency for throughput ([sync/async documentation](https://www.samplefactory.dev/07-advanced-topics/sync-async/)). It does not supply additional GPU compute when the same device is already busy, and overlapping our small optimizer phase alone is unlikely to remove the dominant rollout cost.
+
+For visual RL specifically, [Isaac Lab tiled cameras](https://isaac-sim.github.io/IsaacLab/main/source/overview/core-concepts/sensors/camera.html) combine camera outputs into one render product. This is a candidate architectural response to camera scaling overhead, not an existing switch in this legacy Isaac Gym task or evidence that migrating to Isaac Lab would be faster overall. A matched renderer benchmark is needed. Lower sensor frequency/resolution, cheaper models or more hardware are other workload tradeoffs; the current task already uses multirate low-resolution vision. Any reduction of fly neuron count or neural update count would change the intended model, not merely optimize its implementation. No simulator migration or asynchronous algorithm was implemented during this capacity experiment.
+
 ### Capacity sweep
 
 At the user's request to fill GPU 1, `configs/connectome/profiling/visual_capacity.yaml` extends the sweep above 1,536 environments using the production frozen/fused/no-capture implementation. The prior GPU-1 trainer and watcher were stopped for isolated probes; GPU-0 training was preserved. The latest saved full-state checkpoint for continuation is epoch 351/frame 2,359,296 in the fast run's named best checkpoint. Simulator episodes reset on continuation; learned actor/critic and optimizer state are retained.
@@ -77,15 +85,19 @@ The 12-epoch capacity measurements, discarding the first two epochs, are:
 
 All three successful cases passed checkpoint reload with finite actions. The card exposes 24,564 MiB. Thus 2,688 uses about 87% before video evaluation, versus 8,679 MiB device occupancy in the earlier live 768-environment snapshot. It is about 4.8% slower than the earlier 3,688-FPS 768 test: available VRAM was not evidence that more environments would improve throughput. These are short single-run comparisons, not matched learning curves or a precise search for the absolute maximum batch size.
 
-The capacity continuation uses `ppo_full_cns_tanh_vision_capacity_100b.yaml`: 2,688 environments, six 448-environment SAPG blocks, 10,752-sample minibatches and the same Gaussian, CV, camera and nine-update dynamics. The checkpoint source is the stopped 768-environment run's full-state checkpoint described above. Its watcher YAML retains three videos per 1M frames. The optional `visual_capacity_headroom.yaml` runs a real 60-step marker-video worker from the old 2M inference checkpoint to check memory coexistence, not to measure learning progress.
+The first capacity continuation used `ppo_full_cns_tanh_vision_capacity_100b.yaml`: 2,688 environments, six 448-environment SAPG blocks and 10,752-sample minibatches. It resumed successfully, but a concurrent real video worker failed with CUDA OOM while loading its inference checkpoint. The worker alone had about 2.61 GiB in use before completing the load, while the trainer used about 20.24 GiB. The sampled combined device footprint reached 23,391 MiB; the exception reported still less free space at failure. Its `GPU 0` label is logical CUDA 0 mapped to physical GPU 1, not the protected GPU-0 Gaussian job. Thus the standalone training capacity was not a safe concurrent-training-and-video capacity. The 2,688 continuation was stopped and its artifacts retained.
+
+The revised continuation is `ppo_full_cns_tanh_vision_capacity2304_100b.yaml`: 2,304 environments, six 384-environment SAPG blocks and 9,216-sample minibatches, with unchanged Gaussian, CV, camera and nine-update dynamics. Its checkpoint source is the stopped 768-environment run's full-state checkpoint described above. Its watcher YAML retains three videos per 1M frames. `visual_capacity_headroom.yaml` runs a real 60-step marker-video worker from the old 2M inference checkpoint to check memory coexistence, not to measure learning progress.
 
 ```bash
-.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_full_cns_tanh_vision_capacity_100b.yaml
-.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_full_cns_tanh_vision_capacity_100b_milestones.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_full_cns_tanh_vision_capacity2304_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_full_cns_tanh_vision_capacity2304_100b_milestones.yaml
 CUDA_VISIBLE_DEVICES=1 PYTHONPATH=rl_games:. OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 CC=/usr/bin/gcc CXX=/usr/bin/g++ .venv/bin/python dextoolbench/eval_worker_isaacgym.py --config configs/connectome/evaluation/visual_capacity_headroom.yaml
 ```
 
 The suite/watcher are normal long-running entrypoints and should not be launched twice into the same output directory. The helper video worker is normally launched by the watcher; its diagnostic YAML pins the source checkpoint, task, video dimensions, 60-step duration and separate output files. Keep it off the GPU during throughput benchmarks, and run at most one video worker alongside the capacity trainer. Full checkpoint files grow with recurrent batch state; benchmark artifacts are retained rather than silently deleted.
+
+The revised 2,304-environment continuation passed the concurrent 60-step video worker: exit zero with `headroom/eval.json` and `headroom/rollout.mp4`, while training continued. Sampled combined GPU occupancy reached 22,270 MiB (90.7%); this is a short coexistence check, not a guarantee against every later peak. Suite/trainer PIDs 504111/504155 run in `connectome-visual-capacity2304-100b`; its regular milestone watcher runs in `connectome-visual-capacity2304-videos`. TensorBoard 6008 exposes `full_cns_tanh_vision_capacity2304_100b` without restarting the server. GPU-0 trainer 261951 remains untouched. The standalone 2,688 attempt, its failed video probe and the earlier 768 run are preserved as historical artifacts, not live trainers.
 
 ```bash
 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 CC=/usr/bin/gcc CXX=/usr/bin/g++ .venv/bin/python scripts/benchmark_visual_reservoir.py --config configs/connectome/profiling/visual_optimizations.yaml
