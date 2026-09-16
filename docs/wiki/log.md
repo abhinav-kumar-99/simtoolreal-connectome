@@ -6,6 +6,12 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] launch | Replace dense-input Beta with structured rotation-6D Beta
+
+Stopped only the prior dense-input restricted-Beta suite, trainer and milestone watcher PIDs 4102855/4102915/4103035, preserving their run artifacts. Launched the fresh structured Beta YAML in tmux session `connectome-structured-rot6d-beta-lf-100b`; its suite PID is 319189 and trainer PID is 319244 on physical GPU 1. No structured milestone watcher was launched because that evaluation contract has not been added.
+
+The saved resolved configuration confirms the 144-value rotation-6D task, grouped linear proprioceptive adapters, no direct fabricated tactile drive, the 128-hidden-unit descending MLP, restricted Beta shapes, K=4, auxiliary actor value loss, LF/1.0 experience reuse, entropy scale .005, KL target .004 and the 100B cap. At frame 3,735,552, entropy 16.47404, aggregate KL .00160879 and both mini-epoch KLs were finite with zero invalid-KL flags. The existing capped-Gaussian suite/trainer/watcher PIDs 261900/261951/262494 remained live and untouched.
+
 ## [2026-09-16] ingest | Audit Quantum-Coded Fruitfly sensory routing and dopamine claims
 
 Reviewed upstream commit `e1a2089a1dcc312df446379ca9cd30193575f4db`, the shipped circuit/checkpoint and actual training/evaluation paths. Documented fixed population masks rather than the README's learned projection, a terminal dopamine pulse without a plasticity path, direct candidate features and external constraint memory. A one-thread CPU check on the same seed-42 100-word cohort yielded 99 wins/4.15 guesses with neural simulation, 99/4.13 with zero neural features, and 98/3.87 using the first filtered candidate. Added a pinned source summary with hashes, methodology, limitations, structured adapter proposals and requirements for compartment-specific plasticity. Updated the dopamine analysis and source index. No robot experiment was launched or reconfigured.
