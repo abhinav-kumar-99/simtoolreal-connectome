@@ -6,6 +6,14 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] launch | Replace fixed tanh reservoir with no-auxiliary control
+
+Implemented a YAML-selectable hard-spiking LIF backend for the fixed cached reservoir, using persistent membrane/refractory/spike state, fixed nonnegative rate codes, control-frequency-derived timestep, hard reset, windowed motor spike rates and a fused Triton forward kernel. The dense and fused CUDA paths match, the focused network/configuration suite passes 119 tests, and the implementation is committed but not launched. The design borrows the valid LIF state/reset structure from Quantum-Coded Fruitfly while rejecting its graph-specific drive/weight calibration and final-substep-only readout.
+
+At the user's revised experiment boundary, stopped only the prior GPU-1 fixed-reservoir suite/trainer/watcher PIDs 387124/387180/400161 around 614.4M frames, preserving checkpoints and completed 250M/500M videos. The dense learned-adapter Gaussian PIDs 261900/261951/262494 remained live. A two-epoch tanh fixed-reservoir smoke with `use_experimental_cv: false` completed 393,216 frames and deployment reload; actor `c_loss` was zero, privileged `cval_loss` remained `.2063`, and entropy/KL were finite.
+
+Launched the full fresh no-auxiliary tanh suite in tmux `connectome-fixed-reservoir-gaussian-noaux-100b` as suite/trainer PIDs 430585/430658 on physical GPU 1. Its resolved contract retains the central critic, fixed input map, cached motor readout, K=4, LF/1.0, entropy scale `.005`, capped coefficient-conditioned Gaussian, KL/LR settings, seed, task and 100B budget; only the auxiliary actor value objective is disabled. Watcher PID 431147 awaits 250M milestones, and a symlink makes the run visible to the existing port-6008 TensorBoard without a restart. The spiking full run remains deferred.
+
 ## [2026-09-16] query | Audit input normalization across LSTM and connectome policies
 
 Traced raw environment feature construction, RL-Games running-stat behavior, resolved training profiles and saved checkpoint state. The original LSTM, dense/MLP connectome and structured Rotation-6D connectome normalize actor inputs per coordinate; all also normalize privileged critic inputs, values and advantages. The fixed reservoir explicitly disables actor RMS and instead applies fixed scaled `tanh` codes, while retaining critic/value/advantage normalization. A saved fixed-reservoir observation snapshot showed weak velocity coding and comparatively saturated object-scale coding. Documented why online RMS is incompatible with cached fly features and recommended a frozen, provenance-owned per-channel physical calibration plus drive-level controls for learned adapters.
