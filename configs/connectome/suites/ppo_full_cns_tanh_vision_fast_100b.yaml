@@ -18,8 +18,8 @@ training:
   max_parallel: 1
   num_envs: 768
   sapg_block_size: 128
-  # 318 restored epochs + floor((100B - 1,953,792) / (768 * 16)).
-  epochs: 8138179
+  # Conservative epoch cap accepted by the suite; restored progress is retained.
+  epochs: 8138020
   max_frames: 100000000000
   minibatch_size: 3072
   central_critic_minibatch_size: 3072
