@@ -12,6 +12,8 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Sources
 
+- [Quantum-Coded Fruitfly](sources/summaries/quantum-coded-fruitfly.md) — Fixed population encoding, non-learning dopamine pulse, 100-word neural-input ablation, and proposed structured adapters. Last updated 2026-09-16.
+
 - [MaleCNS front-leg circuit](sources/summaries/malecns-front-leg-circuit.md) — Data identity, provenance, and anatomical-data versus executable-dynamics boundary. Last updated 2026-09-15.
 - [SimToolReal training references](sources/summaries/simtoolreal-training-references.md) — Published curve, critic-ablation contract, paper/code value-loss boundary, upstream numerical study export, and released checkpoint metadata. Last updated 2026-09-15.
 
@@ -30,7 +32,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 - [End-to-end system audit](analyses/system-audit-2026-09-15.md) — All 71 event histories, raw-source reproduction, cross-member KL, saturation, proposed Beta parameters and multi-rate neural timing. Last updated 2026-09-15.
 - [Minimal dexterity circuits](analyses/minimal-dexterity-circuit.md) — Exact 86/262/408-cell candidates, threshold rationale, and 262 training evidence weakening its full-task recommendation. Last updated 2026-09-15.
-- [Dopamine-inspired online learning](analyses/dopamine-inspired-learning.md) — Eligibility rationale, historical design, implementation link and unproven learning/cost hypotheses. Last updated 2026-09-13.
+- [Dopamine-inspired online learning](analyses/dopamine-inspired-learning.md) — Eligibility rationale, implementation boundary, Wordle source comparison and unproven learning/cost hypotheses. Last updated 2026-09-16.
 - [Approved 1,952-neuron training](analyses/compact-1952-training.md) — Exact graph, historical launches, clipped-policy handoff and corrected interpretation of scheduler KL. Last updated 2026-09-15.
 - [Front-leg pathway coverage](analyses/front-leg-pathway-coverage.md) — Public-reference audit, 4,353/4,589/4,778-cell candidates, and evidence-led compact sensory-motor/feedback additions without a size quota. Last updated 2026-09-13.
 - [Sparse recurrent backends](analyses/sparse-backends.md) — 160 benchmark cases, 32 capacity probes, memory tradeoffs and ten completed Isaac Gym smoke gates. Last updated 2026-09-13.

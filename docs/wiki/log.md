@@ -2,9 +2,13 @@
 
 Append-only record of durable repository work.
 
-Last updated: 2026-09-15
+Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
+
+## [2026-09-16] ingest | Audit Quantum-Coded Fruitfly sensory routing and dopamine claims
+
+Reviewed upstream commit `e1a2089a1dcc312df446379ca9cd30193575f4db`, the shipped circuit/checkpoint and actual training/evaluation paths. Documented fixed population masks rather than the README's learned projection, a terminal dopamine pulse without a plasticity path, direct candidate features and external constraint memory. A one-thread CPU check on the same seed-42 100-word cohort yielded 99 wins/4.15 guesses with neural simulation, 99/4.13 with zero neural features, and 98/3.87 using the first filtered candidate. Added a pinned source summary with hashes, methodology, limitations, structured adapter proposals and requirements for compartment-specific plasticity. Updated the dopamine analysis and source index. No robot experiment was launched or reconfigured.
 
 ## [2026-09-15] query | Correct SAPG embedding gradients in the actor comparison
 

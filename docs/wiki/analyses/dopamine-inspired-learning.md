@@ -2,7 +2,7 @@
 
 Reward-modulated eligibility traces are a plausible alternative learning rule, but the current connectome actor has no native dopamine plasticity and lower update cost does not guarantee faster task learning.
 
-Last updated: 2026-09-13
+Last updated: 2026-09-16
 
 Related: [Adaptation mechanisms](../concepts/connectome-adaptation.md), [Approved compact run](compact-1952-training.md), [Actor](../concepts/connectome-actor.md)
 
@@ -13,6 +13,8 @@ The requested from-scratch rate-network eligibility trainer is now implemented a
 The proposal and integration checklist below are preserved as historical design context; their pre-implementation status statements are superseded by the runbook. The readout-only warm-start experiment remains a separate unimplemented variant.
 
 ## Biological evidence and boundary
+
+The [2026-09-16 Quantum-Coded/fruitfly audit](../sources/summaries/quantum-coded-fruitfly.md) distinguishes reward visualization from implemented dopamine plasticity. That project uses fixed sensory population masks, and its terminal dopamine pulse is absent from its readout REINFORCE loss; brain state resets before another decision. Its saved policy retained 99/100 wins with every neural readout feature zeroed on a matched CPU cohort. The useful transfer is a structured sensory-code hypothesis. A genuine dopamine extension here needs persistent eligible updates and anatomically or explicitly engineered modulatory targets.
 
 In fly mushroom-body learning, dopaminergic signals modulate plasticity at specific circuit sites; dopamine is not a uniform command to increase every active connection. Different pathways mediate appetitive and aversive reinforcement, and timing matters. [Felsenberg et al., Nature 2017](https://www.nature.com/articles/nature21716) demonstrate reward-memory re-evaluation involving distinct reinforcing dopamine populations and describe reward-associated depression of Kenyon-cell output to avoidance pathways. [Ueno et al., eLife 2017](https://pmc.ncbi.nlm.nih.gov/articles/PMC5262376/) examine coincident activity, dopamine release and mushroom-body plasticity. These are biological associative-learning results, not demonstrations of cheap dexterous robot learning.
 
