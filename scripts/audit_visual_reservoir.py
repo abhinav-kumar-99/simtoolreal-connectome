@@ -20,9 +20,16 @@ def run(cfg):
     env = create_env(cfg['policy_config_path'], device='cuda:0', headless=True,
         overrides={'task.env.numEnvs': 2, 'task.env.useObsDelay': False, 'task.env.capture_video': False})
     obs = env.step(torch.zeros((2, env.num_acts), device=env.device))[0]['obs'].clone()
+    policy_camera_height = int(env.vision_config['height'])
+    policy_camera_width = int(env.vision_config['width'])
     def capture():
         render_camera_sensors_for_current_step(env.gym, env.sim, env.device)
-        return env.gym.get_camera_image(env.sim, env.envs[0], env.policy_camera_handles[0], gymapi.IMAGE_COLOR).reshape(54, 96, 4)[..., :3].copy()
+        return env.gym.get_camera_image(
+            env.sim,
+            env.envs[0],
+            env.policy_camera_handles[0],
+            gymapi.IMAGE_COLOR,
+        ).reshape(policy_camera_height, policy_camera_width, 4)[..., :3].copy()
     before = capture()
     camera_distinct = bool((obs[0, 99:] - obs[1, 99:]).abs().max() > 0)
     assert camera_distinct, 'Environment cameras unexpectedly identical'
