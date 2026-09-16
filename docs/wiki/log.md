@@ -6,6 +6,14 @@ Last updated: 2026-09-16
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-16] query | Audit input normalization across LSTM and connectome policies
+
+Traced raw environment feature construction, RL-Games running-stat behavior, resolved training profiles and saved checkpoint state. The original LSTM, dense/MLP connectome and structured Rotation-6D connectome normalize actor inputs per coordinate; all also normalize privileged critic inputs, values and advantages. The fixed reservoir explicitly disables actor RMS and instead applies fixed scaled `tanh` codes, while retaining critic/value/advantage normalization. A saved fixed-reservoir observation snapshot showed weak velocity coding and comparatively saturated object-scale coding. Documented why online RMS is incompatible with cached fly features and recommended a frozen, provenance-owned per-channel physical calibration plus drive-level controls for learned adapters.
+
+## [2026-09-16] debug | Repair Rotation-6D milestone evaluation dimensions
+
+The fixed-reservoir watcher reached its 250M checkpoint but repeatedly failed before policy construction because `eval_worker_isaacgym.py` hardcoded 140 actor observations. Changed it to derive observation and action dimensions from the instantiated environment, allowing the saved 144-value Rotation-6D policy plus SAPG identifier to build. The live watcher picked up the fix on retry without restarting or touching suite/trainer PIDs 387124/387180. Target 250M then completed at actual frame 250,085,376 with three decodable 800x450, 20-FPS, 200-frame MP4s; the watcher cleared its failure state and resumed polling.
+
 ## [2026-09-16] launch | Start fixed-reservoir Gaussian milestone-video watcher
 
 Added a YAML-owned watcher for the live fixed-input, cached-reservoir Gaussian suite. It uses the exact `fixed_reservoir_gaussian` run identity, saved resolved configuration, physical GPU 1, 250M-frame intervals through 100B, and three deterministic mean-action evaluation cases per milestone. Launched it in tmux `connectome-fixed-reservoir-gaussian-videos` as PID 400161; `milestone_status.json` reports running with 400 expected targets, zero completed and zero failures while it awaits the first inference checkpoint. Suite/trainer PIDs 387124/387180 and all other jobs remained untouched.

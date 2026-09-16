@@ -28,6 +28,25 @@ The selected graph contains 33,720 directed neuron-pair connections, each suppor
 
 What is biological is the selected cell identity and source-derived wiring. What is engineered includes continuous activity dynamics, normalization, some transmitter-to-sign assumptions, observation adapters, action readout and training. Positive/negative modeled edges respectively increase/decrease the receiving cell's summed drive. Gains act as positive input/output volume controls on existing recurrent edges; they preserve edge directions and signs but can change behavior. The frozen-core profile keeps these controls fixed. Both profiles still need to learn the robot interface; native dexterity transfer remains a hypothesis.
 
+## Observation normalization
+
+The environment itself only partially normalizes the policy vector. Joint positions are mapped with the robot joint limits; quaternion or Rotation-6D entries are naturally bounded. Joint velocities, previous targets, palm position, relative fingertip/keypoint positions and object scales otherwise retain their task units, after which the complete actor and critic vectors are clamped to `[-10, 10]`.
+
+The released SimToolReal PPO/LSTM profile then enables RL-Games per-coordinate running mean/variance normalization for both the actor observation and privileged critic state. It applies `(x - running_mean) / sqrt(running_var + 1e-5)` and clips the result to `[-5, 5]`. The SAPG coefficient ID is deliberately appended after this transform and is not treated as a continuous sensor. Statistics are stateful checkpoint buffers, updated without gradients during the first PPO mini-epoch and frozen for rollout/inference. The original LSTM also applies LayerNorm to the LSTM output before its post-recurrent MLP; that is internal activation normalization, not observation normalization.
+
+| Policy family | Actor observation RMS | Fly-input transform | Privileged critic input RMS | Other enabled normalization |
+| --- | --- | --- | --- | --- |
+| Original SimToolReal LSTM/SAPG | Yes | None | Yes | LSTM-output LayerNorm, value and advantage normalization |
+| Dense/MLP learned connectome adapters | Yes | Learned unbounded linear/MLP drive | Yes | Value and advantage normalization |
+| Structured Rotation-6D adapters | Yes | Learned grouped linear sensory drive and unbounded descending MLP drive | Yes | Value and advantage normalization |
+| Fixed-input cached reservoir | No, explicitly disabled | Fixed `tanh(x / scale)` population codes | Yes | Value and advantage normalization |
+
+This table is verified in the actual resolved dense-connectome, structured Rotation-6D and fixed-reservoir run configurations. The stopped structured checkpoint contains a 144-coordinate actor running-stat state, while the fixed-reservoir checkpoint has no actor running-stat module. Both contain a 166-coordinate Rotation-6D privileged-state normalizer; the appended critic SAPG ID is excluded.
+
+The learned-adapter policies are therefore not missing raw-observation normalization. Their remaining stability seam is the adapter-to-circuit drive: neither the grouped linear adapter nor the final layer of an interface MLP has output normalization or a bounding activation, so normalized robot inputs can still be amplified until recurrent preactivations saturate. A future adapter experiment should make bounded population drive, a fixed per-population gain, or an explicit drive-RMS/saturation penalty YAML-selectable and log sensory/descending drive statistics. Cross-cell batch or layer normalization is less attractive because it couples fly cells and removes absolute population-drive magnitude.
+
+For the cached reservoir, enabling the existing online running normalizer is specifically undesirable. PPO minibatches reuse already-cached motor features, so running statistics could change without recomputing the fly response; the following rollout would then use a different robot-to-fly transform that the readout update never saw. Prefer a fixed, precomputed or physically specified per-channel calibration, stored in YAML/artifact provenance and frozen before training. Zero-meaning channels such as velocity and goal error should retain zero center; absolute palm position and object dimensions can use a fixed workspace/reference center; scale should be per channel or per physical family. Changing that transform is a fresh policy architecture and must not be introduced into a running checkpoint.
+
 ## Contract
 
 System observations enter sensory neurons, goal and SAPG exploration conditioning enter descending neurons, and only motor-neuron state is decoded into 29 robot actions. These three interface projections can use the backward-compatible linear layers or an optional one-hidden-layer MLP. The default remains linear and learns adapters and heads only. Optional weight adaptation and learned leaks/biases are independent; see [adaptation controls](connectome-adaptation.md). The dynamics and parameter accounting below describe the preserved gains-plus-dynamics control.
