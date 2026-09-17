@@ -2,7 +2,7 @@
 
 The exact path-plus-sensory-premotor candidate uses old optimizer timing; the matched-reward handoff selected the clipped policy, whose stronger training results coexist with pathological exploration.
 
-Last updated: 2026-09-15
+Last updated: 2026-09-17
 
 Related: [Selection evidence](front-leg-pathway-coverage.md), [Timing comparison](adaptation-100b-update-timing.md), [Experiment workflow](../workflows/connectome-experiments.md)
 
@@ -289,4 +289,15 @@ Entrypoints and important YAML controls:
 
 The train profile owns `feature_population: all`; the suite owns GPU, 12,288-environment batch geometry, four neural updates, Gaussian sigma-three cap inherited from the profile, KL `.004`, LR range, LF reuse, entropy incentive and 100B cap. The milestone YAML owns checkpoint cadence, deterministic mean-action evaluation cases and video settings. `run_connectome_suite.py` remains the preparation/training orchestrator and `run_connectome_milestone_evaluation.py` remains the independent checkpoint watcher.
 
-The fresh production replacement launched on physical GPU 1 as suite PID 543985, trainer PID 544079 and milestone watcher PID 543989. At frame 1,769,472 its reward 34.7445, entropy 41.1834, actor loss `.000135`, auxiliary actor value loss `.1951`, scheduler KL `.00312` and invalid-KL flags were finite; warm total throughput was approximately 95K-101K frames/s. TensorBoard 6008 discovered both the production and smoke histories automatically under the existing shared root. The independent GPU-0 motor-readout Gaussian trainer PID 261951 and watcher PID 262494 remained live.
+The fresh production replacement launched on physical GPU 1 as suite PID 543985 and trainer PID 544079; its current milestone watcher is PID 555982. At frame 1,769,472 its reward 34.7445, entropy 41.1834, actor loss `.000135`, auxiliary actor value loss `.1951`, scheduler KL `.00312` and invalid-KL flags were finite; warm total throughput was approximately 95K-101K frames/s. TensorBoard 6008 discovered both the production and smoke histories automatically under the existing shared root.
+
+On 2026-09-17, the former GPU-0 motor-only actor and its watcher were stopped with artifacts preserved; its latest completed inference milestone is frame 5,750,194,176. A fresh matched all-neuron actor replaced it on physical GPU 0 with only `use_experimental_cv: false`. Suite/trainer/watcher PIDs are 775098/775189/775104. Initial telemetry at frame 1,376,256 was finite: reward 47.8458, entropy 41.1705, action loss `.001439`, KL `.003706`, zero invalid-KL flags and expected actor-side `c_loss: 0`; the privileged central critic remained active with `cval_loss: .12386`. The GPU-1 all-neuron auxiliary-loss run was not changed.
+
+Launch the no-auxiliary comparison and its video watcher with:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_100b_milestones.yaml
+```
+
+The production YAML owns the fresh output identity, GPU 0, full batch/update geometry and `use_experimental_cv: false`; all other actor, Gaussian, SAPG, LF and task settings match the GPU-1 all-neuron suite. The evaluation YAML independently owns the 250M-frame polling cadence and three deterministic mean-action videos. No new helper script is required.

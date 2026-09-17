@@ -701,3 +701,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Distinguished asymmetric information from shared representation: privileged state is the defining central-critic contract, while actor memory is only an optional additional conditioning variable for a recurrent policy.
 - Defined the paper analogue as privileged central critic only and the released-code analogue as privileged central critic plus an auxiliary actor value head sharing the actor's post-recurrent trunk.
 - Recorded that neither current connectome readout is an exact shared-trunk reproduction. No configuration or running process changed.
+
+## [2026-09-17] launch | Replace motor readout with all-neuron no-auxiliary comparison
+
+- Stopped only the GPU-0 motor-readout suite/trainer and its current milestone watcher; its artifacts remain preserved through the completed 5,750,194,176-frame inference milestone.
+- Added a fresh YAML-owned GPU-0 run and watcher matched to the GPU-1 all-neuron policy except for `use_experimental_cv: false`; configuration commit `51ee9c72`.
+- Launched suite/trainer/watcher PIDs 775098/775189/775104. At frame 1,376,256, reward, entropy, action loss, central-critic loss and KL were finite, actor `c_loss` was correctly zero, and invalid-KL flags were zero.
+- Preserved the GPU-1 all-neuron suite/trainer/watcher PIDs 543985/544079/555982 and confirmed the new run is visible in TensorBoard 6008 without restart.

@@ -28,7 +28,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Workflows
 
-- [Experiment workflow](workflows/connectome-experiments.md) — Fixed-reservoir tanh/no-aux/LIF suites, structured 6D-input suites, milestone videos, LF entropy runs, and the staged 1.25G true-objective handoff. Last updated 2026-09-16.
+- [Experiment workflow](workflows/connectome-experiments.md) — Current paired all-neuron auxiliary/no-auxiliary runs, fixed-reservoir suites, milestone videos, LF entropy runs, and the staged handoff. Last updated 2026-09-17.
 - [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, early gain audit, and stopped-run status. Last updated 2026-09-14.
 
 ## Analyses
@@ -37,7 +37,7 @@ Related: [Overview](overview.md), [Log](log.md)
 - [End-to-end system audit](analyses/system-audit-2026-09-15.md) — All 71 event histories, raw-source reproduction, cross-member KL, saturation, proposed Beta parameters and multi-rate neural timing. Last updated 2026-09-15.
 - [Minimal dexterity circuits](analyses/minimal-dexterity-circuit.md) — Exact 86/262/408-cell candidates, threshold rationale, and 262 training evidence weakening its full-task recommendation. Last updated 2026-09-15.
 - [Dopamine-inspired online learning](analyses/dopamine-inspired-learning.md) — Eligibility rationale, implementation boundary, Wordle source comparison and unproven learning/cost hypotheses. Last updated 2026-09-16.
-- [Approved 1,952-neuron training](analyses/compact-1952-training.md) — Exact graph, historical launches, clipped-policy handoff and corrected interpretation of scheduler KL. Last updated 2026-09-15.
+- [Approved 1,952-neuron training](analyses/compact-1952-training.md) — Exact graph, historical launches, all-neuron readout pair, clipped-policy handoff and scheduler-KL interpretation. Last updated 2026-09-17.
 - [Front-leg pathway coverage](analyses/front-leg-pathway-coverage.md) — Public-reference audit, 4,353/4,589/4,778-cell candidates, and evidence-led compact sensory-motor/feedback additions without a size quota. Last updated 2026-09-13.
 - [Sparse recurrent backends](analyses/sparse-backends.md) — 160 benchmark cases, 32 capacity probes, memory tradeoffs and ten completed Isaac Gym smoke gates. Last updated 2026-09-13.
 - [One-million-step adaptation pilot](analyses/adaptation-1m-pilot.md) — Five timed policies, 40 actor updates each, matched reward/success metrics, and 15 evaluation videos. Last updated 2026-09-13.
