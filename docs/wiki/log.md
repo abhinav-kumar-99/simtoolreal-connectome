@@ -727,3 +727,8 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Derived the current all-neuron MLP actor counts at shared hidden widths 256/128/96/64 and distinguished algebraic input-rank limits from empirical decoder capacity.
 - The existing YAML exposes one shared interface width; 128 is the smallest setting that does not necessarily compress the 128-D sensory input, reducing the actor from 692,268 to 347,308 scalars.
 - A 128-sensory/64-descending/64-action 207,596-scalar design would require independently configurable widths; it is a proposed matched capacity ablation, not an implemented or evaluated policy.
+
+## [2026-09-17] docs | Add robot-to-fly mapping infographic
+
+- Added `docs/wiki/assets/robot-to-fly-neuron-mapping.png`, a 1,672 x 941 architecture diagram of the current learned-adapter all-neuron policy.
+- Embedded the diagram in the connectome actor concept page beside the exact 1,952-neuron and 33,720-edge dataflow description.
