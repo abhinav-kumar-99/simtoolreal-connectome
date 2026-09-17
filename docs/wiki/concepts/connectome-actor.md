@@ -157,6 +157,37 @@ embedding), LayerNorm, `1024 -> 1024 -> 1024 -> 512 -> 512` MLP, action/value
 heads, six log-standard-deviation rows, and the six SAPG embeddings. The
 original actor has no fly circuit.
 
+### MLP-width lower bounds
+
+The live learned-adapter profile exposes one shared
+`interface_projections.hidden_size: 256` for all three MLPs. The hard
+dimensional limits are different by interface:
+
+| Hidden width | Sensory `128 -> H -> 384` | Descending `44 -> H -> 157` | All-neuron action `1,952 -> H -> 29` | Actor scalars |
+| ---: | --- | --- | --- | ---: |
+| 256 (live) | no input-rank bottleneck | no input-rank bottleneck | ample decoder capacity | 692,268 |
+| 128 | no input-rank bottleneck | no input-rank bottleneck | 128 learned decoder features for 29 actions | 347,308 |
+| 96 | compresses the raw 128-D sensory vector | no input-rank bottleneck | 96 decoder features | 261,068 |
+| 64 | compresses sensory input | no input-rank bottleneck | 64 decoder features | 174,828 |
+
+Thus **128 is the smallest shared YAML width that does not force a rank
+bottleneck at either learned input adapter**. It nearly halves the actor count
+and is the appropriate first matched ablation. The action path necessarily ends
+in 29 command values, so `H < 1,952` is not an information bottleneck in the
+same strict sense; a width of at least 29 can still represent an arbitrary
+*linear* 1,952-to-29 map. Smaller action widths nevertheless reduce nonlinear
+decoder capacity and should be treated as an empirical capacity choice, not as
+free compression.
+
+The more attractive asymmetric design would keep sensory at 128, use 64 for
+the 44-D descending route, and use 64 or 128 for the action decoder. It would
+have 207,596 or 334,444 actor scalars respectively. That requires a small
+configuration/code extension because the present dense learned-adapter profile
+uses one shared width; it is not selectable by current YAML alone. No learning
+result establishes that 64 action features are sufficient, so compare 128-shared
+first, then a separately configurable 128/64/64 candidate against the same
+seed, optimizer, critic, and frame budget.
+
 The gains-plus-dynamics SAPG control (previous primary actor) has 109,796 trainable scalars in 12 parameter tensors:
 
 | Group | Shape | Count |

@@ -721,3 +721,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Verified the live all-neuron MLP actor from its recovery checkpoint shapes: 692,268 declared trainable scalars, versus 7,811,468 for the original SimToolReal LSTM/SAPG actor.
 - Distinguished the GPU-0 no-auxiliary job's 690,315 actively gradient-receiving actor scalars from its still-declared 1,953-scalar unused value head; the GPU-1 auxiliary-loss job updates all 692,268.
 - Recorded the unchanged separate 2,037,769-scalar asymmetric critic and the current compact MaleCNS graph's 33,720 fixed directed connections, including the no-fly-circuit boundary for the original LSTM.
+
+## [2026-09-17] query | Learned interface MLP bottleneck limits
+
+- Derived the current all-neuron MLP actor counts at shared hidden widths 256/128/96/64 and distinguished algebraic input-rank limits from empirical decoder capacity.
+- The existing YAML exposes one shared interface width; 128 is the smallest setting that does not necessarily compress the 128-D sensory input, reducing the actor from 692,268 to 347,308 scalars.
+- A 128-sensory/64-descending/64-action 207,596-scalar design would require independently configurable widths; it is a proposed matched capacity ablation, not an implemented or evaluated policy.
