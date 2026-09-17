@@ -33,6 +33,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Analyses
 
+- [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — Standard one-update 323-unit LSTM matched to the compact all-neuron fly actor's instantiated coefficient count. Last updated 2026-09-17.
 - [Visual reservoir performance](analyses/visual-reservoir-performance.md) — Frozen inference, full-CNS capacity sweep, video-worker memory limits and 2,304-environment continuation. Last updated 2026-09-16.
 - [End-to-end system audit](analyses/system-audit-2026-09-15.md) — All 71 event histories, raw-source reproduction, cross-member KL, saturation, proposed Beta parameters and multi-rate neural timing. Last updated 2026-09-15.
 - [Minimal dexterity circuits](analyses/minimal-dexterity-circuit.md) — Exact 86/262/408-cell candidates, threshold rationale, and 262 training evidence weakening its full-task recommendation. Last updated 2026-09-15.

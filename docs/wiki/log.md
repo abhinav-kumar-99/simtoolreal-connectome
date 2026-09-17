@@ -2,9 +2,15 @@
 
 Append-only record of durable repository work.
 
-Last updated: 2026-09-16
+Last updated: 2026-09-17
 
 Related: [Index](index.md), [Overview](overview.md)
+
+## [2026-09-17] analysis | Add parameter-matched LSTM baseline contract
+
+- Added `analyses/lstm-baseline.md` and linked it from the index and connectome actor concept.
+- Recorded the 733,796 fly versus 733,790 LSTM coefficient accounting, standard one-update LSTM semantics, YAML entrypoints and single-seed evidence boundary.
+- Provenance: current actor/profile code, compact graph artifact contract, and exact composed network parameter shapes.
 
 ## [2026-09-16] query | Identify further visual-reservoir speedups
 
