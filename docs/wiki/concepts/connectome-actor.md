@@ -193,6 +193,30 @@ result establishes that 64 action features are sufficient, so compare 128-shared
 first, then a separately configurable 128/64/64 candidate against the same
 seed, optimizer, critic, and frame budget.
 
+An even smaller proposed nonlinear profile, sensory/descending/action widths
+`128/64/32`, has **144,172** declared actor scalars: 65,536 sensory, 12,864
+descending, 63,453 action, 1,953 auxiliary value-head, and 366 SAPG
+embedding/log-standard-deviation parameters. The no-auxiliary run would
+actively update 142,219 of them. This is 4.80x smaller than the live 692,268
+actor, although adding the unchanged 2,037,769-scalar central critic gives a
+2,181,941-scalar training system.
+
+If every coordinate is treated as independent, the smallest hidden widths that
+avoid forced rank loss are `128/44/29`, yielding **134,206** actor scalars. The
+goal path can plausibly be narrower because its 32 embedding coordinates are
+selected from only six learned SAPG rows: the combined 12 continuous goals plus
+six-row embedding span is at most 18-dimensional. A `128/18/29` design would
+have **128,980** actor scalars, but that uses this structure rather than
+preserving all 44 nominal coordinates independently. Width below 29 on the
+action path constrains the local 29-output action Jacobian to rank below 29 and
+therefore assumes motor synergies rather than merely removing redundancy.
+
+The existing direct-linear interface is smaller still: `128 -> 384`,
+`44 -> 157`, and `1,952 -> 29` require **115,016** total actor scalars while
+retaining the maximum possible linear ranks 128, 44, and 29. It removes the
+hidden nonlinear feature transformation, so this is an expressivity tradeoff,
+not a stricter information-rank bottleneck.
+
 The gains-plus-dynamics SAPG control (previous primary actor) has 109,796 trainable scalars in 12 parameter tensors:
 
 | Group | Shape | Count |

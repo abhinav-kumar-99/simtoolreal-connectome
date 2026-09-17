@@ -732,3 +732,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 
 - Added `docs/wiki/assets/robot-to-fly-neuron-mapping.png`, a 1,672 x 941 architecture diagram of the current learned-adapter all-neuron policy.
 - Embedded the diagram in the connectome actor concept page beside the exact 1,952-neuron and 33,720-edge dataflow description.
+
+## [2026-09-17] query | Aggressive asymmetric MLP capacity
+
+- Calculated 144,172 actor scalars for proposed `128/64/32` sensory/descending/action hidden widths, or 142,219 actively updated scalars when the auxiliary actor-value loss is disabled.
+- Distinguished the coordinate-full-rank `128/44/29` floor (134,206), an SAPG-structure-aware `128/18/29` candidate (128,980), and the already-supported direct-linear interfaces (115,016).
+- Widths below 29 on the action decoder impose a rank-limited action-synergy assumption; these counts are architectural bounds, not evidence of retained task performance.
