@@ -2,7 +2,7 @@
 
 TensorBoard training-success tags summarize the most recently completed random-goal episodes, while deterministic trajectory Task Progress is a separate post-training evaluation metric.
 
-Last updated: 2026-09-15
+Last updated: 2026-09-16
 
 Related: [Billion-step adaptation run](../analyses/adaptation-1b-run.md), [Experiment workflow](../workflows/connectome-experiments.md)
 
@@ -99,5 +99,9 @@ The current deployment contract is coefficient ID 50, the block-0 conditioned po
 The [2026-09-15 system audit](../analyses/system-audit-2026-09-15.md) makes this distinction experimentally important: the strongest training-return run has zero block-0 completed goals in its recent tail, while ordinary return describes block 5. Across 17 clipped-policy milestones through 4.25B, mean deterministic Task Progress was 0.74074% except for 1.48148% at 2.75B. The nine 1,952-tanh and 18 fresh 262-tanh milestones were all 0.74074%. Evaluate all six IDs on the same validation cohort before concluding that ID-0 training improvements cannot transfer to deterministic control; current artifacts do not establish that another ID succeeds. None of the main histories had advanced the initial tolerance curriculum at that snapshot.
 
 The evaluation YAML's `success_tolerance_m` is passed to the environment as the unscaled base tolerance. With the inherited `keypointScale: 1.5`, configured values 0.02 and 0.01 produce implemented maximum-keypoint thresholds of 0.03 m and 0.015 m respectively. Existing artifact labels call these the paper 2 cm and repository 1 cm settings because those are their configured base tolerances; consumers should record the 1.5 scale when reporting the actual threshold used by code.
+
+The active dense and preserved structured Gaussian milestone contracts now request two video metrics for every checkpoint. `paper_task_progress` retains the fixed base tolerance 0.02. `checkpoint_training_tolerance` resolves the exact `scalars/success_tolerance/frame` value logged at the checkpoint's actual frame; it refuses to substitute a nearby step. Both sets otherwise use the same checkpoint, deterministic mean actions, coefficient ID 50, fixed trajectory, one-step waypoint rule, disabled evaluation randomization, episode limit, camera and rendering parameters. Thus the second set changes only tolerance; it does not reproduce training's ten-consecutive-step success requirement or random-goal distribution.
+
+Inference-only milestone checkpoints deliberately omit environment state, so the watcher obtains the contemporaneous tolerance from the training TensorBoard stream. The evaluator records the resolved value and source frame in its concrete metric configuration and each case records `success_tolerance_m`. Existing completed fixed-tolerance cases are validated and reused when a second video metric is added, while missing checkpoint-tolerance cases are generated and aggregate summaries require both sets before marking a milestone complete.
 
 For learning-curve diagnosis, plot `success_ratio` together with `scalars/success_tolerance` and inspect per-block curves for exploration effects. For final policy comparison, use matched deterministic Task Progress evaluations rather than treating the training success curves as evaluation success rates.

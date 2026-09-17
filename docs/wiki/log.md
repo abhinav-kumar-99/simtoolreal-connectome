@@ -689,3 +689,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Launched the fresh 1,952-neuron no-vision all-neuron-readout suite/trainer as PIDs 543985/544079 on physical GPU 1 and its 250M-frame milestone watcher as PID 543989.
 - Initial production telemetry was finite through frame 1,769,472 with approximately 95K-101K warm total FPS, reward 34.7445, entropy 41.1834, KL `.00312`, and both actor and value losses present.
 - Confirmed that the existing port-6008 TensorBoard discovered the new production and smoke event streams without restart. GPU-0 trainer/watcher PIDs 261951/262494 were preserved.
+
+## [2026-09-16] implement | Add checkpoint-tolerance milestone videos
+
+- Extended YAML-owned milestone evaluation to generate two otherwise identical deterministic video sets per checkpoint: fixed paper tolerance `.02` and the exact training tolerance from `scalars/success_tolerance/frame` at that checkpoint's actual frame.
+- Added strict exact-frame TensorBoard resolution, per-metric video completion accounting and case-level reuse so existing fixed-tolerance videos are not rerendered during backfill.
+- Updated the active dense Gaussian watcher contract and added a structured Rotation-6D Gaussian watcher contract for its preserved 250M checkpoint. Both retain mean actions, coefficient ID 50, one-step waypoint scoring, trajectories, simulator overrides and rendering settings across the two sets.
+- Focused milestone/configuration tests passed; implementation was isolated on `feature/checkpoint-tolerance-videos` because the primary checkout contained unrelated dirty visual-reservoir work.

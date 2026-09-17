@@ -87,6 +87,45 @@ def _resolve_policies(config: dict) -> tuple[dict, Path | None, dict | None]:
     return policies, training_directory, suite_results
 
 
+def video_metric_names(config: dict) -> list[str]:
+    """Return the metric directories that must contain rollout videos."""
+    videos = config["videos"]
+    names = videos.get("metrics")
+    if names is None:
+        names = [videos["metric"]]
+    names = [str(name) for name in names]
+    if not names or len(names) != len(set(names)):
+        raise ValueError("videos.metrics must contain unique metric names")
+    missing = [name for name in names if name not in config["metrics"]]
+    if missing:
+        raise ValueError(f"Video metrics are not configured evaluation metrics: {missing}")
+    return names
+
+
+def _completed_case(case: dict) -> dict | None:
+    """Reuse a matching completed case so adding a metric does not rerun old videos."""
+    output_path = Path(case["output_path"])
+    if not output_path.is_file():
+        return None
+    try:
+        result = json.loads(output_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if (
+        result.get("policy") != case["policy"]
+        or result.get("metric") != case["metric"]
+        or result.get("action_selection") != case["action_selection"]
+        or float(result.get("success_tolerance_m", float("nan")))
+        != float(case["success_tolerance"])
+    ):
+        return None
+    if case["record_video"]:
+        video_path = Path(case["video_path"])
+        if not video_path.is_file() or video_path.stat().st_size == 0:
+            return None
+    return result
+
+
 def _run_case(case: dict, gpu: int, environment: dict[str, str]) -> dict:
     case_path = Path(case["case_config_path"])
     log_path = Path(case["log_path"])
@@ -139,7 +178,10 @@ def run(config: dict) -> dict:
     if not 1 <= max_parallel <= len(gpus):
         raise ValueError("max_parallel must be between one and GPU count")
 
+    video_metrics = video_metric_names(config)
+
     cases = []
+    evaluations = []
     for policy_name in requested_policies:
         policy = policies[policy_name]
         checkpoint = Path(policy["checkpoint"])
@@ -155,7 +197,7 @@ def run(config: dict) -> dict:
                     / task["object_name"]
                     / task["task_name"]
                 )
-                record_video = metric_name == config["videos"]["metric"]
+                record_video = metric_name in video_metrics
                 worker_config = {
                     "policy": policy_name,
                     "metric": metric_name,
@@ -191,14 +233,17 @@ def run(config: dict) -> dict:
                 case_directory.mkdir(parents=True, exist_ok=True)
                 case_config_path = case_directory / "case.yaml"
                 case_config_path.write_text(yaml.safe_dump(worker_config, sort_keys=False))
-                cases.append(
-                    {
-                        **worker_config,
-                        "label": f"{metric_name}:{policy_name}:{task['object_name']}:{task['task_name']}",
-                        "case_config_path": str(case_config_path),
-                        "log_path": str(case_directory / "eval.log"),
-                    }
-                )
+                case = {
+                    **worker_config,
+                    "label": f"{metric_name}:{policy_name}:{task['object_name']}:{task['task_name']}",
+                    "case_config_path": str(case_config_path),
+                    "log_path": str(case_directory / "eval.log"),
+                }
+                completed = _completed_case(case)
+                if completed is None:
+                    cases.append(case)
+                else:
+                    evaluations.append(completed)
 
     gpu_queues = {gpu: [] for gpu in gpus[:max_parallel]}
     for index, case in enumerate(cases):
@@ -215,7 +260,6 @@ def run(config: dict) -> dict:
     def run_queue(gpu: int, queue: list[dict]) -> list[dict]:
         return [_run_case(case, gpu, environment) for case in queue]
 
-    evaluations = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_parallel) as executor:
         futures = [
             executor.submit(run_queue, gpu, queue) for gpu, queue in gpu_queues.items()
@@ -243,19 +287,28 @@ def run(config: dict) -> dict:
                 ),
             }
 
-    expected_videos = len(config["eval_cases"])
+    expected_videos_per_metric = len(config["eval_cases"])
     video_counts = {}
+    video_counts_by_metric = {}
     for policy_name in requested_policies:
-        videos = list(
-            (output_directory / config["videos"]["metric"] / policy_name).rglob(
-                "rollout.mp4"
+        video_counts_by_metric[policy_name] = {}
+        policy_total = 0
+        for metric_name in video_metrics:
+            videos = list(
+                (output_directory / metric_name / policy_name).rglob(
+                    "rollout.mp4"
+                )
             )
-        )
-        if len(videos) != expected_videos or any(path.stat().st_size == 0 for path in videos):
-            raise RuntimeError(
-                f"Expected {expected_videos} nonempty videos for {policy_name}, got {videos}"
-            )
-        video_counts[policy_name] = len(videos)
+            if len(videos) != expected_videos_per_metric or any(
+                path.stat().st_size == 0 for path in videos
+            ):
+                raise RuntimeError(
+                    f"Expected {expected_videos_per_metric} nonempty {metric_name} "
+                    f"videos for {policy_name}, got {videos}"
+                )
+            video_counts_by_metric[policy_name][metric_name] = len(videos)
+            policy_total += len(videos)
+        video_counts[policy_name] = policy_total
 
     summary = {
         "training": (
@@ -264,7 +317,10 @@ def run(config: dict) -> dict:
             else {}
         ),
         "evaluation": aggregate,
+        "metric_contracts": config["metrics"],
         "video_counts": video_counts,
+        "video_counts_by_metric": video_counts_by_metric,
+        "video_metrics": video_metrics,
         "evaluated_cases": config["eval_cases"],
         "episodes_per_case": int(config["episodes_per_case"]),
         "action_selection": action_selection,
