@@ -715,3 +715,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Confirmed that full checkpoints omitted the critic trainer's epoch, frame, scheduled-LR variable and optional recurrent state, so a resumed scheduled critic could restart its schedule at zero.
 - Added explicit central-value training metadata save/restore, legacy inference from actor counters plus critic optimizer LR, fresh-rollout handling that does not restore critic RNN state, and suite verification of the complete critic resume contract.
 - Existing trainers were not interrupted and continue writing the old schema until restarted; those checkpoints remain resumable through the compatibility path.
+
+## [2026-09-17] query | Current all-neuron parameter and edge count
+
+- Verified the live all-neuron MLP actor from its recovery checkpoint shapes: 692,268 declared trainable scalars, versus 7,811,468 for the original SimToolReal LSTM/SAPG actor.
+- Distinguished the GPU-0 no-auxiliary job's 690,315 actively gradient-receiving actor scalars from its still-declared 1,953-scalar unused value head; the GPU-1 auxiliary-loss job updates all 692,268.
+- Recorded the unchanged separate 2,037,769-scalar asymmetric critic and the current compact MaleCNS graph's 33,720 fixed directed connections, including the no-fly-circuit boundary for the original LSTM.

@@ -2,7 +2,7 @@
 
 The actor is a sparse rate RNN whose recurrent support and base weights come from MaleCNS.
 
-Last updated: 2026-09-16
+Last updated: 2026-09-17
 
 Related: [Overview](../overview.md), [Source](../sources/summaries/malecns-front-leg-circuit.md), [Workflow](../workflows/connectome-experiments.md), [Fixed reservoir](fixed-reservoir-controller.md), [Sparse backends](../analyses/sparse-backends.md)
 
@@ -123,6 +123,39 @@ For an edge from source neuron `j` to destination neuron `i`, the recurrent edge
 A low outgoing gain attenuates recurrent influence but does not turn the neuron off. Current gains cannot reach zero: each lies in `[0.25, 4]`, so one gain attenuates by at most fourfold and a low-low edge by at most sixteenfold. Direct sensory/descending drive and recurrent bias are added after incoming-gain scaling; hidden state also persists through the leak term. Motor-neuron state feeds the learned action readout directly without outgoing-gain multiplication, and every neuron feeds the actor value head directly. Consequently, even a hypothetical zero outgoing gain would silence recurrent transmission from a node but would not necessarily remove its direct action/value contribution. A causal node-importance claim requires an explicit hidden-state/readout ablation and closed-loop evaluation, not inspection of learned gain magnitude alone.
 
 ## Trainable parameters
+
+### Current live all-neuron MLP actors
+
+Both live 1,952-cell all-neuron Gaussian jobs use the same actor declaration:
+**692,268** `requires_grad=True` policy scalars. This is **8.86%** of the
+unchanged original SimToolReal LSTM/SAPG actor's **7,811,468** scalars, or about
+**11.28x fewer**. The count is verified from the live GPU-1 recovery checkpoint
+parameter shapes, not inferred from checkpoint file size:
+
+| Group | Count |
+| --- | ---: |
+| SAPG embedding and six log-standard-deviation rows | 366 |
+| Bias-free sensory MLP, `128 -> 256 -> 384` | 131,072 |
+| Bias-free descending MLP, `44 -> 256 -> 157` | 51,456 |
+| All-neuron action MLP, `1,952 -> 256 -> 29` | 507,421 |
+| Auxiliary actor value head, `1,952 -> 1` | 1,953 |
+| **Actor total** | **692,268** |
+
+The GPU-0 `use_experimental_cv: false` job still declares the 1,953-scalar
+auxiliary value head as a parameter, but its loss is disabled, so only
+**690,315** actor scalars receive an optimization gradient. The GPU-1 true job
+optimizes all 692,268. Neither count includes the frozen `33,720` edge values,
+CSR indices, masks, or the four frozen 1,952-cell dynamics vectors. The
+asymmetric critic is separate and unchanged at 2,037,769 scalars: total
+optimization capacity is 2,730,037 for the true job and 2,728,084 actively
+updated scalars for the false job. The equivalent original LSTM-plus-critic
+training system has 9,849,237 scalars.
+
+The original LSTM actor count is exact for its SAPG configuration: a 172-input
+single-layer 1,024-unit LSTM (140 observations plus a learned 32-value SAPG
+embedding), LayerNorm, `1024 -> 1024 -> 1024 -> 512 -> 512` MLP, action/value
+heads, six log-standard-deviation rows, and the six SAPG embeddings. The
+original actor has no fly circuit.
 
 The gains-plus-dynamics SAPG control (previous primary actor) has 109,796 trainable scalars in 12 parameter tensors:
 
