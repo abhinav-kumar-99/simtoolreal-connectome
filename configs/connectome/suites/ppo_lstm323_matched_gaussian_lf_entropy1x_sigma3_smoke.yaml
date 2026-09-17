@@ -1,0 +1,60 @@
+# Two-epoch integration gate for the standard one-update matched LSTM.
+schema_version: 1
+name: ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_smoke
+stages: [train]
+output_directory: train_dir/connectome/lstm_baseline/ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_smoke
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - {name: lstm323_matched, train_profile: SimToolRealLSTM323MatchedGaussianSigma3SAPG}
+  seeds: [42]
+  gpu_assignments: [0]
+  max_parallel: 1
+  num_envs: 12288
+  sapg_block_size: 2048
+  epochs: 2
+  max_frames: 393216
+  minibatch_size: 49152
+  central_critic_minibatch_size: 49152
+  rollout_accumulation_steps: 1
+  actor_microbatch_size: 49152
+  central_critic_microbatch_size: 49152
+  inference_checkpoint_interval_frames: 196608
+  save_frequency: 1
+  save_best_after: 0
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: lstm323-matched-gaussian-lf-entropy1x-sigma3-smoke
+    tags: [lstm, matched-capacity, one-update, clipped-gaussian, sigma-3, leader-follower, entropy-1x, actor-value-loss, smoke]
+  overrides:
+    train.params.config.kl_threshold: 0.004
+    train.params.config.learning_rate: 0.0001
+    train.params.config.max_lr: 0.001
+    train.params.config.use_others_experience: lf
+    train.params.config.off_policy_ratio: 1.0
+    ++train.params.config.use_experimental_cv: true
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    train.params.config.expl_reward_coef_scale: 0.005
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

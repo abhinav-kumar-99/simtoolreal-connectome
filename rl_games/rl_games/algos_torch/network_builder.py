@@ -1,6 +1,7 @@
 from rl_games.common import object_factory
 from rl_games.algos_torch import torch_ext
 
+import math
 import torch
 import torch.nn as nn
 
@@ -283,6 +284,20 @@ class A2CBuilder(NetworkBuilder):
                 mu_init = self.init_factory.create(**self.space_config['mu_init'])
                 self.sigma_act = self.activations_factory.create(self.space_config['sigma_activation']) 
                 sigma_init = self.init_factory.create(**self.space_config['sigma_init'])
+                configured_max_sigma = self.space_config.get('max_sigma')
+                self.max_sigma = (
+                    None if configured_max_sigma is None else float(configured_max_sigma)
+                )
+                if self.max_sigma is not None:
+                    if not math.isfinite(self.max_sigma) or self.max_sigma <= 1.0:
+                        raise ValueError(
+                            'max_sigma must be finite and greater than 1 to preserve '
+                            'the unit-sigma initialization'
+                        )
+                    self.max_log_sigma = math.log(self.max_sigma)
+                    self.max_sigma_offset = (
+                        math.log(math.expm1(self.max_log_sigma)) - self.max_log_sigma
+                    )
 
                 if self.fixed_sigma == 'fixed':
                     self.sigma = nn.Parameter(torch.zeros(actions_num, requires_grad=True, dtype=torch.float32), requires_grad=True)
@@ -411,6 +426,7 @@ class A2CBuilder(NetworkBuilder):
                         sigma = self.sigma_act(self.sigma[idxs])
                     else:
                         sigma = self.sigma_act(self.sigma(a_out))
+                    sigma = self._bound_log_sigma(sigma)
 
                     return mu, sigma, value, states
             else:
@@ -471,7 +487,15 @@ class A2CBuilder(NetworkBuilder):
                         sigma = self.sigma_act(self.sigma[idxs])
                     else:
                         sigma = self.sigma_act(self.sigma(out))
+                    sigma = self._bound_log_sigma(sigma)
                     return mu, mu*0 + sigma, value, states
+
+        def _bound_log_sigma(self, log_sigma):
+            if self.max_sigma is None:
+                return log_sigma
+            return self.max_log_sigma - torch.nn.functional.softplus(
+                self.max_log_sigma - log_sigma + self.max_sigma_offset
+            )
                     
         def is_separate_critic(self):
             return self.separate
@@ -1003,4 +1027,3 @@ class SACBuilder(NetworkBuilder):
             else:
                 self.is_discrete = False
                 self.is_continuous = False
-
