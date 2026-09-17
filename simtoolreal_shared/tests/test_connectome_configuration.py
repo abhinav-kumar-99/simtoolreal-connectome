@@ -1170,6 +1170,7 @@ def test_active_gaussian_watchers_generate_fixed_and_checkpoint_tolerance_videos
     paths = [
         "ppo_1952_4update_gaussian_lf_entropy1x_sigma3_100b_milestones.yaml",
         "ppo_1952_4update_structured_rot6d_gaussian_lf_entropy1x_sigma3_100b_milestones.yaml",
+        "ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_100b_milestones.yaml",
     ]
     for name in paths:
         config = yaml.safe_load(
