@@ -683,3 +683,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added a learned-MLP Gaussian train profile plus smoke, 100B and milestone-video YAML entrypoints matched to the live GPU-0 Gaussian contract except for GPU and actor feature population.
 - All 94 connectome-network tests passed. The full 12,288-environment smoke completed two epochs/393,216 frames and finite-action checkpoint reload in 24.68 seconds of child training.
 - Stopped only the GPU-1 full-CNS vision suite/trainer at logged frame 24,514,560; its artifacts remain preserved. The GPU-0 Gaussian suite/trainer/watcher remained live.
+
+## [2026-09-16] launch | Replace vision with compact all-neuron policy
+
+- Launched the fresh 1,952-neuron no-vision all-neuron-readout suite/trainer as PIDs 543985/544079 on physical GPU 1 and its 250M-frame milestone watcher as PID 543989.
+- Initial production telemetry was finite through frame 1,769,472 with approximately 95K-101K warm total FPS, reward 34.7445, entropy 41.1834, KL `.00312`, and both actor and value losses present.
+- Confirmed that the existing port-6008 TensorBoard discovered the new production and smoke event streams without restart. GPU-0 trainer/watcher PIDs 261951/262494 were preserved.

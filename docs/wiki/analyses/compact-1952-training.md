@@ -288,3 +288,5 @@ Entrypoints and important YAML controls:
 ```
 
 The train profile owns `feature_population: all`; the suite owns GPU, 12,288-environment batch geometry, four neural updates, Gaussian sigma-three cap inherited from the profile, KL `.004`, LR range, LF reuse, entropy incentive and 100B cap. The milestone YAML owns checkpoint cadence, deterministic mean-action evaluation cases and video settings. `run_connectome_suite.py` remains the preparation/training orchestrator and `run_connectome_milestone_evaluation.py` remains the independent checkpoint watcher.
+
+The fresh production replacement launched on physical GPU 1 as suite PID 543985, trainer PID 544079 and milestone watcher PID 543989. At frame 1,769,472 its reward 34.7445, entropy 41.1834, actor loss `.000135`, auxiliary actor value loss `.1951`, scheduler KL `.00312` and invalid-KL flags were finite; warm total throughput was approximately 95K-101K frames/s. TensorBoard 6008 discovered both the production and smoke histories automatically under the existing shared root. The independent GPU-0 motor-readout Gaussian trainer PID 261951 and watcher PID 262494 remained live.
