@@ -695,3 +695,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Distinguished the privileged central critic from the actor-side auxiliary value head: the central critic consumes no fly state, while `use_experimental_cv: true` trains the auxiliary head through actor features.
 - Recorded that the live motor-readout policy sends 135 fly states to its action MLP but all 1,952 states to its auxiliary value head; the all-neuron policy sends all 1,952 states to both heads.
 - Documented privileged-state-plus-detached-recurrent-features as a future recurrent-critic ablation, not an established improvement. No configuration or running process changed.
+
+## [2026-09-16] query | Define the standard SimToolReal critic analogue
+
+- Distinguished asymmetric information from shared representation: privileged state is the defining central-critic contract, while actor memory is only an optional additional conditioning variable for a recurrent policy.
+- Defined the paper analogue as privileged central critic only and the released-code analogue as privileged central critic plus an auxiliary actor value head sharing the actor's post-recurrent trunk.
+- Recorded that neither current connectome readout is an exact shared-trunk reproduction. No configuration or running process changed.
