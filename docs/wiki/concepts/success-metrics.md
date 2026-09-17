@@ -2,7 +2,7 @@
 
 TensorBoard training-success tags summarize the most recently completed random-goal episodes, while deterministic trajectory Task Progress is a separate post-training evaluation metric.
 
-Last updated: 2026-09-15
+Last updated: 2026-09-17
 
 Related: [Billion-step adaptation run](../analyses/adaptation-1b-run.md), [Experiment workflow](../workflows/connectome-experiments.md)
 
@@ -16,13 +16,13 @@ The active suites require ten consecutive near-goal control steps for one succes
 
 ### Goal-tolerance curriculum: active but not yet advancing
 
-This is the only curriculum that can currently change task difficulty. It starts with unscaled tolerance `0.075` and targets `0.01`. Every 3,000 vector-environment control steps, it is eligible to multiply the current tolerance by `0.9`, clipped at the target, but only if `prev_episode_successes.mean() >= 3` across all 12,288 environments. If the performance gate fails, the code keeps checking on later control steps and does not move the last-update marker.
+This is the only curriculum that can currently change task difficulty. It starts with unscaled tolerance `0.075` and targets `0.01`. Every 3,000 vector-environment control steps, it is eligible to multiply the current tolerance by `0.9`, clipped at the target, but only if `prev_episode_successes.mean() >= 3` across all 12,288 environments. `prev_episode_successes` is copied from each environment only when that environment's episode ends, so this is an all-environment average over most recently completed episodes rather than the current rollout's successes. If the performance gate fails, the code keeps checking on later control steps and does not move the last-update marker.
 
 The sequence begins `0.075 -> 0.0675 -> 0.06075 -> 0.054675 -> ... -> 0.0101314 -> 0.01`, requiring 20 successful advances. Because the geometric threshold is `tolerance * keypointScale` and `keypointScale=1.5`, this corresponds to tightening the maximum corresponding-keypoint distance from 0.1125 m to 0.015 m. Ten consecutive control steps inside that threshold produce one goal success and a new random goal; the environment episode can accumulate up to 50 goals.
 
 With 12,288 environments, 3,000 control steps correspond to 36,864,000 environment frames. Even if the performance gate passed continuously from startup, reaching the target would therefore require at least 737,280,000 frames. The tanh-squashed KL-0.016 run had already passed the first time gate but still logged tolerance `0.075` at frame 361,955,328: mean completed-episode successes was only 0.00407, versus the required 3.0. Its frame-353,697,792 checkpoint recorded `frame_since_restart: 28784`, `last_curriculum_update: 0`, mean successes 0.00423 and maximum per-environment successes 2. Because a failed performance check leaves the last-update marker unchanged, the environment now checks every control step and will tighten immediately from `0.075` to `0.0675` on the first step whose all-environment mean reaches three. A single environment reaching three is insufficient. After an advance, the next one again requires both another 3,000 control steps and the same performance gate. At the recent 90,000-103,000 environment-frame/s rate, that spacing is roughly six to seven minutes, but the first advance has no predictable wall-clock time because performance is the active blocker.
 
-The dense reward coefficients do not form a stage schedule. Tightening tolerance primarily changes the success/goal-advance condition and associated success bonus; the continuous lifting, fingertip, keypoint, and action terms remain configured throughout training. Full recovery environment state includes current tolerance and its last-update control step, so a stateful resume can preserve this curriculum.
+The dense reward coefficients do not form a stage schedule. Tightening tolerance primarily changes the success/goal-advance condition and associated success bonus; the continuous lifting, fingertip, keypoint, and action terms remain configured throughout training. `evalSuccessTolerance` would overwrite the computed tolerance after the scheduler for evaluation-only configuration, but it is `null` in the active training task profile. Full recovery environment state includes current tolerance and its last-update control step, so a stateful resume can preserve this curriculum.
 
 ### Tyler curriculum: counter present, effective behavior disabled
 

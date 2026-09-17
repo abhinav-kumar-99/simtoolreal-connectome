@@ -744,3 +744,8 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added backward-compatible sensory, descending, and readout hidden-width overrides; existing profiles still use the shared 256-unit width when the new keys are absent.
 - Added a clipped-Gaussian all-neuron `128/32/32` train profile and YAML-owned two-epoch full-geometry smoke entrypoint without launching or replacing either live job.
 - Verified the exact `128 -> 128 -> 384`, `44 -> 32 -> 157`, and `1,952 -> 32 -> 29` shapes. The resulting actor declares 137,740 trainable scalars, including the auxiliary value head and SAPG parameters.
+
+## [2026-09-17] query | Confirm active success-threshold curriculum
+
+- Revalidated the goal-tolerance curriculum from the raw environment scheduler: the 0.075 base tolerance reduces by 0.9 only after both 3,000 vector control steps and an all-12,288-environment mean of at least three completed goals per most recently completed episode.
+- Recorded that failed checks leave the update marker unchanged and therefore make the next qualifying control step advance immediately; `evalSuccessTolerance` is null for training and does not override the scheduler.
