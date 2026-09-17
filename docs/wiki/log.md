@@ -738,3 +738,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Calculated 144,172 actor scalars for proposed `128/64/32` sensory/descending/action hidden widths, or 142,219 actively updated scalars when the auxiliary actor-value loss is disabled.
 - Distinguished the coordinate-full-rank `128/44/29` floor (134,206), an SAPG-structure-aware `128/18/29` candidate (128,980), and the already-supported direct-linear interfaces (115,016).
 - Widths below 29 on the action decoder impose a rank-limited action-synergy assumption; these counts are architectural bounds, not evidence of retained task performance.
+
+## [2026-09-17] implement | Independently sized 128/32/32 interface MLPs
+
+- Added backward-compatible sensory, descending, and readout hidden-width overrides; existing profiles still use the shared 256-unit width when the new keys are absent.
+- Added a clipped-Gaussian all-neuron `128/32/32` train profile and YAML-owned two-epoch full-geometry smoke entrypoint without launching or replacing either live job.
+- Verified the exact `128 -> 128 -> 384`, `44 -> 32 -> 157`, and `1,952 -> 32 -> 29` shapes. The resulting actor declares 137,740 trainable scalars, including the auxiliary value head and SAPG parameters.

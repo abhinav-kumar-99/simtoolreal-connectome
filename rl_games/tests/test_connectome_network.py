@@ -182,6 +182,58 @@ def test_mlp_interface_projections_have_one_256_unit_hidden_layer(
     assert outputs[2].shape == (6, 1)
 
 
+def test_mlp_interface_projections_support_independent_hidden_widths(
+    artifact_path,
+) -> None:
+    projection = {
+        "architecture": "mlp",
+        "hidden_size": 256,
+        "sensory_hidden_size": 128,
+        "descending_hidden_size": 32,
+        "readout_hidden_size": 32,
+        "activation": "elu",
+    }
+    params = _network_params(
+        artifact_path,
+        interface_projections=projection,
+    )
+    params["connectome"]["reservoir_readout"] = {
+        "enabled": False,
+        "feature_population": "all",
+    }
+    builder = ConnectomeBuilder()
+    builder.load(params)
+    network = builder.build(
+        "asymmetric_mlp",
+        actions_num=2,
+        input_shape=(6,),
+        num_seqs=2,
+        value_size=1,
+        type="extra_param",
+        coef_ids=torch.tensor([50.0, 0.0]),
+        coef_id_idx=5,
+    )
+
+    assert network.projection_hidden_size == 256
+    assert network.sensory_projection_hidden_size == 128
+    assert network.descending_projection_hidden_size == 32
+    assert network.readout_projection_hidden_size == 32
+    assert network.sensory_adapter[0].out_features == 128
+    assert network.sensory_adapter[2].in_features == 128
+    assert network.descending_adapter[0].out_features == 32
+    assert network.descending_adapter[2].in_features == 32
+    assert network.mu[0].in_features == 7
+    assert network.mu[0].out_features == 32
+    assert network.mu[2].in_features == 32
+
+    outputs = network({"obs": _observations(6), "seq_length": 3})
+    loss = outputs[0].square().sum() + outputs[1].sum() + outputs[2].square().sum()
+    loss.backward()
+    for name, parameter in network.named_parameters():
+        if parameter.requires_grad:
+            assert parameter.grad is not None and torch.isfinite(parameter.grad).all(), name
+
+
 def test_mlp_actor_can_read_all_final_neuron_states(artifact_path) -> None:
     projection = {"architecture": "mlp", "hidden_size": 16, "activation": "elu"}
     params = _network_params(
@@ -644,6 +696,21 @@ def test_fixed_reservoir_lif_triton_matches_dense(artifact_path) -> None:
         ({"architecture": "cnn"}, ValueError, "architecture"),
         ({"architecture": "mlp", "hidden_size": True}, TypeError, "hidden_size"),
         ({"architecture": "mlp", "hidden_size": 0}, ValueError, "hidden_size"),
+        (
+            {"architecture": "mlp", "sensory_hidden_size": True},
+            TypeError,
+            "sensory_hidden_size",
+        ),
+        (
+            {"architecture": "mlp", "descending_hidden_size": 0},
+            ValueError,
+            "descending_hidden_size",
+        ),
+        (
+            {"architecture": "mlp", "readout_hidden_size": 0},
+            ValueError,
+            "readout_hidden_size",
+        ),
         ({"architecture": "mlp", "activation": "swish"}, ValueError, "activation"),
     ],
 )

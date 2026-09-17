@@ -89,7 +89,7 @@ The audit's [timing proposal](../analyses/system-audit-2026-09-15.md#neural-timi
 `params.network.connectome.interface_projections.architecture` selects one shared architecture for the sensory input projection, goal-plus-conditioning projection, and motor-state action-mean projection:
 
 - `linear` preserves the original single-layer interface and checkpoint parameter names. It is the default, including when an older configuration omits `interface_projections`.
-- `mlp` uses `Linear -> ELU -> Linear` with one 256-unit hidden layer. `hidden_size` and `activation` are explicit YAML fields; the supplied MLP profiles pin them to `256` and `elu`.
+- `mlp` uses `Linear -> ELU -> Linear`. `hidden_size` is the backward-compatible shared hidden width. Optional `sensory_hidden_size`, `descending_hidden_size`, and `readout_hidden_size` values independently override it for the robot-sensory, goal/SAPG-to-descending, and fly-state-to-action paths. `activation` remains shared. Existing profiles therefore retain three 256-unit hidden layers unless they opt into the independent fields.
 
 The input projections retain `population_adapters.bias: false`, so both linear layers in each input MLP are bias-free. Both layers in the action MLP have biases. Every hidden/input layer uses Xavier initialization; the final action layer retains the small `[-1e-3, 1e-3]` initialization used by the linear readout. The actor-side value head remains linear because it is a training head, not part of the deployed observation-to-action interface.
 
@@ -164,8 +164,13 @@ original actor has no fly circuit.
 
 ### MLP-width lower bounds
 
-The live learned-adapter profile exposes one shared
-`interface_projections.hidden_size: 256` for all three MLPs. The hard
+The live learned-adapter profile uses one shared
+`interface_projections.hidden_size: 256` for all three MLPs. It is asymmetric
+in its outer dimensions (`128 -> 384`, `44 -> 157`, and `1,952 -> 29`), but its
+three hidden widths are not asymmetric. Independent hidden widths are now
+selectable through `sensory_hidden_size`, `descending_hidden_size`, and
+`readout_hidden_size`, each of which falls back to the shared `hidden_size` when
+omitted. The hard
 dimensional limits are different by interface:
 
 | Hidden width | Sensory `128 -> H -> 384` | Descending `44 -> H -> 157` | All-neuron action `1,952 -> H -> 29` | Actor scalars |
@@ -184,14 +189,11 @@ same strict sense; a width of at least 29 can still represent an arbitrary
 decoder capacity and should be treated as an empirical capacity choice, not as
 free compression.
 
-The more attractive asymmetric design would keep sensory at 128, use 64 for
-the 44-D descending route, and use 64 or 128 for the action decoder. It would
-have 207,596 or 334,444 actor scalars respectively. That requires a small
-configuration/code extension because the present dense learned-adapter profile
-uses one shared width; it is not selectable by current YAML alone. No learning
-result establishes that 64 action features are sufficient, so compare 128-shared
-first, then a separately configurable 128/64/64 candidate against the same
-seed, optimizer, critic, and frame budget.
+One asymmetric design would keep sensory at 128, use 64 for the 44-D descending
+route, and use 64 or 128 for the action decoder. It would have 207,596 or
+334,444 actor scalars respectively. Those widths are now selectable in YAML,
+although no learning result establishes that either action width is sufficient.
+They should be compared at the same seed, optimizer, critic, and frame budget.
 
 An even smaller proposed nonlinear profile, sensory/descending/action widths
 `128/64/32`, has **144,172** declared actor scalars: 65,536 sensory, 12,864
@@ -200,6 +202,17 @@ embedding/log-standard-deviation parameters. The no-auxiliary run would
 actively update 142,219 of them. This is 4.80x smaller than the live 692,268
 actor, although adding the unchanged 2,037,769-scalar central critic gives a
 2,181,941-scalar training system.
+
+The implemented
+`SimToolRealConnectome1952AdaptersMLP128x32x32AllNeuronReadoutGaussianSigma3SAPG`
+profile is more aggressive on the descending route: `128/32/32`. Its three
+interfaces contain 65,536, 6,432, and 63,453 parameters. Including the
+1,953-scalar auxiliary actor value head and 366 SAPG embedding/exploration
+parameters gives **137,740 declared actor scalars**, 19.9% of the live
+692,268-scalar actor. With `use_experimental_cv: false`, the value head remains
+declared but does not receive gradients, leaving 135,787 actively updated actor
+scalars. These are capacity counts, not evidence that the smaller policy
+retains task performance.
 
 If every coordinate is treated as independent, the smallest hidden widths that
 avoid forced rank loss are `128/44/29`, yielding **134,206** actor scalars. The

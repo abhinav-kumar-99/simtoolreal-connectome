@@ -199,6 +199,44 @@ def test_compact_profiles_compose_with_explicit_adaptation_modes() -> None:
                 assert "log_std_bounds" not in config.train.params.model
 
 
+def test_asymmetric_mlp_profile_and_smoke_suite_compose() -> None:
+    from scripts.run_connectome_suite import _compose_resolved, _training_overrides
+
+    root = Path(__file__).resolve().parents[2]
+    suite_path = (
+        root
+        / "configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_mlp128x32x32_smoke.yaml"
+    )
+    suite = yaml.safe_load(suite_path.read_text())
+    training = suite["training"]
+    entry = training["train_profiles"][0]
+    config = _compose_resolved(
+        _training_overrides(
+            training,
+            entry["train_profile"],
+            training["seeds"][0],
+            entry["name"],
+            root / suite["output_directory"],
+        )
+    )
+
+    connectome = config.train.params.network.connectome
+    projections = connectome.interface_projections
+    assert projections.architecture == "mlp"
+    assert projections.hidden_size == 256
+    assert projections.sensory_hidden_size == 128
+    assert projections.descending_hidden_size == 32
+    assert projections.readout_hidden_size == 32
+    assert connectome.reservoir_readout.enabled is False
+    assert connectome.reservoir_readout.feature_population == "all"
+    assert connectome.dynamics.neural_updates == 4
+    assert config.train.params.config.use_experimental_cv is True
+    assert config.train.params.config.use_others_experience == "lf"
+    assert config.train.params.config.kl_threshold == 0.004
+    assert config.train.params.config.max_frames == 393_216
+    assert config.task.env.numEnvs == 12_288
+
+
 def test_structured_rotation6d_profiles_and_live_matched_suites_compose() -> None:
     from scripts.run_connectome_suite import _compose_resolved, _training_overrides
 

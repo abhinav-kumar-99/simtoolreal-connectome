@@ -1,0 +1,15 @@
+defaults:
+  - SimToolRealConnectome1952AdaptersMLPAllNeuronReadoutGaussianSigma3SAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      interface_projections:
+        # Preserve the complete 128-value sensory rank while using narrower
+        # goal/SAPG and all-neuron action decoders.
+        sensory_hidden_size: 128
+        descending_hidden_size: 32
+        readout_hidden_size: 32
+  config:
+    name: ${resolve_default:SimToolRealConnectome1952AdaptersMLP128x32x32AllNeuronReadoutGaussianSigma3SAPG,${....experiment}}

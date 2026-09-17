@@ -623,6 +623,28 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             if hidden_size < 1:
                 raise ValueError("interface projection hidden_size must be positive")
             self.projection_hidden_size = hidden_size
+
+            def projection_hidden_size(name: str) -> int:
+                value = projections.get(name, self.projection_hidden_size)
+                if isinstance(value, bool) or not isinstance(value, int):
+                    raise TypeError(
+                        f"interface projection {name} must be an integer"
+                    )
+                if value < 1:
+                    raise ValueError(
+                        f"interface projection {name} must be positive"
+                    )
+                return value
+
+            self.sensory_projection_hidden_size = projection_hidden_size(
+                "sensory_hidden_size"
+            )
+            self.descending_projection_hidden_size = projection_hidden_size(
+                "descending_hidden_size"
+            )
+            self.readout_projection_hidden_size = projection_hidden_size(
+                "readout_hidden_size"
+            )
             self.projection_activation = str(
                 projections.get("activation", "elu")
             ).lower()
@@ -675,12 +697,12 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     sensory_size,
                     len(sensory_indices),
                     self.projection_architecture,
-                    self.projection_hidden_size,
+                    self.sensory_projection_hidden_size,
                     self.projection_activation,
                     bias=input_bias,
                 )
                 descending_architecture = self.projection_architecture
-                descending_hidden_size = self.projection_hidden_size
+                descending_hidden_size = self.descending_projection_hidden_size
                 descending_activation = self.projection_activation
             else:
                 self.sensory_adapter_mode = str(
@@ -853,7 +875,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             )
             self.readout_input_size = self.reservoir_feature_count
             readout_architecture = self.projection_architecture
-            readout_hidden_size = self.projection_hidden_size
+            readout_hidden_size = self.readout_projection_hidden_size
             readout_activation = self.projection_activation
             if self.cache_reservoir_features:
                 if bool(reservoir_readout.get("condition_on_sapg", True)) and (

@@ -364,6 +364,24 @@ Run the compact two-policy MLP projection smoke gate from the repository root:
 
 This YAML runs the 1,952-cell adapters-only and adapters-plus-gains MLP profiles concurrently, one per GPU, for two short epochs. The important settings are `train_profiles`, `interface_projections` inherited from each profile, `gpu_assignments`, `max_parallel`, `num_envs`, both minibatch sizes, `epochs`, and `max_frames`. `on_existing: fail` prevents accidental reuse of a prior smoke directory. The suite was added as a reproducible gate but was not launched while the long-running jobs occupied both GPUs. For a longer YAML-owned experiment, select `SimToolRealConnectome1952AdaptersMLPSAPG` or `SimToolRealConnectome1952GainsMLPSAPG` as `train_profile`; no architecture CLI argument is required.
 
+The independently sized `128/32/32` sensory/descending/readout MLP option has a
+full-geometry two-epoch gate:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_mlp128x32x32_smoke.yaml
+```
+
+The selected train profile inherits the current all-neuron clipped-Gaussian
+contract and sets `interface_projections.sensory_hidden_size: 128`,
+`descending_hidden_size: 32`, and `readout_hidden_size: 32`. The unchanged
+`hidden_size: 256` remains a fallback for any independently sized field that is
+omitted. The suite keeps four neural updates, LF reuse, KL `.004`, sigma ceiling
+three, auxiliary actor value loss, 12,288 environments and 49,152-sample
+minibatches. `scripts/run_connectome_suite.py` prepares the 1,952-neuron graph,
+composes the Hydra train profile, writes the resolved contract, and launches
+the trainer; the builder constructs the three independently sized interface
+MLPs. This gate has not been launched as a training job.
+
 The active full-size adapters-only MLP replacement uses a single-policy gate and long-run contract:
 
 ```bash
