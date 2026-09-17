@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
+import math
 import os
 import subprocess
 import sys
@@ -110,6 +111,51 @@ def _verify_checkpoint(
         raise RuntimeError(
             "Checkpoint has no optimizer state; no completed update was recorded"
         )
+    has_central_value = OmegaConf.select(
+        resolved,
+        "train.params.config.central_value_config",
+        default=None,
+    ) is not None
+    critic_optimizer_entries = 0
+    critic_training_state = {}
+    critic_training_summary = {}
+    if not eligibility and has_central_value:
+        missing_critic_state = []
+        if not state.get("assymetric_vf_nets"):
+            missing_critic_state.append("assymetric_vf_nets")
+        critic_optimizer_entries = len(
+            state.get("central_value_optimizer", {}).get("state", {})
+        )
+        if not critic_optimizer_entries:
+            missing_critic_state.append("central_value_optimizer")
+        critic_training_state = state.get("central_value_training_state", {})
+        for key in ("epoch", "frame", "lr"):
+            if key not in critic_training_state:
+                missing_critic_state.append(f"central_value_training_state.{key}")
+        if missing_critic_state:
+            raise RuntimeError(
+                "Checkpoint is incomplete for central-critic training resume; "
+                f"missing {missing_critic_state}"
+            )
+        if (
+            int(critic_training_state["epoch"]) < 0
+            or int(critic_training_state["frame"]) < 0
+            or not math.isfinite(float(critic_training_state["lr"]))
+            or float(critic_training_state["lr"]) <= 0
+        ):
+            raise RuntimeError(
+                "Checkpoint has invalid central-critic training metadata: "
+                f"{critic_training_state}"
+            )
+        critic_rnn_states = critic_training_state.get("rnn_states")
+        critic_training_summary = {
+            "epoch": int(critic_training_state["epoch"]),
+            "frame": int(critic_training_state["frame"]),
+            "lr": float(critic_training_state["lr"]),
+            "recurrent_state_tensors": (
+                0 if critic_rnn_states is None else len(critic_rnn_states)
+            ),
+        }
     expected_epoch = int(resolved.train.params.config.max_epochs)
     requested_max_frames = int(resolved.train.params.config.get("max_frames", -1))
     checkpoint_epoch = int(state.get("epoch", -1))
@@ -147,6 +193,8 @@ def _verify_checkpoint(
     return {
         "checkpoint": str(checkpoint_path),
         "optimizer_state_entries": len(optimizer_state),
+        "central_critic_optimizer_state_entries": critic_optimizer_entries,
+        "central_critic_training_state": critic_training_summary,
         "eligibility_updates": eligibility_updates,
         "algorithm": algorithm,
         "checkpoint_epoch": checkpoint_epoch,

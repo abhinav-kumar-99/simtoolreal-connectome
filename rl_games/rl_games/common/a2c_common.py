@@ -735,6 +735,9 @@ class A2CBase(BaseAlgorithm):
         if self.has_central_value:
             state['assymetric_vf_nets'] = self.central_value_net.state_dict()
             state['central_value_optimizer'] = self.central_value_net.optimizer.state_dict()
+            state['central_value_training_state'] = (
+                self.central_value_net.get_training_state()
+            )
 
         # This is actually the best reward ever achieved. last_mean_rewards is perhaps not the best variable name
         # We save it to the checkpoint to prevent overriding the "best ever" checkpoint upon experiment restart
@@ -825,6 +828,24 @@ class A2CBase(BaseAlgorithm):
                     "Checkpoint has no central-value optimizer state; "
                     "the restored critic weights will use a fresh optimizer"
                 )
+            central_training_state = weights.get('central_value_training_state')
+            if central_training_state is None:
+                optimizer_lr = self.central_value_net.optimizer.param_groups[0]['lr']
+                central_training_state = {
+                    'epoch': weights.get('epoch', 0),
+                    'frame': weights.get('frame', 0),
+                    'lr': optimizer_lr,
+                    'rnn_states': None,
+                }
+                print(
+                    "Checkpoint has no central-value training metadata; "
+                    "inferring critic epoch/frame from the actor and LR from "
+                    "the restored optimizer"
+                )
+            self.central_value_net.set_training_state(
+                central_training_state,
+                restore_recurrent_state=restore_environment,
+            )
 
         self.optimizer.load_state_dict(weights['optimizer'])
         self.last_lr = weights['optimizer']['param_groups'][0]['lr']

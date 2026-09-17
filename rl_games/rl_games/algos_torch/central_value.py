@@ -166,6 +166,32 @@ class CentralValueTrain(nn.Module):
 
     def set_stats_weights(self, weights): 
         pass
+
+    def get_training_state(self):
+        """Return critic state that is not part of the module or optimizer."""
+        recurrent_state = None
+        if self.rnn_states is not None:
+            recurrent_state = [state.detach().clone() for state in self.rnn_states]
+        return {
+            'epoch': int(self.epoch_num),
+            'frame': int(self.frame),
+            'lr': float(self.lr),
+            'rnn_states': recurrent_state,
+        }
+
+    def set_training_state(self, state, restore_recurrent_state=True):
+        """Restore critic counters, scheduler input, and optional RNN state."""
+        self.epoch_num = int(state['epoch'])
+        self.frame = int(state['frame'])
+        self.lr = float(state['lr'])
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = self.lr
+
+        recurrent_state = state.get('rnn_states')
+        if restore_recurrent_state and recurrent_state is not None:
+            self.rnn_states = [
+                value.to(self.ppo_device) for value in recurrent_state
+            ]
         
     def update_dataset(self, batch_dict):
         value_preds = batch_dict['old_values']     

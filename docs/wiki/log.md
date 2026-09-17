@@ -708,3 +708,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added a fresh YAML-owned GPU-0 run and watcher matched to the GPU-1 all-neuron policy except for `use_experimental_cv: false`; configuration commit `51ee9c72`.
 - Launched suite/trainer/watcher PIDs 775098/775189/775104. At frame 1,376,256, reward, entropy, action loss, central-critic loss and KL were finite, actor `c_loss` was correctly zero, and invalid-KL flags were zero.
 - Preserved the GPU-1 all-neuron suite/trainer/watcher PIDs 543985/544079/555982 and confirmed the new run is visible in TensorBoard 6008 without restart.
+
+## [2026-09-17] fix | Complete central-critic recovery metadata
+
+- Audited live all-neuron PPO artifacts: full checkpoints already contained critic weights and Adam state, while inference milestones intentionally contained neither.
+- Confirmed that full checkpoints omitted the critic trainer's epoch, frame, scheduled-LR variable and optional recurrent state, so a resumed scheduled critic could restart its schedule at zero.
+- Added explicit central-value training metadata save/restore, legacy inference from actor counters plus critic optimizer LR, fresh-rollout handling that does not restore critic RNN state, and suite verification of the complete critic resume contract.
+- Existing trainers were not interrupted and continue writing the old schema until restarted; those checkpoints remain resumable through the compatibility path.

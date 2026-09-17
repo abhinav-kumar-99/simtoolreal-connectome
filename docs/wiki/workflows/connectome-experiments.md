@@ -6,6 +6,41 @@ Last updated: 2026-09-17
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
+## Recovery checkpoint contract
+
+Full PPO recovery checkpoints now preserve three separate central-critic layers:
+the critic module state (the legacy `assymetric_vf_nets` key), Adam moments and
+parameter groups (`central_value_optimizer`), and non-module trainer metadata
+(`central_value_training_state`). The metadata contains the critic epoch, frame,
+current scheduler LR and recurrent state. Without it, a restored critic kept its
+weights and Adam moments but silently restarted its epoch/frame scheduler inputs
+at zero. Legacy checkpoints remain loadable: the loader infers critic epoch/frame
+from the actor checkpoint and LR from the restored critic optimizer, while making
+clear that no old critic recurrent state exists.
+
+The YAML-owned training entry point remains:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config <suite.yaml>
+```
+
+Set `training.checkpoint.mode: resume_training_state` and
+`training.checkpoint.path` in the suite YAML to restore actor and critic learning
+state while deliberately starting a fresh simulator rollout. The suite's terminal
+verification now rejects a newly produced PPO recovery checkpoint if critic
+weights, optimizer moments, epoch, frame or LR are absent or invalid, and records
+the critic optimizer-entry count and training metadata in its verification JSON.
+`mode: resume` additionally attempts simulator and in-flight rollout restoration;
+that mode has previously been unsafe for this Isaac environment.
+
+Files named `milestone_target_*.pth` are intentionally small inference snapshots.
+They contain the actor policy and frame identity only; they do not contain critic
+weights or either optimizer and must not be used with `resume_training_state`.
+Use a full file under `nn/` or `last/model.pth` for continuation. Trainers that
+were already running when this change was made continue writing the old schema
+until restarted, because their Python process has already loaded the old code;
+the compatibility inference above makes those files resumable.
+
 ## Fixed-input cached-reservoir policies
 
 The full-neuron camera-driven tanh reservoir was stopped at the user's direction after its GPU-1 capacity continuation reached logged frame 24,514,560; its artifacts and last checkpoints remain preserved. Both current trainers use the 1,952-neuron no-vision learned-MLP policy described in [compact training](../analyses/compact-1952-training.md), with all 1,952 final tanh states feeding the actor MLP. GPU 1 retains `use_experimental_cv: true`; GPU 0 is the otherwise matched `false` comparison. The former GPU-0 motor-only readout was stopped with artifacts preserved.
