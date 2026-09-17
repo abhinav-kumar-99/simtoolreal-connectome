@@ -689,3 +689,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Launched the fresh 1,952-neuron no-vision all-neuron-readout suite/trainer as PIDs 543985/544079 on physical GPU 1 and its 250M-frame milestone watcher as PID 543989.
 - Initial production telemetry was finite through frame 1,769,472 with approximately 95K-101K warm total FPS, reward 34.7445, entropy 41.1834, KL `.00312`, and both actor and value losses present.
 - Confirmed that the existing port-6008 TensorBoard discovered the new production and smoke event streams without restart. GPU-0 trainer/watcher PIDs 261951/262494 were preserved.
+
+## [2026-09-16] query | Clarify actor and critic fly features
+
+- Distinguished the privileged central critic from the actor-side auxiliary value head: the central critic consumes no fly state, while `use_experimental_cv: true` trains the auxiliary head through actor features.
+- Recorded that the live motor-readout policy sends 135 fly states to its action MLP but all 1,952 states to its auxiliary value head; the all-neuron policy sends all 1,952 states to both heads.
+- Documented privileged-state-plus-detached-recurrent-features as a future recurrent-critic ablation, not an established improvement. No configuration or running process changed.
