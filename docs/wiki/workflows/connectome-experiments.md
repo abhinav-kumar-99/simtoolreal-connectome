@@ -8,7 +8,7 @@ Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
 ## Fixed-input cached-reservoir policies
 
-Current GPU-1 replacement: the [full-neuron camera-driven tanh reservoir](../concepts/visual-reservoir.md), launched with `configs/connectome/suites/ppo_full_cns_tanh_100b.yaml`. It includes exactly all 165,122 traced neurons in the pinned annotations. The earlier LIF and visual-path runs were stopped at the user's direction. The visual run retains proprioception and uses actual MaleCNS optic columns; its larger graph uses a validated 384-environment batch and preserves the 135 front-leg motor readout.
+The full-neuron camera-driven tanh reservoir was stopped at the user's direction after its GPU-1 capacity continuation reached logged frame 24,514,560; its artifacts and last checkpoints remain preserved. Its replacement is the 1,952-neuron no-vision learned-MLP policy described in [compact training](../analyses/compact-1952-training.md), with all 1,952 final tanh states feeding the actor MLP. The independent GPU-0 motor-readout Gaussian run remains unchanged.
 
 The fixed-reservoir contract removes learned input adapters and PPO backpropagation through MaleCNS. The exact fixed population map, memory boundary and biological caveats are in [Fixed-input MaleCNS reservoir controller](../concepts/fixed-reservoir-controller.md). The current replacement retains the 144-value Rotation-6D task, four held-input neural updates, LF/1.0 experience reuse, entropy scale `.005`, actor KL target `.004`, LR range `[1e-6,.001]`, 12,288 environments and the privileged central critic. Its Gaussian distribution, coefficient-conditioned scale, sigma-three ceiling and auxiliary actor value loss match the dense-input Gaussian control.
 

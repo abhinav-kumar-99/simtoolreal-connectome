@@ -182,6 +182,54 @@ def test_mlp_interface_projections_have_one_256_unit_hidden_layer(
     assert outputs[2].shape == (6, 1)
 
 
+def test_mlp_actor_can_read_all_final_neuron_states(artifact_path) -> None:
+    projection = {"architecture": "mlp", "hidden_size": 16, "activation": "elu"}
+    params = _network_params(
+        artifact_path,
+        interface_projections=projection,
+    )
+    params["connectome"]["reservoir_readout"] = {
+        "enabled": False,
+        "feature_population": "all",
+    }
+    builder = ConnectomeBuilder()
+    builder.load(params)
+    network = builder.build(
+        "all_neuron_readout",
+        actions_num=2,
+        input_shape=(6,),
+        num_seqs=2,
+        value_size=1,
+        type="extra_param",
+        coef_ids=torch.tensor([50.0, 0.0]),
+        coef_id_idx=5,
+    )
+
+    assert network.readout_feature_population == "all"
+    assert network.reservoir_feature_count == 7
+    assert network.readout_input_size == 7
+    assert network.mu[0].in_features == 7
+
+    observations = _observations(6)
+    initial = (torch.randn(1, 2, 7),)
+    result = network(
+        {"obs": observations, "rnn_states": initial, "seq_length": 3}
+    )
+
+    hidden = initial[0][0]
+    outputs = []
+    for step_observations in observations.reshape(2, 3, -1).transpose(0, 1):
+        hidden = network._step(step_observations, hidden)
+        outputs.append(hidden)
+    final_states = torch.stack(outputs).transpose(0, 1).reshape(6, 7)
+    torch.testing.assert_close(result[0], network.mu(final_states))
+    torch.testing.assert_close(result[2], network.value(final_states))
+
+    (result[0].square().mean() + result[2].square().mean()).backward()
+    assert network.sensory_adapter[0].weight.grad is not None
+    assert network.descending_adapter[0].weight.grad is not None
+
+
 def test_structured_adapter_drives_only_proprioceptors_and_uses_context(
     artifact_path,
 ) -> None:

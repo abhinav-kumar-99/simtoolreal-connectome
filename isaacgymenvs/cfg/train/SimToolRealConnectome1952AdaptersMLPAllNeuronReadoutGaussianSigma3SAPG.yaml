@@ -1,0 +1,15 @@
+defaults:
+  - SimToolRealConnectome1952AdaptersMLPGaussianSigma3SAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      # The learned MLP input adapters still require BPTT through the compact
+      # circuit. This selects all final neuron states for the actor MLP rather
+      # than restricting its input to the 135 motor cells.
+      reservoir_readout:
+        enabled: false
+        feature_population: all
+  config:
+    name: ${resolve_default:SimToolRealConnectome1952AdaptersMLPAllNeuronReadoutGaussianSigma3SAPG,${....experiment}}

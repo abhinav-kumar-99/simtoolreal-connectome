@@ -265,3 +265,26 @@ The preparation entrypoint dispatches by `preparation_kind`. Its new helper `sim
 The suite entrypoint handles preparation, device isolation, resolved YAML, logs, checkpoints, and post-exit deployment verification. Important training YAML keys are `train_profiles`, `gpu_assignments`, `num_envs`, `sapg_block_size`, `rollout_accumulation_steps`, logical/physical minibatch sizes, `epochs`, `max_frames`, milestone interval and `output_directory`. The evaluation entrypoint watches snapshots and invokes the existing video evaluator; its YAML owns paths, GPU, polling interval, mean-action cases, and video settings. The stopped large run used `configs/connectome/evaluation/adaptation_100b_old_only_milestones.yaml`; that watcher is no longer active.
 
 TensorBoard remains at **http://localhost:6008**, watching `train_dir/connectome/adaptation_100b_gains_update_timing`. The compact gains and adapters-only runs are nested under `compact_1952/` and `compact_1952_adapters/`; the API confirmed both are visible with 160 scalar tags. All stopped histories remain visible. Training/evaluation artifacts are ignored and are not committed.
+
+### All-neuron MLP actor readout
+
+The YAML-selectable `reservoir_readout.feature_population: all` option lets the tanh actor use every final recurrent state instead of gathering only `motor_indices`; the default remains `motor`, and hard-spiking LIF remains motor-only because that path currently emits averaged motor spike rates rather than all-neuron rates. This selector is independent of cached fixed-reservoir execution. With the learned MLP adapter profile used here, the 1,952-cell circuit still participates in backpropagation so PPO can train the input adapters.
+
+`SimToolRealConnectome1952AdaptersMLPAllNeuronReadoutGaussianSigma3SAPG` inherits the existing dense MLP Gaussian profile and changes only the actor feature population. Its input adapters remain bias-free `128 -> 256 -> 384` and `44 -> 256 -> 157` MLPs; the actor mean head changes from `135 -> 256 -> 29` to `1,952 -> 256 -> 29`. The auxiliary actor value head already consumed the complete recurrent output when `use_experimental_cv: true`, so its input contract is unchanged. Recurrent weights, gains, leak and bias remain frozen, while gradients pass through four recurrent updates to the input adapters.
+
+The full-size smoke used 12,288 environments, horizon 16 and 49,152 actor/critic minibatches. It completed two epochs and 393,216 frames, reloaded the final checkpoint with a finite `(1, 29)` deployment action, and reported warm epoch timing of 1.121 seconds rollout plus 0.891 seconds update. This is an integration and memory-fit result, not evidence of task learning.
+
+Entrypoints and important YAML controls:
+
+```bash
+# Two-epoch full-batch integration gate.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_smoke.yaml
+
+# Fresh 100B training on GPU 1.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_100b.yaml
+
+# Three deterministic videos at each 250M-frame inference checkpoint.
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_100b_milestones.yaml
+```
+
+The train profile owns `feature_population: all`; the suite owns GPU, 12,288-environment batch geometry, four neural updates, Gaussian sigma-three cap inherited from the profile, KL `.004`, LR range, LF reuse, entropy incentive and 100B cap. The milestone YAML owns checkpoint cadence, deterministic mean-action evaluation cases and video settings. `run_connectome_suite.py` remains the preparation/training orchestrator and `run_connectome_milestone_evaluation.py` remains the independent checkpoint watcher.

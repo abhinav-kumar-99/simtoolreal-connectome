@@ -379,6 +379,13 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             reservoir_readout = connectome.get("reservoir_readout", {})
             if not isinstance(reservoir_readout, Mapping):
                 raise TypeError("reservoir_readout must be a YAML mapping")
+            self.readout_feature_population = str(
+                reservoir_readout.get("feature_population", "motor")
+            ).lower()
+            if self.readout_feature_population not in {"motor", "all"}:
+                raise ValueError(
+                    "reservoir_readout.feature_population must be motor or all"
+                )
             self.cache_reservoir_features = bool(
                 reservoir_readout.get("enabled", False)
             )
@@ -832,19 +839,23 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 )
             )
 
-            self.reservoir_feature_count = len(motor_indices)
+            if (
+                self.dynamics_activation == "lif"
+                and self.readout_feature_population != "motor"
+            ):
+                raise ValueError(
+                    "LIF dynamics currently support only the motor readout population"
+                )
+            self.reservoir_feature_count = (
+                self.neuron_count
+                if self.readout_feature_population == "all"
+                else len(motor_indices)
+            )
             self.readout_input_size = self.reservoir_feature_count
             readout_architecture = self.projection_architecture
             readout_hidden_size = self.projection_hidden_size
             readout_activation = self.projection_activation
             if self.cache_reservoir_features:
-                feature_population = str(
-                    reservoir_readout.get("feature_population", "motor")
-                ).lower()
-                if feature_population != "motor":
-                    raise ValueError(
-                        "reservoir_readout.feature_population must be motor"
-                    )
                 if bool(reservoir_readout.get("condition_on_sapg", True)) and (
                     self.net_type == "extra_param"
                 ):
@@ -1331,7 +1342,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                         f"{(observations.shape[0], self.reservoir_feature_count)}, "
                         f"got {tuple(cached_features.shape)}"
                     )
-                motor = cached_features.float()
+                features = cached_features.float()
                 returned_states = ()
             else:
                 sequence_length = int(obs_dict.get("seq_length", 1))
@@ -1422,7 +1433,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 else:
                     output = run_reservoir()
                 if self.dynamics_activation == "lif":
-                    motor = output.float()
+                    features = output.float()
                     assert refractory is not None and spikes is not None
                     returned_states = (
                         hidden.unsqueeze(0),
@@ -1430,12 +1441,16 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                         spikes.unsqueeze(0),
                     )
                 else:
-                    motor = output[:, self.motor_indices].float()
+                    features = (
+                        output
+                        if self.readout_feature_population == "all"
+                        else output[:, self.motor_indices]
+                    ).float()
                     returned_states = (hidden.unsqueeze(0),)
 
             if self.cache_reservoir_features:
-                self.last_reservoir_features = motor.detach()
-                readout_parts = [motor]
+                self.last_reservoir_features = features.detach()
+                readout_parts = [features]
                 if self.readout_conditions_on_sapg:
                     readout_parts.append(
                         self.extra_params[self._coefficient_rows(observations)]
@@ -1443,7 +1458,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 readout = torch.cat(readout_parts, dim=-1)
                 value = self.value(readout)
             else:
-                readout = motor
+                readout = features
                 value = self.value(output)
             if self.action_distribution == "beta":
                 # Shape heads and special-function inputs stay FP32 under AMP.

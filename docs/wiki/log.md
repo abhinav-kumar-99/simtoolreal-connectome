@@ -676,3 +676,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 
 - Corrected the readout discussion: driven neurons receive leak, recurrence, bias and tanh processing on every neural update; their final states are not raw input copies.
 - Reframed driven-cell exclusion as a conservative short-path ablation rather than a requirement or evidence that those cells bypass all CNS dynamics.
+
+## [2026-09-16] implement | Add compact all-neuron actor readout
+
+- Added YAML-selectable `motor` or `all` tanh actor feature populations while preserving motor-only defaults and explicitly rejecting unsupported all-neuron LIF output.
+- Added a learned-MLP Gaussian train profile plus smoke, 100B and milestone-video YAML entrypoints matched to the live GPU-0 Gaussian contract except for GPU and actor feature population.
+- All 94 connectome-network tests passed. The full 12,288-environment smoke completed two epochs/393,216 frames and finite-action checkpoint reload in 24.68 seconds of child training.
+- Stopped only the GPU-1 full-CNS vision suite/trainer at logged frame 24,514,560; its artifacts remain preserved. The GPU-0 Gaussian suite/trainer/watcher remained live.
