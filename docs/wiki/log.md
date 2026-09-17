@@ -696,3 +696,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added strict exact-frame TensorBoard resolution, per-metric video completion accounting and case-level reuse so existing fixed-tolerance videos are not rerendered during backfill.
 - Updated the active dense Gaussian watcher contract and added a structured Rotation-6D Gaussian watcher contract for its preserved 250M checkpoint. Both retain mean actions, coefficient ID 50, one-step waypoint scoring, trajectories, simulator overrides and rendering settings across the two sets.
 - Focused milestone/configuration tests passed; implementation was isolated on `feature/checkpoint-tolerance-videos` because the primary checkout contained unrelated dirty visual-reservoir work.
+
+## [2026-09-16] launch | Start dual-tolerance video backfill
+
+- Replaced only dense Gaussian watcher PID 262494 with updated watcher PID 552085; dense trainer PID 261951 remained live and untouched. Started structured Rotation-6D watcher PID 552088 against its preserved 250M checkpoint.
+- The isolated worktree initially lacked the ignored generated MaleCNS NPZ, so first worker attempts failed before policy construction and were retained as retry diagnostics. Linked the existing read-only processed artifact into the worktree; both watchers then ran within available GPU memory and retried automatically.
+- The dense watcher reused all matching fixed-`.02` cases. Its first completed checkpoint-tolerance set at target 1.25B contained six total videos, three per metric; the resolved checkpoint tolerance was `0.07500000298`, mean actions remained deterministic, and an inspected MP4 decoded as H.264 at 800x450 with 200 frames. Backfill and the structured two-set render remained active at handoff.
