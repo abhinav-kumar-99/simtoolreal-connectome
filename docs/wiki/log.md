@@ -845,3 +845,11 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Updated the generated local video gallery to group actors by task, explain state/bar/leg conventions and offer 0.25×/0.5×/1× playback.
 - Gallery links respect the requested circuit/combined outputs even when older unrequested MP4s remain. Verified six cards, paired task ordering, existing file targets and playback options; Ruff/diff checks passed.
 - Clarified that internal algorithm updates are placed uniformly on the animation clock, rather than measured physiological/wall-clock events.
+
+## [2026-09-18] verify | Complete all six annotated 7B task pairs
+
+- Completed the full six-case replay and interpretability rerender for both compact all-neuron actors at target 7B / actual 7,000,031,232 frames, across marker/eraser/spatula tasks.
+- All 12 requested MP4s passed complete-frame decoding and 1600 × 900 / 80 fps / exact frame-count checks. Each video matches its 20 fps source footage's 10 or 10.05 second duration.
+- Verified finite states, initial state and episode-local timing, exact ordered body IDs and sensory/descending/motor masks, 1,952-neuron anatomy coverage, hash-verified source checkpoints/configs and all-neuron readout captions. All six original trace/robot MP4 hashes stayed unchanged during annotation rendering.
+- Generated `verification.json`, original-recording provenance, per-case decoded previews and a six-case preview montage in ignored `evals/connectome/anatomical_1952_7b/`; cached replay rebuilt the task-paired gallery without simulator workers or additional encoding.
+- Implementation remains checkpointed on `feature/anatomical-circuit-video` for user evaluation. Preserved the pre-existing `.vscode/` and `tmp/` directories and existing worktrees/jobs.

@@ -90,3 +90,9 @@ The sensory mask's source classes are tactile/proprioceptive mechanosensory cell
 Geometry comes from the [official MaleCNS v1.0 skeleton inventory](https://male-cns.janelia.org/download/), matched by `bodyId`; FlyEM/Janelia, CC BY 4.0. Every source URL/hash is recorded. Missing or invalid skeletons fail explicitly without artificial positions. Verified compact-circuit coverage: 1,952/1,952 neurons, 194,668,453 source bytes.
 
 Recording supports one-environment, no-gradient tanh inference. LSTM, LIF and frozen CUDA-graph reservoir inference are rejected explicitly. Rendering is an offline CPU stage; full-CNS rendering capacity has not been evaluated.
+
+## Verified first batch
+
+The 2026-09-18 annotated batch completed for both compact all-neuron actors at target 7,000,000,000 / actual 7,000,031,232 frames: marker `write_c`, eraser `wipe_smile`, and spatula `flip_over`, one saved-case replay episode per cell. All six cases have circuit-only and combined MP4s (12 total), 1600 × 900 at 80 fps versus 20 fps robot footage, 800 or 804 output frames, and matched per-case durations of 10 or 10.05 seconds. Recorded states are finite, ordered body IDs/population masks match the circuit artifact, and the six traces contain 2,393–2,405 substep/initial-state rows each.
+
+Every output frame decoded successfully, and previews from all six encoded combined videos plus the circuit-only examples were inspected. The interpretability rerender reused all six original recordings; trace and robot-footage hashes remained unchanged. Generated evidence is in `evals/connectome/anatomical_1952_7b/verification.json`, `recording_provenance.json`, `preview_montage.png`, and each case's `circuit_render.json`. The final cached replay reused completed outputs and regenerated the gallery without simulation or encoding.
