@@ -405,6 +405,45 @@ model change is the selected train profile's sensory/descending/readout MLP
 hidden sizes of `128/32/32` rather than the inherited `256/256/256`; output and
 experiment names are necessarily distinct to prevent artifact collision.
 
+The superseding synchronized two-GPU small-MLP contract uses 1.25 times the
+prior environment population on **each** rank:
+
+```bash
+# Two-rank, two-epoch integration and reload gate.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_noaux_mlp128x32x32_ddp_15360_smoke.yaml
+
+# Fresh two-rank 100B-frame run on physical GPUs 0 and 1.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_noaux_mlp128x32x32_ddp_15360_100b.yaml
+
+# Paper-tolerance and exact checkpoint-training-tolerance videos.
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_noaux_mlp128x32x32_ddp_15360_100b_milestones.yaml
+```
+
+`training.distributed: true` makes the suite entrypoint launch one synchronized
+policy with two `torchrun` ranks over `gpu_assignments: [0, 1]`; it does not
+launch two independent policies. Each rank owns 15,360 simulator environments,
+exactly 1.25 times the previous 12,288, for 30,720 simultaneous environments
+in total. Each rank retains six SAPG blocks (`sapg_block_size: 2560`) and four
+local minibatches per horizon (`minibatch_size: 61440`); gradients are averaged
+across ranks. One global epoch therefore represents 491,520 environment frames,
+and 203,450 complete epochs produce 99,999,744,000 frames under the 100B cap.
+
+The policy still uses the 1,952-cell all-neuron no-auxiliary clipped-Gaussian
+contract and the `128/32/32` sensory/descending/readout interface MLPs. The
+milestone watcher polls rank-0 inference checkpoints every 250M global frames.
+For each checkpoint it renders all three standard deterministic cases twice:
+`paper_task_progress` uses base tolerance 0.02, while
+`checkpoint_training_tolerance` requires the exact contemporaneous
+`scalars/success_tolerance/frame` value. All checkpoint, action-selection,
+coefficient-ID, trajectory, camera, and episode settings remain shared between
+the two metric sets.
+
+The suite helper now exposes both physical GPUs to `torchrun`, maps each rank's
+Isaac Gym simulator and policy to its local CUDA device, initializes NCCL from
+the launcher rendezvous, and counts both ranks when validating the global frame
+cap. The two-epoch smoke completed and reload-verified a two-rank checkpoint;
+this is an integration check, not evidence of learning.
+
 The active full-size adapters-only MLP replacement uses a single-policy gate and long-run contract:
 
 ```bash

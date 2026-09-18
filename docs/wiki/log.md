@@ -909,3 +909,12 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 
 - Added `configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_mlp128x32x32_100b.yaml` as the CUDA-1 counterpart to the live no-auxiliary all-neuron fly run.
 - The suite preserves the same 1,952-neuron prepared graph, all-neuron actor readout, privileged critic, no-auxiliary loss setting, seed, environment/batch geometry, optimizer/objective, task overrides, checkpoint cadence, and 100B-frame budget. It selects only the pre-existing `128/32/32` sensory/descending/readout MLP train profile; output identity and physical GPU placement are intentionally distinct.
+
+## [2026-09-18] implement | Add synchronized two-GPU small-MLP training
+
+- Stopped the full-size CUDA-0 and small-MLP CUDA-1 trainer process groups while preserving their run artifacts; unrelated milestone watchers were left running.
+- Extended `run_connectome_suite.py` with YAML-owned `training.distributed: true`: it launches one `torchrun` policy across all listed GPUs, exposes the complete device list, validates the frame cap against world size, and records all participating devices. Ordinary suite contracts remain single-GPU.
+- Corrected the dormant multi-GPU runtime to select rank-local Isaac Gym and PPO devices and use NCCL through the launcher's rendezvous. Previously both ranks were hardwired to logical CUDA 0 and the suite always supplied `multi_gpu=false`.
+- Added a two-rank smoke and a fresh 100B production suite using the no-auxiliary all-neuron `128/32/32` MLP profile. Production uses 15,360 environments and six 2,560-environment SAPG blocks per rank, 61,440-sample local actor/critic minibatches, and 203,450 epochs for 99,999,744,000 global frames.
+- Added a milestone watcher that generates both fixed paper-tolerance and exact checkpoint-training-tolerance videos for the three standard deterministic cases every 250M global frames.
+- The two-epoch smoke completed on both GPUs and reload-verified the two-rank terminal checkpoint with a finite 29-action deployment output.

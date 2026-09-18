@@ -110,10 +110,10 @@ class A2CBase(BaseAlgorithm):
             # total number of GPUs across all nodes
             self.world_size = int(os.getenv("WORLD_SIZE", "1"))
 
-            import hashlib
-            dist.init_process_group("gloo", rank=self.global_rank, world_size=self.world_size, init_method=f'tcp://127.0.0.1:{23400 + int(hashlib.md5(self.experiment_name[3:].encode("utf-8")).hexdigest(), 16) % 500}')
+            torch.cuda.set_device(self.local_rank)
+            dist.init_process_group("nccl")
 
-            self.device_name = 'cuda:0' # DEBUG
+            self.device_name = 'cuda:' + str(self.local_rank)
             config['device'] = self.device_name
             if self.global_rank != 0:
                 config['print_stats'] = False

@@ -69,14 +69,19 @@ def _run_streaming(
         raise subprocess.CalledProcessError(return_code, command)
 
 
-def _environment(gpu: int | str | None = None) -> dict[str, str]:
+def _environment(
+    gpu: int | str | list[int] | tuple[int, ...] | None = None,
+) -> dict[str, str]:
     environment = os.environ.copy()
     python_path = [str(REPOSITORY_ROOT / "rl_games"), str(REPOSITORY_ROOT)]
     if environment.get("PYTHONPATH"):
         python_path.append(environment["PYTHONPATH"])
     environment["PYTHONPATH"] = os.pathsep.join(python_path)
     if gpu is not None:
-        environment["CUDA_VISIBLE_DEVICES"] = str(gpu)
+        if isinstance(gpu, (list, tuple)):
+            environment["CUDA_VISIBLE_DEVICES"] = ",".join(str(item) for item in gpu)
+        else:
+            environment["CUDA_VISIBLE_DEVICES"] = str(gpu)
     return environment
 
 
@@ -229,7 +234,7 @@ def _training_overrides(
         f"task={training['task_profile']}",
         f"train={profile}",
         "headless=true",
-        "multi_gpu=false",
+        f"multi_gpu={str(bool(training.get('distributed', False))).lower()}",
         "sim_device=cuda:0",
         "rl_device=cuda:0",
         f"task.env.numEnvs={int(training['num_envs'])}",
@@ -294,6 +299,7 @@ def _run_training_case(case: dict[str, Any]) -> dict[str, Any]:
     case_name = case["case_name"]
     seed = case["seed"]
     gpu = case["gpu"]
+    gpus = case.get("gpus", [gpu])
     run_name = case["run_name"]
     run_directory = case["run_directory"]
     overrides = case["overrides"]
@@ -347,8 +353,24 @@ def _run_training_case(case: dict[str, Any]) -> dict[str, Any]:
 
     run_directory.mkdir(parents=True, exist_ok=True)
     resolved_config_path.write_text(OmegaConf.to_yaml(resolved, resolve=True))
-    command = [sys.executable, "-m", "isaacgymenvs.train", *overrides]
-    environment = _environment(gpu)
+    if training.get("distributed", False):
+        command = [
+            sys.executable,
+            "-m",
+            "torch.distributed.run",
+            "--standalone",
+            "--nnodes=1",
+            f"--nproc-per-node={len(gpus)}",
+            "-m",
+            "isaacgymenvs.train",
+            *overrides,
+        ]
+        environment = _environment(gpus)
+        label = f"gpus{','.join(str(item) for item in gpus)}:{case_name}"
+    else:
+        command = [sys.executable, "-m", "isaacgymenvs.train", *overrides]
+        environment = _environment(gpu)
+        label = f"gpu{gpu}:{case_name}"
     started_at = datetime.now(timezone.utc).isoformat()
     started = time.monotonic()
     try:
@@ -356,7 +378,7 @@ def _run_training_case(case: dict[str, Any]) -> dict[str, Any]:
             command,
             environment,
             training_log,
-            label=f"gpu{gpu}:{case_name}",
+            label=label,
         )
     except Exception as error:
         failed_timing = {
@@ -412,7 +434,8 @@ def _run_training_case(case: dict[str, Any]) -> dict[str, Any]:
         "profile": profile,
         "case": case_name,
         "seed": seed,
-        "gpu": gpu,
+            "gpu": gpu,
+            "gpus": gpus,
         **timing,
         **verification,
     }
@@ -430,8 +453,14 @@ def _run_training(
     seeds = [int(seed) for seed in training["seeds"]]
     gpus = training["gpu_assignments"]
     max_parallel = int(training.get("max_parallel", 1))
+    distributed = bool(training.get("distributed", False))
     if not 1 <= max_parallel <= len(gpus):
         raise ValueError("training.max_parallel must be between 1 and GPU count")
+    if distributed and (len(gpus) < 2 or max_parallel != 1):
+        raise ValueError(
+            "distributed training requires at least two GPU assignments and "
+            "training.max_parallel: 1"
+        )
 
     cases = []
     for run_index, (entry, seed) in enumerate(
@@ -458,6 +487,8 @@ def _run_training(
         steps_per_epoch *= int(
             resolved.train.params.config.get('rollout_accumulation_steps', 1)
         )
+        if distributed:
+            steps_per_epoch *= len(gpus)
         requested_steps = steps_per_epoch * int(
             resolved.train.params.config.max_epochs
         )
@@ -474,12 +505,28 @@ def _run_training(
                 "case_name": case_name,
                 "seed": seed,
                 "gpu": gpu,
+                "gpus": list(gpus) if distributed else [gpu],
                 "run_name": run_name,
                 "run_directory": run_directory,
                 "overrides": overrides,
                 "resolved": resolved,
             }
         )
+
+    if distributed:
+        results = []
+        for case in cases:
+            result = _run_training_case(case)
+            results.append(result)
+            print(
+                f"Completed {result['case']} on GPUs {result['gpus']} in "
+                f"{result.get('training_elapsed_seconds', 0.0):.2f}s",
+                flush=True,
+            )
+            (suite_directory / "training_progress.json").write_text(
+                json.dumps(results, indent=2, sort_keys=True) + "\n"
+            )
+        return results
 
     # One worker owns each GPU for its entire queue. This prevents a fast job on
     # one device from causing the executor to start a second job on a busy GPU.
