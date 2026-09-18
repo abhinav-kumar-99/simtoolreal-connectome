@@ -1274,6 +1274,51 @@ def test_ddp_small_mlp_uses_half_physical_batches_and_five_logical_updates() -> 
     ]
 
 
+def test_ddp_small_mlp_original_env_count_keeps_half_physical_batches() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/suites/"
+            "ppo_1952_noaux_mlp128x32x32_ddp_12288_"
+            "logical49152_micro24576_100b.yaml"
+        ).read_text()
+    )
+    training = suite["training"]
+    assert training["distributed"] is True
+    assert training["gpu_assignments"] == [0, 1]
+    assert training["num_envs"] == 12_288
+    assert training["sapg_block_size"] == 2_048
+    assert training["minibatch_size"] == 49_152
+    assert training["central_critic_minibatch_size"] == 49_152
+    assert training["actor_microbatch_size"] == 24_576
+    assert training["central_critic_microbatch_size"] == 24_576
+    assert training["rollout_accumulation_steps"] == 1
+    assert training["epochs"] == 254_313
+
+    local_fresh_samples = training["num_envs"] * 16
+    local_lf_samples = training["sapg_block_size"] * 16
+    local_training_samples = local_fresh_samples + local_lf_samples
+    assert local_training_samples == 229_376
+    assert local_training_samples // training["minibatch_size"] == 4
+    assert 2 * local_fresh_samples * training["epochs"] == 99_999_940_608
+
+    evaluation = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/evaluation/"
+            "ppo_1952_noaux_mlp128x32x32_ddp_12288_"
+            "logical49152_micro24576_100b_milestones.yaml"
+        ).read_text()
+    )
+    assert evaluation["training_suite_name"] == suite["name"]
+    assert evaluation["training_suite_directory"] == suite["output_directory"]
+    assert evaluation["evaluation"]["videos"]["metrics"] == [
+        "paper_task_progress",
+        "checkpoint_training_tolerance",
+    ]
+
+
 def test_noaux_7b_dual_tolerance_anatomical_hd_contract_is_matched() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     config = yaml.safe_load(

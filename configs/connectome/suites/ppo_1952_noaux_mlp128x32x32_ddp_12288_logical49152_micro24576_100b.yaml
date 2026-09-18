@@ -1,0 +1,64 @@
+# Two-rank small-MLP policy at the original per-rank environment population.
+schema_version: 1
+name: ppo_1952_noaux_mlp128x32x32_ddp_12288_logical49152_micro24576_100b
+stages: [prepare, train]
+output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_noaux_mlp128x32x32_ddp_12288_logical49152_micro24576_100b
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+preparation:
+  config: configs/connectome/malecns_1952.yaml
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - {name: gaussian_lf_entropy1x_sigma3_all_neurons_noaux_mlp128x32x32_ddp_env12288_logical49152_micro24576, train_profile: SimToolRealConnectome1952AdaptersMLP128x32x32AllNeuronReadoutGaussianSigma3SAPG}
+  seeds: [42]
+  gpu_assignments: [0, 1]
+  distributed: true
+  max_parallel: 1
+  num_envs: 12288
+  sapg_block_size: 2048
+  epochs: 254313
+  max_frames: 100000000000
+  minibatch_size: 49152
+  central_critic_minibatch_size: 49152
+  rollout_accumulation_steps: 1
+  actor_microbatch_size: 24576
+  central_critic_microbatch_size: 24576
+  inference_checkpoint_interval_frames: 250000000
+  save_frequency: 200
+  save_best_after: 100
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: gaussian-lf-entropy1x-sigma3-all-neuron-readout-noaux-mlp128x32x32-ddp-12288-logical49152-micro24576
+    tags: [malecns, all-neuron-readout, no-actor-value-loss, mlp-128x32x32, two-rank-ddp, envs-12288-per-gpu, logical-minibatch-49152-per-rank, physical-microbatch-24576-per-rank, four-updates-per-ppo-epoch, clipped-gaussian, sigma-3, leader-follower, entropy-1x]
+  overrides:
+    train.params.config.kl_threshold: 0.004
+    train.params.config.learning_rate: 0.0001
+    train.params.config.max_lr: 0.001
+    train.params.config.use_others_experience: lf
+    train.params.config.off_policy_ratio: 1.0
+    ++train.params.config.use_experimental_cv: false
+    ++train.params.network.connectome.dynamics.neural_updates: 4
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    train.params.config.expl_reward_coef_scale: 0.005
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

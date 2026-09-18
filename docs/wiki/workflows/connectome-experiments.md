@@ -405,42 +405,40 @@ model change is the selected train profile's sensory/descending/readout MLP
 hidden sizes of `128/32/32` rather than the inherited `256/256/256`; output and
 experiment names are necessarily distinct to prevent artifact collision.
 
-The superseding synchronized two-GPU small-MLP contract uses 1.25 times the
-prior environment population on **each** rank:
+The superseding synchronized two-GPU small-MLP contract uses the original
+12,288-environment population on **each** rank:
 
 ```bash
 # Two-rank, two-epoch integration and reload gate.
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_noaux_mlp128x32x32_ddp_15360_smoke.yaml
 
 # Fresh two-rank 100B-frame run on physical GPUs 0 and 1.
-.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_noaux_mlp128x32x32_ddp_15360_logical49152_micro24576_100b.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_noaux_mlp128x32x32_ddp_12288_logical49152_micro24576_100b.yaml
 
 # Paper-tolerance and exact checkpoint-training-tolerance videos.
-.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_noaux_mlp128x32x32_ddp_15360_logical49152_micro24576_100b_milestones.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_noaux_mlp128x32x32_ddp_12288_logical49152_micro24576_100b_milestones.yaml
 ```
 
 `training.distributed: true` makes the suite entrypoint launch one synchronized
 policy with two `torchrun` ranks over `gpu_assignments: [0, 1]`; it does not
-launch two independent policies. Each rank owns 15,360 simulator environments,
-exactly 1.25 times the previous 12,288, for 30,720 simultaneous environments
-in total. Each rank retains six SAPG blocks (`sapg_block_size: 2560`). The
+launch two independent policies. Each rank owns 12,288 simulator environments,
+for 24,576 simultaneous environments in total. Each rank retains six SAPG
+blocks (`sapg_block_size: 2048`). The
 logical actor and critic minibatches remain 49,152 samples per rank, while
 `actor_microbatch_size` and `central_critic_microbatch_size` are halved to
 24,576 physical samples per rank. Each ordinary logical update therefore
 accumulates two physical forward/backward chunks before the synchronized DDP
 optimizer step; its nominal global gradient population is 98,304 samples.
 
-LF adds a seventh block, so the local 286,720-sample training set produces five
-logical optimizer steps per mini-epoch: four 49,152-sample local batches and
-one 90,112-sample local remainder batch. Two unchanged PPO mini-epochs produce
-ten actor updates and ten separate critic updates per training epoch, exactly
-1.25 times the historical four-per-mini-epoch/eight-per-training-epoch
-schedule. One global epoch represents 491,520 fresh frames, and 203,450
-complete epochs produce 99,999,744,000 frames under the 100B cap. This yields
-2,034,500 synchronized actor updates over the full budget, with the same count
-for the critic. The earlier 61,440-logical-minibatch and
-24,576-logical-minibatch launches are preserved as stopped pilots rather than
-mixed into this fresh run.
+LF adds a seventh block, so the local 229,376-sample training set produces four
+logical optimizer steps per mini-epoch: three 49,152-sample local batches and
+one 81,920-sample local remainder batch. Two unchanged PPO mini-epochs produce
+eight actor updates and eight separate critic updates per training epoch. One
+global epoch represents 393,216 fresh frames, and 254,313 complete epochs
+produce 99,999,940,608 frames under the 100B cap. This yields 2,034,504
+synchronized actor updates over the full budget, with the same count for the
+critic. The earlier 15,360-environment and other DDP launches are preserved as
+stopped pilots rather than mixed into this fresh run.
 
 The production output lives below
 `train_dir/connectome/adaptation_100b_gains_update_timing`, the log root already
