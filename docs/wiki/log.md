@@ -755,6 +755,7 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 
 - Revalidated the goal-tolerance curriculum from the raw environment scheduler: the 0.075 base tolerance reduces by 0.9 only after both 3,000 vector control steps and an all-12,288-environment mean of at least three completed goals per most recently completed episode.
 - Recorded that failed checks leave the update marker unchanged and therefore make the next qualifying control step advance immediately; `evalSuccessTolerance` is null for training and does not override the scheduler.
+
 ## [2026-09-18] experiment | Replace auxiliary fly job with matched LSTM
 
 - Updated `SimToolRealLSTM323MatchedGaussianSigma3SAPG` and its suite contracts to make the 256-unit actor MLP, one-update recurrence, physical GPU 1 placement, and `use_experimental_cv: false` explicit.
