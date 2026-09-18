@@ -21,7 +21,18 @@ from simtoolreal_shared.activity_trace import circuit_settings, repository_path
 
 def write_video_index(output: Path, results: list[dict], settings: dict) -> None:
     cards = []
-    for item in results:
+    task_keys = [
+        (item["evaluation"]["object_name"], item["evaluation"]["task_name"])
+        for item in results
+    ]
+    task_order = {task: i for i, task in enumerate(dict.fromkeys(task_keys))}
+    ordered = sorted(
+        results,
+        key=lambda item: task_order[
+            (item["evaluation"]["object_name"], item["evaluation"]["task_name"])
+        ],
+    )
+    for item in ordered:
         evaluation = item["evaluation"]
         directory = Path(item["output_directory"])
         links = []
@@ -33,6 +44,13 @@ def write_video_index(output: Path, results: list[dict], settings: dict) -> None
             ("Metadata", "circuit_render.json"),
         ]:
             path = directory / filename
+            if (
+                filename == "rollout_with_circuit.mp4"
+                and "combined" not in settings["outputs"]
+            ):
+                continue
+            if filename == "circuit.mp4" and "circuit" not in settings["outputs"]:
+                continue
             if path.exists():
                 relative = html.escape(os.path.relpath(path, output), quote=True)
                 links.append(f'<a href="{relative}">{name}</a>')
@@ -43,8 +61,19 @@ def write_video_index(output: Path, results: list[dict], settings: dict) -> None
         cards.append(
             f'<article><h2>{label}</h2><p>{policy}</p><video controls preload="metadata" src="{video}"></video><nav>{" · ".join(links)}</nav></article>'
         )
-    page = '<!doctype html><html lang="en"><meta charset="utf-8"><title>MaleCNS activity videos</title><style>body{background:#0a101b;color:#c3d0db;font:16px system-ui;margin:32px}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(480px,1fr));gap:24px}article{background:#111c2c;padding:18px;border-radius:12px}p{overflow-wrap:anywhere;color:#8ca1b6}video{width:100%}a{color:#77ddd3}nav{margin-top:12px}</style><h1>MaleCNS anatomical activity</h1>'
-    page += f"<p>{len(results)} rollouts · {settings['fps_multiplier']}× rollout FPS · real neuron skeletons and recorded modeled activity</p><main>{''.join(cards)}</main></html>"
+    page = '<!doctype html><html lang="en"><meta charset="utf-8"><title>MaleCNS activity videos</title><style>body{background:#0a101b;color:#c3d0db;font:16px system-ui;margin:32px}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(480px,100%),1fr));gap:24px}article{background:#111c2c;padding:18px;border-radius:12px}p{overflow-wrap:anywhere;color:#8ca1b6}video{width:100%}a{color:#77ddd3}nav{margin-top:12px}select{background:#111c2c;color:#c3d0db;padding:6px;margin-bottom:20px}</style><h1>MaleCNS anatomical activity</h1>'
+    page += f"<p>{len(results)} rollouts · {settings['fps_multiplier']}× rollout FPS · real neuron skeletons and recorded modeled activity</p>"
+    notes = ["Cyan/orange show positive/negative controller state."]
+    if settings.get("activity_bars"):
+        notes.append("Population bars show average state magnitude.")
+    if settings.get("leg_shadows"):
+        notes.append(
+            "Gray leg guides are schematic orientation; the fly legs themselves are not simulated."
+        )
+    page += f"<p>{' '.join(notes)}</p>"
+    page += '<label for="speed">Playback speed </label><select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option></select>'
+    page += f"<main>{''.join(cards)}</main>"
+    page += '<script>document.getElementById("speed").addEventListener("change",function(){document.querySelectorAll("video").forEach(video=>{video.playbackRate=Number(this.value);});});</script></html>'
     (output / "index.html").write_text(page)
 
 

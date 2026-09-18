@@ -24,6 +24,8 @@ To change appearance without rerunning Isaac Gym:
 
 This YAML owns `trace_path`, `rollout_path`, `output_directory`, and `circuit`. Paths are absolute or relative to the repository root. Generated geometry and videos are ignored by Git.
 
+Open `evals/connectome/anatomical_1952_7b/index.html` in a browser to browse the six pairs, with actors grouped by task. The gallery explains the color/bar/leg conventions and provides 0.25×, 0.5× and normal-speed playback for closer inspection; this does not change encoded FPS or synchronization.
+
 For future ordinary or milestone evaluations, add this block to `videos` (under `evaluation.videos` in watcher configs):
 
 ```yaml
@@ -68,6 +70,8 @@ The optional block defaults to disabled. Existing jobs are not restarted or enab
 ## Timing and interpretation
 
 Four neural updates per 60 Hz control step yield an effective 240 substeps/s. Recording every third robot step at 20 fps and rendering at 80 fps normally selects every third recorded neural state. The renderer uses the latest available state on the video clock and repeats each robot image four times. Duration stays equal. Final camera-frame padding holds the last state; episodes restart from their recorded initial state without blending across resets.
+
+This animation clock places the internal algorithm updates uniformly within each control step. In inference they are computed together before the action; the plotted subframes are not independently measured physiological or wall-clock event times.
 
 The fixed tanh scale is −1 to +1. Cyan/orange indicate positive/negative modeled state, not excitatory/inhibitory anatomical neuron identity. One scalar colors each whole morphology. Overlapping projected neurons blend contributions with fixed density compensation; activity is never normalized per frame. This is real anatomy carrying engineered controller state, with no modeled within-neuron propagation or claim of measured biological activity.
 

@@ -839,3 +839,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added appearance-only replay reuse with checkpoint/config/footage verification, preserving existing simulation recordings while rebuilding videos. New traces save their recording options and footage hash.
 - Inspected annotated real-data stills at three seconds. Focused recording, CPU/CUDA parity, timing, encoding, configuration, milestone and baseline checks: 57 passed; Ruff and diff checks passed.
 - Verified that all six completed 7B recordings can be rerendered without simulator workers. See `workflows/anatomical-activity-videos.md` for flags and helper/entrypoint usage.
+
+## [2026-09-18] improve | Browse matched tasks at slower playback speeds
+
+- Updated the generated local video gallery to group actors by task, explain state/bar/leg conventions and offer 0.25×/0.5×/1× playback.
+- Gallery links respect the requested circuit/combined outputs even when older unrequested MP4s remain. Verified six cards, paired task ordering, existing file targets and playback options; Ruff/diff checks passed.
+- Clarified that internal algorithm updates are placed uniformly on the animation clock, rather than measured physiological/wall-clock events.
