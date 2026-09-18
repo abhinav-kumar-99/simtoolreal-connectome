@@ -824,3 +824,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added separate/combined video encoding at four times the rollout FPS, episode-local resampling and terminal holds; enabled completion checks require traces, rendered videos and matching successful metadata.
 - Documentation: `workflows/anatomical-activity-videos.md`, linked from the index and experiment workflow, explains both scripts, helpers, YAML parameters, timing and modeled-state interpretation.
 - The first actual 7B no-auxiliary marker replay produced a valid activity trace and inspected anatomical preview; full batch completion is recorded separately after artifact verification.
+
+## [2026-09-18] fix | Protect geometry caches and expose local video index
+
+- Made projected-raster cache writes atomic for parallel evaluator queues; existing geometry downloads use a cache lock.
+- Rejected non-boolean enablement, duplicate output names and disabled standalone rendering.
+- Added generated local `index.html` to the replay entrypoint for opening every combined video and downloading circuit-only videos, traces and metadata.
+- Focused anatomy/timing/encoding/completion tests passed (4); new modules and entrypoints pass Ruff checks. The first full replay completed with 800 frames at 80 fps and exactly 10 seconds for both outputs.

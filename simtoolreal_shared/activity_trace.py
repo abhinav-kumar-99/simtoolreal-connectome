@@ -36,6 +36,8 @@ def circuit_settings(value: dict | None) -> dict:
     settings.setdefault("projection", ["x", "z"])
     settings.setdefault("vnc_bounds_um", [240, 560, 400, 1100])
     settings.setdefault("outputs", ["circuit", "combined"])
+    if not isinstance(settings["enabled"], bool):
+        raise TypeError("circuit.enabled must be a YAML boolean")
     if not settings["enabled"]:
         return settings
     multiplier = settings["fps_multiplier"]
@@ -65,6 +67,8 @@ def circuit_settings(value: dict | None) -> dict:
         raise ValueError(
             "vnc_bounds_um must be [xmin, xmax, zmin, zmax] with increasing bounds"
         )
+    if len(settings["outputs"]) != len(set(settings["outputs"])):
+        raise ValueError("circuit.outputs must contain unique names")
     if not settings["outputs"] or not set(settings["outputs"]) <= {
         "circuit",
         "combined",

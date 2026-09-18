@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import subprocess
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -233,7 +234,16 @@ class AnatomicalPanel:
                 shape=(width * height, len(body_ids)),
                 dtype=np.float32,
             ).tocsr()
-            sparse.save_npz(mask_path, self.mask)
+            # Parallel evaluator queues must never read a partially written cache.
+            with tempfile.NamedTemporaryFile(
+                dir=cache, suffix=".npz", delete=False
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+            try:
+                sparse.save_npz(temporary_path, self.mask)
+                temporary_path.replace(mask_path)
+            finally:
+                temporary_path.unlink(missing_ok=True)
         self.density = np.asarray(self.mask.sum(axis=1)).reshape(-1).astype(np.float32)
         self.background = np.broadcast_to(BACKGROUND, (height, width, 3)).copy()
         for bounds, (x, y, w, h) in zip(self.bounds, self.views):
@@ -379,6 +389,8 @@ def probe_video(path: Path) -> dict:
 
 def render_activity(config: dict) -> dict:
     settings = circuit_settings({"enabled": True, **config.get("circuit", {})})
+    if not settings["enabled"]:
+        raise ValueError("Rendering requires circuit.enabled: true")
     trace_path = repository_path(config["trace_path"])
     rollout_path = repository_path(config["rollout_path"])
     directory = repository_path(config.get("output_directory", str(trace_path.parent)))

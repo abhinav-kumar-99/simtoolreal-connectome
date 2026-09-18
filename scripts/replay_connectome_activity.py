@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import sys
@@ -16,6 +17,35 @@ import yaml
 
 from scripts.run_connectome_evaluation import _completed_case, _run_case
 from simtoolreal_shared.activity_trace import circuit_settings, repository_path
+
+
+def write_video_index(output: Path, results: list[dict], settings: dict) -> None:
+    cards = []
+    for item in results:
+        evaluation = item["evaluation"]
+        directory = Path(item["output_directory"])
+        links = []
+        video = None
+        for name, filename in [
+            ("Combined", "rollout_with_circuit.mp4"),
+            ("Circuit", "circuit.mp4"),
+            ("Activity trace", "activity.npz"),
+            ("Metadata", "circuit_render.json"),
+        ]:
+            path = directory / filename
+            if path.exists():
+                relative = html.escape(os.path.relpath(path, output), quote=True)
+                links.append(f'<a href="{relative}">{name}</a>')
+                if video is None and filename.endswith(".mp4"):
+                    video = relative
+        label = html.escape(f"{evaluation['object_name']} / {evaluation['task_name']}")
+        policy = html.escape(evaluation["policy"])
+        cards.append(
+            f'<article><h2>{label}</h2><p>{policy}</p><video controls preload="metadata" src="{video}"></video><nav>{" · ".join(links)}</nav></article>'
+        )
+    page = '<!doctype html><html lang="en"><meta charset="utf-8"><title>MaleCNS activity videos</title><style>body{background:#0a101b;color:#c3d0db;font:16px system-ui;margin:32px}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(480px,1fr));gap:24px}article{background:#111c2c;padding:18px;border-radius:12px}p{overflow-wrap:anywhere;color:#8ca1b6}video{width:100%}a{color:#77ddd3}nav{margin-top:12px}</style><h1>MaleCNS anatomical activity</h1>'
+    page += f"<p>{len(results)} rollouts · {settings['fps_multiplier']}× rollout FPS · real neuron skeletons and recorded modeled activity</p><main>{''.join(cards)}</main></html>"
+    (output / "index.html").write_text(page)
 
 
 def run(config: dict) -> dict:
@@ -101,6 +131,7 @@ def run(config: dict) -> dict:
     (output / "summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n"
     )
+    write_video_index(output, results, settings)
     return summary
 
 

@@ -14,7 +14,7 @@ From the normal repository checkout, replay the six paper-tolerance cases for bo
 .venv/bin/python scripts/replay_connectome_activity.py --config configs/connectome/visualization/replay_1952_7b.yaml
 ```
 
-The YAML owns `case_paths`, `output_directory`, one physical `gpu`, `runtime_environment`, and `circuit`. Each source `case.yaml` supplies its checkpoint, resolved policy config, trajectory, tolerance, episode count, camera sampling and simulator overrides. Replay writes new robot footage, `activity.npz`, `circuit.mp4`, `rollout_with_circuit.mp4`, and `circuit_render.json` into the new directory. Existing videos are preserved. Activity matches the newly replayed footage; exact reproduction of an old MP4 is not assumed. Re-running reuses complete cases with matching circuit settings.
+The YAML owns `case_paths`, `output_directory`, one physical `gpu`, `runtime_environment`, and `circuit`. Each source `case.yaml` supplies its checkpoint, resolved policy config, trajectory, tolerance, episode count, camera sampling and simulator overrides. Replay writes new robot footage, `activity.npz`, `circuit.mp4`, `rollout_with_circuit.mp4`, and `circuit_render.json` into the new directory, plus a local `index.html` at the output root for browsing all pairs. Existing videos are preserved. Activity matches the newly replayed footage; exact reproduction of an old MP4 is not assumed. Re-running reuses complete cases with matching circuit settings.
 
 To change appearance without rerunning Isaac Gym:
 
