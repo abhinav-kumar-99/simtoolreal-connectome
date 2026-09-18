@@ -900,3 +900,8 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 
 - Added `configs/connectome/evaluation/ppo_1952_7b_noaux_dual_tolerance_anatomical_hd_cuda1.yaml`, preserving the noaux checkpoint, both thresholds, native capture and circuit layout while setting `gpu_assignments: [1]` and a distinct `_cuda1` output directory.
 - The distinct destination is intentional: the normal evaluator reuses complete matching cases and otherwise prints the aggregate JSON without launching Isaac Gym workers. The new config forces fresh simulator capture on physical GPU 1 while preserving the previously verified output directory.
+
+## [2026-09-18] configure | Launch CUDA-1 small-MLP all-neuron fly control
+
+- Added `configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_mlp128x32x32_100b.yaml` as the CUDA-1 counterpart to the live no-auxiliary all-neuron fly run.
+- The suite preserves the same 1,952-neuron prepared graph, all-neuron actor readout, privileged critic, no-auxiliary loss setting, seed, environment/batch geometry, optimizer/objective, task overrides, checkpoint cadence, and 100B-frame budget. It selects only the pre-existing `128/32/32` sensory/descending/readout MLP train profile; output identity and physical GPU placement are intentionally distinct.

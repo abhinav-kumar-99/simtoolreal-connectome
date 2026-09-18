@@ -390,6 +390,21 @@ composes the Hydra train profile, writes the resolved contract, and launches
 the trainer; the builder constructs the three independently sized interface
 MLPs. This gate has not been launched as a training job.
 
+The CUDA-1 long-run counterpart of the live all-neuron no-auxiliary policy is:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_mlp128x32x32_100b.yaml
+```
+
+Its `gpu_assignments: [1]` selects physical CUDA 1.  It retains the live
+policy's 1,952-cell prepared graph, all-neuron readout, four recurrent updates,
+seed 42, environment/batch geometry, clipped-Gaussian SAPG/LF objective,
+privileged central critic, disabled actor-side auxiliary value loss, task
+randomization, checkpoint cadence, and fresh 100B-frame budget.  The only
+model change is the selected train profile's sensory/descending/readout MLP
+hidden sizes of `128/32/32` rather than the inherited `256/256/256`; output and
+experiment names are necessarily distinct to prevent artifact collision.
+
 The active full-size adapters-only MLP replacement uses a single-policy gate and long-run contract:
 
 ```bash
