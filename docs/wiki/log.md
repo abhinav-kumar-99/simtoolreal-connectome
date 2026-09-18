@@ -2,9 +2,15 @@
 
 Append-only record of durable repository work.
 
-Last updated: 2026-09-16
+Last updated: 2026-09-18
 
 Related: [Index](index.md), [Overview](overview.md)
+
+## [2026-09-17] analysis | Add parameter-matched LSTM baseline contract
+
+- Added `analyses/lstm-baseline.md` and linked it from the index and connectome actor concept.
+- Recorded the 733,796 fly versus 733,790 LSTM coefficient accounting, standard one-update LSTM semantics, YAML entrypoints and single-seed evidence boundary.
+- Provenance: current actor/profile code, compact graph artifact contract, and exact composed network parameter shapes.
 
 ## [2026-09-16] query | Identify further visual-reservoir speedups
 
@@ -690,6 +696,65 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Initial production telemetry was finite through frame 1,769,472 with approximately 95K-101K warm total FPS, reward 34.7445, entropy 41.1834, KL `.00312`, and both actor and value losses present.
 - Confirmed that the existing port-6008 TensorBoard discovered the new production and smoke event streams without restart. GPU-0 trainer/watcher PIDs 261951/262494 were preserved.
 
+## [2026-09-16] query | Clarify actor and critic fly features
+
+- Distinguished the privileged central critic from the actor-side auxiliary value head: the central critic consumes no fly state, while `use_experimental_cv: true` trains the auxiliary head through actor features.
+- Recorded that the live motor-readout policy sends 135 fly states to its action MLP but all 1,952 states to its auxiliary value head; the all-neuron policy sends all 1,952 states to both heads.
+- Documented privileged-state-plus-detached-recurrent-features as a future recurrent-critic ablation, not an established improvement. No configuration or running process changed.
+
+## [2026-09-16] query | Define the standard SimToolReal critic analogue
+
+- Distinguished asymmetric information from shared representation: privileged state is the defining central-critic contract, while actor memory is only an optional additional conditioning variable for a recurrent policy.
+- Defined the paper analogue as privileged central critic only and the released-code analogue as privileged central critic plus an auxiliary actor value head sharing the actor's post-recurrent trunk.
+- Recorded that neither current connectome readout is an exact shared-trunk reproduction. No configuration or running process changed.
+
+## [2026-09-17] launch | Replace motor readout with all-neuron no-auxiliary comparison
+
+- Stopped only the GPU-0 motor-readout suite/trainer and its current milestone watcher; its artifacts remain preserved through the completed 5,750,194,176-frame inference milestone.
+- Added a fresh YAML-owned GPU-0 run and watcher matched to the GPU-1 all-neuron policy except for `use_experimental_cv: false`; configuration commit `51ee9c72`.
+- Launched suite/trainer/watcher PIDs 775098/775189/775104. At frame 1,376,256, reward, entropy, action loss, central-critic loss and KL were finite, actor `c_loss` was correctly zero, and invalid-KL flags were zero.
+- Preserved the GPU-1 all-neuron suite/trainer/watcher PIDs 543985/544079/555982 and confirmed the new run is visible in TensorBoard 6008 without restart.
+
+## [2026-09-17] fix | Complete central-critic recovery metadata
+
+- Audited live all-neuron PPO artifacts: full checkpoints already contained critic weights and Adam state, while inference milestones intentionally contained neither.
+- Confirmed that full checkpoints omitted the critic trainer's epoch, frame, scheduled-LR variable and optional recurrent state, so a resumed scheduled critic could restart its schedule at zero.
+- Added explicit central-value training metadata save/restore, legacy inference from actor counters plus critic optimizer LR, fresh-rollout handling that does not restore critic RNN state, and suite verification of the complete critic resume contract.
+- Existing trainers were not interrupted and continue writing the old schema until restarted; those checkpoints remain resumable through the compatibility path.
+
+## [2026-09-17] query | Current all-neuron parameter and edge count
+
+- Verified the live all-neuron MLP actor from its recovery checkpoint shapes: 692,268 declared trainable scalars, versus 7,811,468 for the original SimToolReal LSTM/SAPG actor.
+- Distinguished the GPU-0 no-auxiliary job's 690,315 actively gradient-receiving actor scalars from its still-declared 1,953-scalar unused value head; the GPU-1 auxiliary-loss job updates all 692,268.
+- Recorded the unchanged separate 2,037,769-scalar asymmetric critic and the current compact MaleCNS graph's 33,720 fixed directed connections, including the no-fly-circuit boundary for the original LSTM.
+
+## [2026-09-17] query | Learned interface MLP bottleneck limits
+
+- Derived the current all-neuron MLP actor counts at shared hidden widths 256/128/96/64 and distinguished algebraic input-rank limits from empirical decoder capacity.
+- The existing YAML exposes one shared interface width; 128 is the smallest setting that does not necessarily compress the 128-D sensory input, reducing the actor from 692,268 to 347,308 scalars.
+- A 128-sensory/64-descending/64-action 207,596-scalar design would require independently configurable widths; it is a proposed matched capacity ablation, not an implemented or evaluated policy.
+
+## [2026-09-17] docs | Add robot-to-fly mapping infographic
+
+- Added `docs/wiki/assets/robot-to-fly-neuron-mapping.png`, a 1,672 x 941 architecture diagram of the current learned-adapter all-neuron policy.
+- Embedded the diagram in the connectome actor concept page beside the exact 1,952-neuron and 33,720-edge dataflow description.
+
+## [2026-09-17] query | Aggressive asymmetric MLP capacity
+
+- Calculated 144,172 actor scalars for proposed `128/64/32` sensory/descending/action hidden widths, or 142,219 actively updated scalars when the auxiliary actor-value loss is disabled.
+- Distinguished the coordinate-full-rank `128/44/29` floor (134,206), an SAPG-structure-aware `128/18/29` candidate (128,980), and the already-supported direct-linear interfaces (115,016).
+- Widths below 29 on the action decoder impose a rank-limited action-synergy assumption; these counts are architectural bounds, not evidence of retained task performance.
+
+## [2026-09-17] implement | Independently sized 128/32/32 interface MLPs
+
+- Added backward-compatible sensory, descending, and readout hidden-width overrides; existing profiles still use the shared 256-unit width when the new keys are absent.
+- Added a clipped-Gaussian all-neuron `128/32/32` train profile and YAML-owned two-epoch full-geometry smoke entrypoint without launching or replacing either live job.
+- Verified the exact `128 -> 128 -> 384`, `44 -> 32 -> 157`, and `1,952 -> 32 -> 29` shapes. The resulting actor declares 137,740 trainable scalars, including the auxiliary value head and SAPG parameters.
+
+## [2026-09-17] query | Confirm active success-threshold curriculum
+
+- Revalidated the goal-tolerance curriculum from the raw environment scheduler: the 0.075 base tolerance reduces by 0.9 only after both 3,000 vector control steps and an all-12,288-environment mean of at least three completed goals per most recently completed episode.
+- Recorded that failed checks leave the update marker unchanged and therefore make the next qualifying control step advance immediately; `evalSuccessTolerance` is null for training and does not override the scheduler.
 
 ## [2026-09-16] implement | Add checkpoint-tolerance milestone videos
 
@@ -704,3 +769,42 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - The isolated worktree initially lacked the ignored generated MaleCNS NPZ, so first worker attempts failed before policy construction and were retained as retry diagnostics. Linked the existing read-only processed artifact into the worktree; both watchers then ran within available GPU memory and retried automatically.
 - The dense watcher reused all matching fixed-`.02` cases. Its first completed checkpoint-tolerance set at target 1.25B contained six total videos, three per metric; the resolved checkpoint tolerance was `0.07500000298`, mean actions remained deterministic, and an inspected MP4 decoded as H.264 at 800x450 with 200 frames. Dense historical backfill remained active at handoff. The preserved structured 250M checkpoint completed all six videos with three per metric, the same exact-frame tolerance, and no outstanding failure.
 - Applied the same dual-tolerance YAML contract to the concurrently launched all-neuron-readout Gaussian watcher so every current Gaussian policy evaluator uses the requested two-set protocol.
+
+## [2026-09-18] experiment | Replace auxiliary fly job with matched LSTM
+
+- Updated `SimToolRealLSTM323MatchedGaussianSigma3SAPG` and its suite contracts to make the 256-unit actor MLP, one-update recurrence, physical GPU 1 placement, and `use_experimental_cv: false` explicit.
+- Stopped only the physical-GPU-1 all-neuron fly trainer and watcher at printed frame 9,642,442,752; preserved their artifacts and left the physical-GPU-0 no-auxiliary fly trainer and watcher running.
+- Launched the fresh seed-42 LSTM production trainer and milestone watcher. Initial finite telemetry through frame 5,505,024 includes zero actor-side value loss, nonzero privileged critic loss, and zero invalid-KL flags.
+- Validated the changed LSTM suite contracts with 11 focused tests and a resolved-configuration audit. Early telemetry proves integration and liveness only, not learning quality.
+
+## [2026-09-18] query | Separate coefficient matching from sparsity matching
+
+- Verified through the actor builder that LSTM widths 323, 976 and 1,952 have 733,790, 4,749,740 and 17,111,756 actor parameters respectively.
+- Recorded that width 323 matches instantiated coefficients, width 976 matches the fly's 1,952 scalar state budget when counting LSTM hidden and cell states, and width 1,952 matches recurrent output/unit count but carries 3,904 state scalars.
+- Clarified that a 1,952-unit dense LSTM is needed alongside the 323-unit control to evaluate equal-width sparsity costs, while same-dynamics randomized sparse graphs remain necessary for biological-topology attribution. No live process was changed.
+
+## [2026-09-18] experiment | Replace matched LSTM with official repository method
+
+- Stopped the physical-GPU-1 323-unit matched-LSTM trainer and watcher at printed frame 261,685,248, preserving its checkpoints, event history and evaluation artifacts; the GPU-0 fly trainer and watcher were not changed.
+- Added exact and memory-preserving YAML contracts for the repository's legacy `SimToolRealLSTMAsymmetricSAPG` launch. Both use the user-selected seed 42; the exact contract otherwise retains 24,576 environments, 4,096/block, 98,304 minibatches, KL `.016`, entropy scale `.002`, force/torque 20/2 and `use_experimental_cv: true`.
+- The exact geometry fit GPU 1 and completed multiple optimizer epochs, so the fallback was not launched. Initial telemetry through frame 3,538,944 was finite with nonzero actor and privileged value losses and zero invalid-KL flags.
+- Launched the official run's 250M-frame milestone watcher and exposed its summaries on TensorBoard 6008 as `official_repo_lstm_sapg_seed42`. Twelve focused configuration/recurrent tests passed.
+
+## [2026-09-18] experiment | Match official LSTM environment count to fly
+
+- Stopped the 24,576-environment official LSTM trainer and watcher at printed frame 18,087,936 with all artifacts preserved; the physical-GPU-0 fly trainer and watcher were not changed.
+- Added and launched a fresh official-profile seed-42 run with the fly job's 12,288 physical environments and six 2,048-environment SAPG blocks. It retains the official 98,304 minibatches, KL `.016`, entropy scale `.002`, force/torque 20/2 and `use_experimental_cv: true` without rollout accumulation.
+- Initial telemetry through frame 1,769,472 was finite with nonzero actor and privileged value losses and zero invalid-KL flags. The live watcher polls exact 250M milestones.
+- TensorBoard 6008 exposes the active run as `official_repo_lstm_sapg_seed42_env12288`; 13 focused tests passed.
+
+## [2026-09-18] query | Verify TensorBoard time-axis semantics
+
+- Traced the RL Games and task observer writers: `/step`, `/iter` and `/time` aliases all receive the same environment-frame `global_step`; their suffixes do not select a TensorBoard axis.
+- Verified the active official-LSTM event file directly. All 771 reward-alias entries had identical values and steps from 196,608 through 151,584,768, while event wall timestamps spanned 2,128.256 seconds.
+- Recorded that TensorBoard's `Relative` or `Wall` axis must be selected for time. No logger or live process was changed.
+
+## [2026-09-18] query | Explain fly Gaussian entropy ceiling
+
+- Verified the active fly resolved configuration has `max_sigma: 3.0` and six coefficient-conditioned scale rows.
+- Derived the builder's shifted softplus ceiling as `sigma = 3 / (1 + 2 * exp(-r))`, preserving sigma one at initialization and giving a 73.009-nat upper bound for 29-dimensional raw Gaussian entropy.
+- Distinguished emitted-scale bounding from entropy-loss clamping and executed-action clipping; recorded that the official LSTM omits this custom ceiling. No live process was changed.

@@ -15,6 +15,8 @@ import numpy as np
 import yaml
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
+from simtoolreal_shared.milestone_checkpoints import parse_milestone_checkpoint
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -66,8 +68,49 @@ def _resolve_policies(config: dict) -> tuple[dict, Path | None, dict | None]:
     if explicit_sources is not None:
         policies = {}
         for name, source in explicit_sources.items():
-            checkpoint = _repository_path(source["checkpoint_path"])
-            policy_config = _repository_path(source["policy_config_path"])
+            if "checkpoint_path" in source:
+                checkpoint = _repository_path(source["checkpoint_path"])
+                policy_config = _repository_path(source["policy_config_path"])
+            else:
+                required = {
+                    "training_suite_name",
+                    "training_suite_directory",
+                    "policy_name",
+                    "seed",
+                    "milestone_target_frame",
+                }
+                missing = sorted(required - set(source))
+                if missing:
+                    raise ValueError(
+                        f"Milestone policy source {name} is missing {missing}"
+                    )
+                suite_name = str(source["training_suite_name"])
+                policy_name = str(source["policy_name"])
+                seed = int(source["seed"])
+                run_name = f"00_{suite_name}_{policy_name}_seed{seed}"
+                run_directory = (
+                    _repository_path(source["training_suite_directory"])
+                    / run_name
+                )
+                checkpoint_directory = run_directory / "rl_runs" / run_name / "nn"
+                target = int(source["milestone_target_frame"])
+                matches = []
+                for path in checkpoint_directory.glob("milestone_target_*.pth"):
+                    parsed = parse_milestone_checkpoint(path)
+                    if parsed is not None and parsed["target"] == target:
+                        matches.append(path)
+                if len(matches) != 1:
+                    raise RuntimeError(
+                        f"Expected one target-{target} checkpoint for {name} under "
+                        f"{checkpoint_directory}, got {matches}"
+                    )
+                checkpoint = matches[0]
+                policy_config = _repository_path(
+                    source.get(
+                        "policy_config_path",
+                        str(run_directory / "resolved_config.yaml"),
+                    )
+                )
             if not checkpoint.is_file():
                 raise FileNotFoundError(f"Missing checkpoint for {name}: {checkpoint}")
             if not policy_config.is_file():

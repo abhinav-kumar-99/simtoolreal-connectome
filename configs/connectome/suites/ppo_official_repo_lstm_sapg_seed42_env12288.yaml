@@ -1,0 +1,52 @@
+# Repository-official legacy LSTM/SAPG method with the user-selected seed 42
+# and the fly job's 12,288 physical environments. Block size scales with the
+# environment count to retain the official six-member SAPG population.
+schema_version: 1
+name: ppo_official_repo_lstm_sapg_seed42_env12288
+stages: [train]
+output_directory: train_dir/connectome/official_lstm/ppo_official_repo_lstm_sapg_seed42_env12288
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - {name: official_lstm_sapg, train_profile: SimToolRealLSTMAsymmetricSAPG}
+  seeds: [42]
+  gpu_assignments: [1]
+  max_parallel: 1
+  num_envs: 12288
+  sapg_block_size: 2048
+  epochs: 1000000
+  minibatch_size: 98304
+  central_critic_minibatch_size: 98304
+  inference_checkpoint_interval_frames: 250000000
+  save_frequency: 3000
+  save_best_after: 100
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: official-repo-lstm-sapg-seed42-env12288
+    tags: [official-lstm, repo-training-contract, seed-42, env-12288, released-code-aux-value]
+  overrides:
+    train.params.config.use_others_experience: lf
+    train.params.config.off_policy_ratio: 1.0
+    train.params.config.expl_type: mixed_expl_learn_param
+    train.params.config.expl_reward_type: entropy
+    train.params.config.expl_reward_coef_scale: 0.002
+    train.params.network.space.continuous.fixed_sigma: coef_cond
+    ++train.params.config.use_experimental_cv: true
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    task.env.forceScale: 20.0
+    task.env.torqueScale: 2.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

@@ -4,7 +4,7 @@ The actor is a sparse rate RNN whose recurrent support and base weights come fro
 
 Last updated: 2026-09-17
 
-Related: [Overview](../overview.md), [Source](../sources/summaries/malecns-front-leg-circuit.md), [Workflow](../workflows/connectome-experiments.md), [Fixed reservoir](fixed-reservoir-controller.md), [Sparse backends](../analyses/sparse-backends.md)
+Related: [Overview](../overview.md), [Source](../sources/summaries/malecns-front-leg-circuit.md), [Workflow](../workflows/connectome-experiments.md), [Fixed reservoir](fixed-reservoir-controller.md), [Sparse backends](../analyses/sparse-backends.md), [Matched LSTM baseline](../analyses/lstm-baseline.md)
 
 ## Plain-language overview of the current 1,952-cell circuit
 
@@ -161,6 +161,15 @@ single-layer 1,024-unit LSTM (140 observations plus a learned 32-value SAPG
 embedding), LayerNorm, `1024 -> 1024 -> 1024 -> 512 -> 512` MLP, action/value
 heads, six log-standard-deviation rows, and the six SAPG embeddings. The
 original actor has no fly circuit.
+
+The implemented matched baseline uses a standard one-update 323-unit LSTM,
+LayerNorm and one 256-unit ELU trunk. It declares 733,790 trainable actor
+scalars. The comparison target is not only the fly actor's 692,268 trainable
+interface/head scalars: it also includes four frozen 1,952-cell dynamics vectors
+and 33,720 fixed edge values, giving 733,796 instantiated coefficients. CSR
+indices and the hypothetical 1,952-by-1,952 dense zeros are excluded. See the
+[baseline analysis](../analyses/lstm-baseline.md) for the exact contract and
+interpretation boundary.
 
 ### MLP-width lower bounds
 

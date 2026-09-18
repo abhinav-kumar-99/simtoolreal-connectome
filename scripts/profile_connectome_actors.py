@@ -87,6 +87,36 @@ def _profile_case(
         param_size=int(config["sapg_embedding_size"]),
     ).to(device)
     network.train(bool(shape["backward"]))
+    trainable_parameters = sum(
+        parameter.numel()
+        for parameter in network.parameters()
+        if parameter.requires_grad
+    )
+    total_parameters = sum(parameter.numel() for parameter in network.parameters())
+    frozen_parameters = total_parameters - trainable_parameters
+    fixed_recurrent_weights = (
+        int(network.recurrent_values.numel())
+        if hasattr(network, "recurrent_values")
+        else 0
+    )
+    structural_index_elements = sum(
+        int(getattr(network, name).numel())
+        for name in ("crow_indices", "col_indices")
+        if hasattr(network, name)
+    )
+    instantiated_actor_coefficients = total_parameters + fixed_recurrent_weights
+    dense_possible_recurrent_weights = (
+        int(network.neuron_count) ** 2 if hasattr(network, "neuron_count") else None
+    )
+    expected_coefficients = actor.get("expected_instantiated_actor_coefficients")
+    if (
+        expected_coefficients is not None
+        and instantiated_actor_coefficients != int(expected_coefficients)
+    ):
+        raise RuntimeError(
+            f"{actor['name']} instantiated actor coefficient count "
+            f"{instantiated_actor_coefficients} != expected {expected_coefficients}"
+        )
     state_hash = hashlib.sha256()
     for name, tensor in network.state_dict().items():
         state_hash.update(name.encode())
@@ -241,14 +271,13 @@ def _profile_case(
         "sequence_length": sequence_length,
         "batch_observations": batch,
         "backward": bool(shape["backward"]),
-        "trainable_parameters": sum(
-            parameter.numel()
-            for parameter in network.parameters()
-            if parameter.requires_grad
-        ),
-        "total_parameters": sum(
-            parameter.numel() for parameter in network.parameters()
-        ),
+        "trainable_parameters": trainable_parameters,
+        "frozen_parameters": frozen_parameters,
+        "total_parameters": total_parameters,
+        "fixed_recurrent_weights": fixed_recurrent_weights,
+        "instantiated_actor_coefficients": instantiated_actor_coefficients,
+        "structural_index_elements_excluded": structural_index_elements,
+        "dense_possible_recurrent_weights_excluded": dense_possible_recurrent_weights,
         "median_forward_latency_ms": median_forward * 1000.0,
         "median_backward_latency_ms": (
             median_backward * 1000.0 if median_backward is not None else None

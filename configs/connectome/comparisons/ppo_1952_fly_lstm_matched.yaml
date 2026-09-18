@@ -1,0 +1,13 @@
+schema_version: 1
+metric: paper_task_progress
+output_directory: results/connectome/ppo_1952_fly_lstm_matched
+write_plot: true
+reference: fly_all_neuron
+candidate: lstm323_matched
+series:
+  fly_all_neuron:
+    evaluation_root: evals/connectome/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_100b_milestones
+    policy_name: gaussian_lf_entropy1x_sigma3_all_neurons
+  lstm323_matched:
+    evaluation_root: evals/connectome/ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_100b_milestones
+    policy_name: lstm323_matched

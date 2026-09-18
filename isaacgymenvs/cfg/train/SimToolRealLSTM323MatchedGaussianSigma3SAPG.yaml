@@ -1,0 +1,37 @@
+# Standard one-update LSTM actor matched to the compact all-neuron fly actor's
+# instantiated coefficient count (733,790 versus 733,796).
+defaults:
+  - SimToolRealLSTMAsymmetricSAPG
+  - _self_
+
+params:
+  network:
+    space:
+      continuous:
+        max_sigma: 3.0
+        mu_init:
+          name: random_uniform_initializer
+          a: -0.001
+          b: 0.001
+    mlp:
+      # Match the fly actor's learned interface width. The privileged central
+      # critic remains inherited and identical across the actor comparison.
+      units: [256]
+      activation: elu
+      d2rl: false
+      initializer:
+        name: glorot_uniform_initializer
+      regularizer:
+        name: None
+    rnn:
+      name: lstm
+      units: 323
+      layers: 1
+      before_mlp: true
+      layer_norm: true
+
+  config:
+    name: ${resolve_default:SimToolRealLSTM323MatchedGaussianSigma3SAPG,${....experiment}}
+    kl_threshold: 0.004
+    min_lr: 1.0e-6
+    max_lr: 1.0e-2

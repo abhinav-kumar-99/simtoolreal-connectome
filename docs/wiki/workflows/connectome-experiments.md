@@ -2,7 +2,7 @@
 
 Experiments are owned by YAML contracts and proceed through data, profile, smoke, and full-training gates.
 
-Last updated: 2026-09-17
+Last updated: 2026-09-18
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
@@ -43,7 +43,7 @@ the compatibility inference above makes those files resumable.
 
 ## Fixed-input cached-reservoir policies
 
-The full-neuron camera-driven tanh reservoir was stopped at the user's direction after its GPU-1 capacity continuation reached logged frame 24,514,560; its artifacts and last checkpoints remain preserved. Both current trainers use the 1,952-neuron no-vision learned-MLP policy described in [compact training](../analyses/compact-1952-training.md), with all 1,952 final tanh states feeding the actor MLP. GPU 1 retains `use_experimental_cv: true`; GPU 0 is the otherwise matched `false` comparison. The former GPU-0 motor-only readout was stopped with artifacts preserved.
+The full-neuron camera-driven tanh reservoir was stopped at the user's direction after its GPU-1 capacity continuation reached logged frame 24,514,560; its artifacts and last checkpoints remain preserved. The physical-GPU-0 trainer uses the 1,952-neuron no-vision learned-MLP policy described in [compact training](../analyses/compact-1952-training.md), with all 1,952 final tanh states feeding the actor MLP and `use_experimental_cv: false`. On 2026-09-18 the otherwise matched GPU-1 fly job with `use_experimental_cv: true` was stopped at printed frame 9,642,442,752. Its first replacement, the 323-unit [parameter-matched LSTM](../analyses/lstm-baseline.md), was subsequently stopped at frame 261,685,248 with artifacts preserved. A physical-GPU-1 official LSTM run at the repository-default 24,576 environments was then stopped at frame 18,087,936. The active fresh replacement uses the official 1,024-unit LSTM/SAPG method, explicit `use_experimental_cv: true`, user-selected seed 42, and the fly job's 12,288 physical environments with six 2,048-environment SAPG blocks. The former GPU-0 motor-only readout was stopped with artifacts preserved.
 
 The fixed-reservoir contract removes learned input adapters and PPO backpropagation through MaleCNS. The exact fixed population map, memory boundary and biological caveats are in [Fixed-input MaleCNS reservoir controller](../concepts/fixed-reservoir-controller.md). The current replacement retains the 144-value Rotation-6D task, four held-input neural updates, LF/1.0 experience reuse, entropy scale `.005`, actor KL target `.004`, LR range `[1e-6,.001]`, 12,288 environments and the privileged central critic. Its Gaussian distribution, coefficient-conditioned scale, sigma-three ceiling and auxiliary actor value loss match the dense-input Gaussian control.
 
