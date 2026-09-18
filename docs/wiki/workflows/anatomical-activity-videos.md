@@ -26,6 +26,14 @@ This YAML owns `trace_path`, `rollout_path`, `output_directory`, and `circuit`. 
 
 The current preset writes the HD batch to `evals/connectome/anatomical_1952_7b_hd/`, retaining the earlier `anatomical_1952_7b/` recordings. Open the destination's `index.html` to browse the six pairs, with actors grouped by task. The gallery explains the color/bar/leg conventions and provides 0.25×, 0.5× and normal-speed playback for closer inspection; this does not change encoded FPS or synchronization.
 
+To generate the matched no-auxiliary threshold comparison, use the normal evaluator:
+
+```bash
+.venv/bin/python scripts/run_connectome_evaluation.py --config configs/connectome/evaluation/ppo_1952_7b_noaux_dual_tolerance_anatomical_hd.yaml
+```
+
+This YAML fixes one no-auxiliary 7B checkpoint, deterministic mean actions, the three task cases, native 1600 × 900 capture, source quality 9, 1920 × 1080 combined output, and both success metrics. `paper_task_progress` uses the paper tolerance of 0.02 m. `checkpoint_training_tolerance` uses 0.039858076721429825 m, resolved from TensorBoard tag `scalars/success_tolerance/frame` at checkpoint frame 7,000,031,232. The resulting gallery places the metric and tolerance in every card title so the two result groups are distinguishable. `scripts/replay_connectome_activity.py` remains the saved-case replay entrypoint; its `write_video_index` helper creates the same local gallery from completed artifacts without rerunning the simulator.
+
 For future ordinary or milestone evaluations, add this block to `videos` (under `evaluation.videos` in watcher configs):
 
 ```yaml
@@ -116,3 +124,7 @@ Every output frame decoded successfully, and previews from all six encoded combi
 The subsequent bilateral-callout correction rerendered all 12 outputs with renderer version 2 using three CPU processes and no simulator workers. All side anchors/counts, complete-frame decoding, 80 fps, matched durations and unchanged trace/robot-footage hashes passed again. Decoded previews, the montage, metadata and gallery now show the corrected callouts; `verification.json` records `bilateral_callouts_verified: true`.
 
 The HD refresh subsequently replayed all six cases with native 1600 × 900 camera capture and generated 12 version-4 outputs at 1920 × 1080 / 80 fps. Every frame decoded, durations remain 10 or 10.05 seconds, and output frame counts remain exactly four times the 20 fps source counts. All source frames passed the configured crop-content check, while decoded previews and the six-case montage were inspected for complete robot/tool/table coverage and the enlarged overview. Metadata reverified the exact 1,952-neuron / 33,720-connection artifact, all-neuron readout, population masks and bilateral source-side anchors. Evidence and the local gallery are under `evals/connectome/anatomical_1952_7b_hd/`; `verification.json` records the layout, probes and checks.
+
+## Verified noaux dual-tolerance batch
+
+The 2026-09-18 no-auxiliary comparison completed one 7B actual-frame-7,000,031,232 rollout for each of three tasks under each threshold: 0.02 m paper task-progress and 0.039858076721429825 m checkpoint-training tolerance. It produced six cases and 12 version-4 circuit/combined MP4s in `evals/connectome/anatomical_1952_7b_noaux_dual_tolerance_hd/`. All combined source footage is native 1600 × 900 at 20 fps; every 1920 × 1080 output is 80 fps with exactly four output frames per source frame. All outputs fully decoded, all source frames kept robot/tool/table content inside the configured crop, and the six-case montage was inspected. The paper group averaged 27.6094% task progress; the checkpoint-tolerance group averaged 77.3333%. The eraser reaches its relaxed success threshold at 5.6 seconds, so that case ends before the 10.05-second horizon.
