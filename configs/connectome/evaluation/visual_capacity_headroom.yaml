@@ -19,6 +19,6 @@ deterministic_actions: true
 record_video: true
 video_fps: 20
 video_frame_interval: 3
-camera_resolution_reduction_factor: 2
-video_path: profiles/connectome/visual_capacity/headroom/rollout.mp4
-output_path: profiles/connectome/visual_capacity/headroom/eval.json
+camera_resolution_reduction_factor: 4
+video_path: profiles/connectome/visual_capacity/headroom_r4/rollout.mp4
+output_path: profiles/connectome/visual_capacity/headroom_r4/eval.json
