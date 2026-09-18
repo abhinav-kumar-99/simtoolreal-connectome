@@ -434,8 +434,8 @@ def _run_training_case(case: dict[str, Any]) -> dict[str, Any]:
         "profile": profile,
         "case": case_name,
         "seed": seed,
-            "gpu": gpu,
-            "gpus": gpus,
+        "gpu": gpu,
+        "gpus": gpus,
         **timing,
         **verification,
     }
