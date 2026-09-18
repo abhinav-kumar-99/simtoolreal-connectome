@@ -924,3 +924,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Stopped the 61,440-per-rank DDP pilot and its milestone watcher with artifacts preserved.
 - Added a fresh 24,576-per-rank production contract. NCCL gradient averaging gives the original 49,152-sample nominal global batch; LF's seventh block produces 11 optimizer steps per mini-epoch, 22 per epoch, and 4,475,900 actor updates over 203,450 epochs.
 - Added a matching watcher for paper-tolerance and exact checkpoint-training-tolerance videos. The new training output is rooted under `train_dir/connectome/adaptation_100b_gains_update_timing`, which the existing TensorBoard server on port 6008 already watches.
+
+## [2026-09-18] correct | Restore five logical DDP updates per PPO epoch
+
+- Stopped the 24,576-logical-minibatch DDP trainer and matching watcher at epoch 189 / 92,405,760 global frames, preserving their complete run and evaluation artifacts.
+- Added a fresh YAML-owned replacement with 15,360 environments per rank, 49,152-sample logical actor/critic minibatches, and 24,576-sample physical microbatches. The unchanged two PPO mini-epochs now apply five synchronized actor steps and five separate critic steps per mini-epoch, or ten of each per training epoch.
+- Focused configuration and gradient-accumulation checks passed seven tests. Both live ranks report `num_minibatches: 5`, logical optimizer batch 49,152, physical microbatch 24,576, and nominal accumulation two. Global frame counters advance by exactly 491,520 per epoch.
+- Launched the trainer in tmux `connectome-ddp-small-mlp-logical49152` (coordinator PID 363903, torchrun PID 364173, rank PIDs 364247/364249) and the dual paper/checkpoint-tolerance watcher in `connectome-ddp-small-mlp-logical49152-eval` (PID 363908). TensorBoard port 6008 discovered the new summary path.
