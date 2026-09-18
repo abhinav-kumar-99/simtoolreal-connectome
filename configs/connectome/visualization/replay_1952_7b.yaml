@@ -1,0 +1,35 @@
+# Replay both actors at the shared 7B milestone, preserving existing videos.
+schema_version: 1
+output_directory: evals/connectome/anatomical_1952_7b
+gpu: 0
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+circuit:
+  enabled: true
+  fps_multiplier: 4
+  resolution:
+  - 1600
+  - 900
+  geometry_cache: data/connectomes/geometry/malecns_v1
+  annotations_path: data/connectomes/raw/malecns_v1_audit/annotations.feather
+  projection:
+  - x
+  - z
+  vnc_bounds_um:
+  - 240
+  - 560
+  - 400
+  - 1100
+  outputs:
+  - circuit
+  - combined
+case_paths:
+- evals/connectome/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_100b_milestones/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/target_007000000000_actual_007000031232/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/sharpie_marker/write_c/case.yaml
+- evals/connectome/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_100b_milestones/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/target_007000000000_actual_007000031232/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/flat_eraser/wipe_smile/case.yaml
+- evals/connectome/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_100b_milestones/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/target_007000000000_actual_007000031232/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/flat_spatula/flip_over/case.yaml
+- evals/connectome/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_100b_milestones/gaussian_lf_entropy1x_sigma3_all_neurons/target_007000000000_actual_007000031232/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons/sharpie_marker/write_c/case.yaml
+- evals/connectome/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_100b_milestones/gaussian_lf_entropy1x_sigma3_all_neurons/target_007000000000_actual_007000031232/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons/flat_eraser/wipe_smile/case.yaml
+- evals/connectome/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_100b_milestones/gaussian_lf_entropy1x_sigma3_all_neurons/target_007000000000_actual_007000031232/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons/flat_spatula/flip_over/case.yaml

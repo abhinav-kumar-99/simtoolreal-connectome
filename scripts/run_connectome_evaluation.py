@@ -166,6 +166,13 @@ def _completed_case(case: dict) -> dict | None:
         video_path = Path(case["video_path"])
         if not video_path.is_file() or video_path.stat().st_size == 0:
             return None
+    from simtoolreal_shared.activity_trace import circuit_complete, circuit_settings
+    circuit = circuit_settings(case.get("circuit"))
+    if circuit["enabled"]:
+        if result.get("checkpoint_path") != str(Path(case["checkpoint_path"]).resolve()):
+            return None
+        if not circuit_complete(output_path.parent, circuit):
+            return None
     return result
 
 
@@ -181,6 +188,10 @@ def _run_case(case: dict, gpu: int, environment: dict[str, str]) -> dict:
         str(case_path),
     ]
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path = Path(case["output_path"])
+    # A failed rerun must not appear successful because of an older JSON result.
+    if output_path.exists():
+        output_path.unlink()
     with log_path.open("w") as log:
         result = subprocess.run(
             command,
@@ -189,7 +200,6 @@ def _run_case(case: dict, gpu: int, environment: dict[str, str]) -> dict:
             stdout=log,
             stderr=subprocess.STDOUT,
         )
-    output_path = Path(case["output_path"])
     if not output_path.exists():
         raise RuntimeError(
             f"Eval {case['label']} produced no result (exit {result.returncode}); see {log_path}"
@@ -197,6 +207,16 @@ def _run_case(case: dict, gpu: int, environment: dict[str, str]) -> dict:
     if result.returncode not in (0, 139, -11):
         raise subprocess.CalledProcessError(result.returncode, command)
     evaluation = json.loads(output_path.read_text())
+    from simtoolreal_shared.activity_trace import circuit_settings
+    circuit = circuit_settings(case.get("circuit"))
+    if circuit["enabled"]:
+        from simtoolreal_shared.anatomical_activity import render_activity
+        evaluation["circuit"] = render_activity({
+            "trace_path": str(output_path.parent / "activity.npz"),
+            "rollout_path": case["video_path"],
+            "output_directory": str(output_path.parent), "circuit": circuit,
+        })
+        output_path.write_text(json.dumps(evaluation, indent=2, sort_keys=True) + "\n")
     evaluation["gpu"] = gpu
     print(
         f"[{case['label']}] task progress "
@@ -222,6 +242,8 @@ def run(config: dict) -> dict:
         raise ValueError("max_parallel must be between one and GPU count")
 
     video_metrics = video_metric_names(config)
+    from simtoolreal_shared.activity_trace import circuit_complete, circuit_settings
+    circuit = circuit_settings(config["videos"].get("circuit"))
 
     cases = []
     evaluations = []
@@ -272,6 +294,7 @@ def run(config: dict) -> dict:
                     ),
                     "video_path": str(case_directory / "rollout.mp4"),
                     "output_path": str(case_directory / "eval.json"),
+                    "circuit": {**circuit, "enabled": bool(circuit["enabled"] and record_video)},
                 }
                 case_directory.mkdir(parents=True, exist_ok=True)
                 case_config_path = case_directory / "case.yaml"
@@ -350,6 +373,8 @@ def run(config: dict) -> dict:
                     f"videos for {policy_name}, got {videos}"
                 )
             video_counts_by_metric[policy_name][metric_name] = len(videos)
+            if circuit["enabled"] and any(not circuit_complete(path.parent, circuit) for path in videos):
+                raise RuntimeError(f"Incomplete circuit artifacts for {policy_name}/{metric_name}")
             policy_total += len(videos)
         video_counts[policy_name] = policy_total
 
@@ -367,6 +392,7 @@ def run(config: dict) -> dict:
         "evaluated_cases": config["eval_cases"],
         "episodes_per_case": int(config["episodes_per_case"]),
         "action_selection": action_selection,
+        "circuit_settings": circuit,
     }
     (output_directory / "summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n"

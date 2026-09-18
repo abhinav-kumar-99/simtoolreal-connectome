@@ -1182,6 +1182,13 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             # The adapters, state, gains, and sparse recurrence form one FP32
             # recurrent core even when the surrounding PPO update uses AMP.
             with autocast_disabled:
+                # Evaluation-only observer; never a parameter or checkpoint buffer.
+                observer = getattr(self, "activity_observer", None)
+                if observer is not None:
+                    if torch.is_grad_enabled() or self.dynamics_activation != "tanh":
+                        raise RuntimeError("Activity recording requires no-grad tanh inference")
+                    if self.backend_options.get("frozen_inference", False):
+                        raise RuntimeError("Substep recording is unavailable for frozen CUDA-graph inference")
                 observations = observations.float()
                 hidden = hidden.float()
                 if self.sensory_adapter_mode == "fixed_population_code":
@@ -1325,6 +1332,8 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                             self.sensory_indices, self.descending_indices,
                             self.recurrent_gain,
                         )
+                        if observer is not None:
+                            observer(hidden)
                     return hidden
                 drive = hidden.new_zeros(hidden.shape)
                 drive = drive.index_add(1, self.sensory_indices, sensory_drive)
@@ -1333,6 +1342,8 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     recurrent = self._recurrent_multiply(hidden, operator, values)
                     preactivation = self.recurrent_gain * incoming * recurrent + drive + self.recurrent_bias
                     hidden = (1.0 - leak) * hidden + leak * torch.tanh(preactivation)
+                    if observer is not None:
+                        observer(hidden)
                 return hidden
 
         def forward(self, obs_dict: dict[str, Any]):

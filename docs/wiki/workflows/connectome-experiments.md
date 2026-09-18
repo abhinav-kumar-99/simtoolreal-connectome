@@ -6,6 +6,8 @@ Last updated: 2026-09-18
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
+For source-derived skeleton geometry and recorded recurrent-state videos at four times the rollout FPS, see [Anatomical activation videos](anatomical-activity-videos.md). This optional YAML path supports saved-case replay and future ordinary/milestone evaluations.
+
 ## Recovery checkpoint contract
 
 Full PPO recovery checkpoints now preserve three separate central-critic layers:

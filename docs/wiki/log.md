@@ -815,3 +815,12 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Resolved wiki conflicts with explicit user authorization, preserving source-backed findings and both log histories. Evaluator merges retain milestone-target checkpoint resolution and dual-tolerance video reuse.
 - Focused evaluator/configuration/checkpoint and baseline checks: 48 passed. The consolidation worktree needed a link to shared ignored training artifacts for one existing configuration test.
 - Preserved `.vscode/`, `tmp/`, shared artifact links, existing worktrees, and running processes.
+
+## [2026-09-18] implement | Anatomical circuit activity videos
+
+- Added YAML-owned saved-case replay and trace-only rendering entrypoints, optional ordinary/milestone evaluation recording, and source-derived native X-Z anatomy with overview/VNC detail.
+- Recorded every compact tanh neural substep without changing actions/state or checkpoint schema; the CPU/CUDA parity and focused integration/configuration tests passed (55 total).
+- Downloaded and validated the exact 1,952 circuit body IDs: 194,668,453 bytes of official MaleCNS v1.0 SWC geometry, with URL/hash provenance and strict missing-geometry failures.
+- Added separate/combined video encoding at four times the rollout FPS, episode-local resampling and terminal holds; enabled completion checks require traces, rendered videos and matching successful metadata.
+- Documentation: `workflows/anatomical-activity-videos.md`, linked from the index and experiment workflow, explains both scripts, helpers, YAML parameters, timing and modeled-state interpretation.
+- The first actual 7B no-auxiliary marker replay produced a valid activity trace and inspected anatomical preview; full batch completion is recorded separately after artifact verification.

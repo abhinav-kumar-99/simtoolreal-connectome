@@ -163,12 +163,20 @@ def _completed_summary(
     policy_name: str,
     video_metrics: list[str],
     expected_videos_per_metric: int,
+    circuit: dict | None = None,
 ) -> bool:
     summary_path = output_directory / "summary.json"
     if not summary_path.is_file():
         return False
     summary = json.loads(summary_path.read_text())
     counts = summary.get("video_counts_by_metric", {}).get(policy_name, {})
+    from simtoolreal_shared.activity_trace import circuit_complete, circuit_settings
+    settings = circuit_settings(circuit)
+    if settings["enabled"]:
+        for metric_name in video_metrics:
+            videos = list((output_directory / metric_name / policy_name).rglob("rollout.mp4"))
+            if len(videos) != expected_videos_per_metric or any(not circuit_complete(p.parent, settings) for p in videos):
+                return False
     return summary.get("action_selection") == "mean" and all(
         counts.get(metric_name) == expected_videos_per_metric
         for metric_name in video_metrics
@@ -276,6 +284,7 @@ def run(config: dict) -> dict:
                     policy_name,
                     configured_video_metrics,
                     expected_videos_per_metric,
+                    config["evaluation"]["videos"].get("circuit"),
                 )
                 if target_key in completed and target_complete:
                     continue
