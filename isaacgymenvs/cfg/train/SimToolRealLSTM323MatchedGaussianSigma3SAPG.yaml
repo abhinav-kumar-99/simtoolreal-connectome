@@ -14,6 +14,8 @@ params:
           a: -0.001
           b: 0.001
     mlp:
+      # Match the fly actor's learned interface width. The privileged central
+      # critic remains inherited and identical across the actor comparison.
       units: [256]
       activation: elu
       d2rl: false

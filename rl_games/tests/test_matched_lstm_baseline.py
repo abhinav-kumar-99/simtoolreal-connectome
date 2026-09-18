@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 import torch
+import yaml
 from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
@@ -62,6 +63,26 @@ def test_matched_lstm_profile_has_exact_actor_count_and_standard_shape() -> None
     assert network.is_rnn_before_mlp
     assert network.rnn_ln
     assert "internal_steps" not in _params()["rnn"]
+
+
+@pytest.mark.parametrize(
+    "suite_name",
+    [
+        "ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_smoke.yaml",
+        "ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_100b.yaml",
+    ],
+)
+def test_matched_lstm_suites_disable_auxiliary_actor_value_loss(
+    suite_name: str,
+) -> None:
+    suite_path = REPOSITORY_ROOT / "configs/connectome/suites" / suite_name
+    with suite_path.open() as stream:
+        suite = yaml.safe_load(stream)
+
+    assert suite["training"]["overrides"][
+        "++train.params.config.use_experimental_cv"
+    ] is False
+    assert "no-actor-value-loss" in suite["training"]["wandb"]["tags"]
 
 
 def test_forward_is_one_lstm_transition_per_environment_timestep() -> None:

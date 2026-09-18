@@ -35,14 +35,14 @@ training:
     project: simtoolreal-connectome
     entity: ''
     group: lstm323-matched-gaussian-lf-entropy1x-sigma3-smoke
-    tags: [lstm, matched-capacity, one-update, clipped-gaussian, sigma-3, leader-follower, entropy-1x, actor-value-loss, smoke]
+    tags: [lstm, matched-capacity, one-update, mlp-256, clipped-gaussian, sigma-3, leader-follower, entropy-1x, no-actor-value-loss, smoke]
   overrides:
     train.params.config.kl_threshold: 0.004
     train.params.config.learning_rate: 0.0001
     train.params.config.max_lr: 0.001
     train.params.config.use_others_experience: lf
     train.params.config.off_policy_ratio: 1.0
-    ++train.params.config.use_experimental_cv: true
+    ++train.params.config.use_experimental_cv: false
     ++task.env.useSparseReward: false
     task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
     task.env.forceConsecutiveNearGoalSteps: true

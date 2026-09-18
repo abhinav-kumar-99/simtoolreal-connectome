@@ -10,7 +10,7 @@ watch_until_complete: true
 policies:
   - name: lstm323_matched
     seed: 42
-    gpu: 0
+    gpu: 1
     policy_config_path: train_dir/connectome/lstm_baseline/ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_100b/00_ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_100b_lstm323_matched_seed42/resolved_config.yaml
 evaluation:
   runtime_environment:
