@@ -56,10 +56,20 @@ def write_video_index(output: Path, results: list[dict], settings: dict) -> None
                 links.append(f'<a href="{relative}">{name}</a>')
                 if video is None and filename.endswith(".mp4"):
                     video = relative
-        label = html.escape(f"{evaluation['object_name']} / {evaluation['task_name']}")
+        metric = evaluation.get("metric")
+        label = html.escape(
+            f"{evaluation['object_name']} / {evaluation['task_name']}"
+            + (f" · {metric}" if metric else "")
+        )
         policy = html.escape(evaluation["policy"])
+        tolerance = evaluation.get("success_tolerance_m")
+        tolerance_text = (
+            f" · tolerance {float(tolerance):.8g} m"
+            if tolerance is not None
+            else ""
+        )
         cards.append(
-            f'<article><h2>{label}</h2><p>{policy}</p><video controls preload="metadata" src="{video}"></video><nav>{" · ".join(links)}</nav></article>'
+            f'<article><h2>{label}</h2><p>{policy}{tolerance_text}</p><video controls preload="metadata" src="{video}"></video><nav>{" · ".join(links)}</nav></article>'
         )
     page = '<!doctype html><html lang="en"><meta charset="utf-8"><title>MaleCNS activity videos</title><style>body{background:#0a101b;color:#c3d0db;font:16px system-ui;margin:32px}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(480px,100%),1fr));gap:24px}article{background:#111c2c;padding:18px;border-radius:12px}p{overflow-wrap:anywhere;color:#8ca1b6}video{width:100%}a{color:#77ddd3}nav{margin-top:12px}select{background:#111c2c;color:#c3d0db;padding:6px;margin-bottom:20px}</style><h1>MaleCNS anatomical activity</h1>'
     page += f"<p>{len(results)} rollouts · {settings['fps_multiplier']}× rollout FPS · real neuron skeletons and recorded modeled activity</p>"

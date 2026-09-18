@@ -302,6 +302,7 @@ def run(config: dict) -> dict:
                     "camera_resolution_reduction_factor": int(
                         config["videos"].get("camera_resolution_reduction_factor", 4)
                     ),
+                    "video_quality": int(config["videos"].get("video_quality", 5)),
                     "video_path": str(case_directory / "rollout.mp4"),
                     "output_path": str(case_directory / "eval.json"),
                     "circuit": {**circuit, "enabled": bool(circuit["enabled"] and record_video)},

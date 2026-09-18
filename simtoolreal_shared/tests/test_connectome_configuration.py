@@ -1229,6 +1229,37 @@ def test_active_gaussian_watchers_generate_fixed_and_checkpoint_tolerance_videos
         assert len(evaluation["eval_cases"]) == 3
 
 
+def test_noaux_7b_dual_tolerance_anatomical_hd_contract_is_matched() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    config = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/evaluation/"
+            "ppo_1952_7b_noaux_dual_tolerance_anatomical_hd.yaml"
+        ).read_text()
+    )
+    assert list(config["policy_sources"]) == [
+        "gaussian_lf_entropy1x_sigma3_all_neurons_noaux"
+    ]
+    assert config["action_selection"] == "mean"
+    assert config["metrics"]["paper_task_progress"] == {
+        "success_tolerance_m": 0.02
+    }
+    assert config["metrics"]["checkpoint_training_tolerance"] == {
+        "success_tolerance_m": 0.039858076721429825,
+        "resolved_from_checkpoint_frame": 7000031232,
+        "resolved_from_tensorboard_tag": "scalars/success_tolerance/frame",
+    }
+    assert config["videos"]["metrics"] == [
+        "paper_task_progress",
+        "checkpoint_training_tolerance",
+    ]
+    assert config["videos"]["camera_resolution_reduction_factor"] == 1
+    assert config["videos"]["video_quality"] == 9
+    assert config["videos"]["circuit"]["resolution"] == [1920, 1080]
+    assert len(config["eval_cases"]) == 3
+
+
 def test_compact_adapters_replacement_owns_matched_training_and_evaluation() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     suite = yaml.safe_load(
