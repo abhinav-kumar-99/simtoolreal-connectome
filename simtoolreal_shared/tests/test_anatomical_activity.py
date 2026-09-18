@@ -8,6 +8,7 @@ import pytest
 from simtoolreal_shared.activity_interpretation import (
     interpretation_context,
     population_activity,
+    population_anchors,
 )
 from simtoolreal_shared.activity_trace import (
     circuit_complete,
@@ -137,6 +138,13 @@ def test_signed_activity_and_video_encoding(tmp_path):
         and result["duration_seconds"] == 0.1
     )
     assert circuit_complete(tmp_path, settings)
+    metadata_path = tmp_path / "circuit_render.json"
+    saved = metadata_path.read_text()
+    old_metadata = json.loads(saved)
+    old_metadata.pop("render_version")
+    metadata_path.write_text(json.dumps(old_metadata))
+    assert not circuit_complete(tmp_path, settings)
+    metadata_path.write_text(saved)
     (tmp_path / "circuit.mp4").unlink()
     assert not circuit_complete(tmp_path, settings)
 
@@ -144,6 +152,19 @@ def test_signed_activity_and_video_encoding(tmp_path):
 def test_old_video_is_not_a_complete_anatomical_case(tmp_path):
     (tmp_path / "rollout.mp4").write_bytes(b"old robot-only video")
     assert not circuit_complete(tmp_path, circuit_settings({"enabled": True}))
+
+
+def test_bilateral_callouts_preserve_both_clusters_despite_one_cell_imbalance():
+    # A global median selects the right bulb with 68 vs 67 cells, even though
+    # the population is nearly symmetric. Source sides must keep two anchors.
+    centers = np.array([[486.0, 571.0]] * 68 + [[310.0, 581.0]] * 67)
+    sides = np.array(["L"] * 68 + ["R"] * 67)
+    assert np.median(centers[:, 0]) == 486.0
+    anchors = population_anchors(centers, sides)
+    assert [(a["side"], a["count"]) for a in anchors] == [("L", 68), ("R", 67)]
+    np.testing.assert_allclose(
+        [a["center_um"] for a in anchors], [[486, 571], [310, 581]]
+    )
 
 
 def test_population_labels_follow_ordered_artifact_and_source_annotations(tmp_path):

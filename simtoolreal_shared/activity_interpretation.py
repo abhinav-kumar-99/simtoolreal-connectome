@@ -12,6 +12,22 @@ from PIL import Image, ImageDraw, ImageFont
 from simtoolreal_shared.activity_trace import repository_path, sha256
 
 
+def population_anchors(centers: np.ndarray, sides: np.ndarray) -> list[dict]:
+    """Keep separate source-annotated sides of a multimodal population."""
+    anchors = []
+    for side in ["L", "R", "unknown"]:
+        mask = sides == side if side != "unknown" else ~np.isin(sides, ["L", "R"])
+        if np.any(mask):
+            anchors.append(
+                {
+                    "side": side,
+                    "count": int(np.count_nonzero(mask)),
+                    "center_um": np.median(centers[mask], axis=0).tolist(),
+                }
+            )
+    return anchors
+
+
 def interpretation_context(
     metadata: dict, body_ids: np.ndarray, cache: Path, annotations: Path
 ) -> dict:
@@ -25,6 +41,8 @@ def interpretation_context(
             raise ValueError(
                 "Population labels must match the trace's ordered neuron IDs"
             )
+        annotations_frame = pd.read_feather(annotations)
+        selected_annotations = annotations_frame.set_index("bodyId").reindex(body_ids)
         groups = []
         covered = []
         for key, label, role in [
@@ -38,14 +56,22 @@ def interpretation_context(
             for body_id in body_ids[indices]:
                 segments = parse_swc((cache / f"{int(body_id)}.swc").read_text())
                 centers.append(np.median(segments.reshape(-1, 3)[:, [0, 2]], axis=0))
+            side_key = "rootSide" if key == "sensory_indices" else "somaSide"
+            sides = (
+                selected_annotations.iloc[indices]
+                .get(side_key, pd.Series("unknown", index=np.arange(len(indices))))
+                .fillna("unknown")
+                .to_numpy()
+            )
             groups.append(
                 {
                     "label": label,
                     "role": role,
                     "indices": indices.tolist(),
-                    "center_um": np.median(centers, axis=0).tolist()
+                    "center_um": np.mean(centers, axis=0).tolist() if centers else None,
+                    "anchors": population_anchors(np.asarray(centers), sides)
                     if centers
-                    else None,
+                    else [],
                 }
             )
         groups.append(
@@ -56,8 +82,6 @@ def interpretation_context(
                 "center_um": None,
             }
         )
-    annotations_frame = pd.read_feather(annotations)
-    selected_annotations = annotations_frame.set_index("bodyId").reindex(body_ids)
     motor_rows = selected_annotations.iloc[groups[2]["indices"]]
     front_motor = len(motor_rows) > 0 and motor_rows.somaNeuromere.eq("T1").all()
     groups[2]["role"] = "Front-leg motor cells" if front_motor else "Motor activity"
@@ -90,7 +114,13 @@ def interpretation_context(
     return {
         "groups": groups,
         "regions": regions,
-        "motor_detail": "Front-leg circuit" if front_motor else "Selected motor cells",
+        "motor_detail": (
+            "Both front legs"
+            if {a["side"] for a in groups[2]["anchors"]} >= {"L", "R"}
+            else "Front-leg circuit"
+        )
+        if front_motor
+        else "Selected motor cells",
         "sensory_detail": "Touch + position cells"
         if touch_position
         else "Selected sensory cells",
@@ -99,6 +129,7 @@ def interpretation_context(
         if readout == "all"
         else "Fly activity feeds learned robot actions",
         "leg_semantics": "schematic orientation only; attachment levels estimated from T1/T2/T3 dataset soma medians",
+        "callout_semantics": "leaders label populations using separate rootSide/somaSide arbor anchors; they are not injection sites or activity-flow paths",
     }
 
 
@@ -120,6 +151,15 @@ def overlay_layers(
             (box[0] - 3, box[1] - 2, box[2] + 3, box[3] + 2), fill=(10, 16, 27, 215)
         )
         draw.text((x, y), text, font=selected, fill=(209, 219, 231, 255))
+
+    def leaders(start, targets, vx, vy):
+        for ax, ay in targets:
+            end = (vx + int(ax), vy + int(ay))
+            draw.line((*start, *end), fill=(209, 219, 231, 180), width=1)
+            draw.ellipse(
+                (end[0] - 2, end[1] - 2, end[0] + 2, end[1] + 2),
+                fill=(209, 219, 231, 230),
+            )
 
     for view_index, (view_bounds, (vx, vy, vw, vh)) in enumerate(zip(bounds, views)):
         for region in context["regions"]:
@@ -158,39 +198,32 @@ def overlay_layers(
                 )
         if view_index == 0 and settings["group_labels"]:
             anchors = {}
+            centers = {}
             for group in context["groups"][:3]:
                 if group["center_um"] is not None:
-                    anchors[group["label"]] = project(
+                    centers[group["label"]] = project(
                         np.array(group["center_um"]), view_bounds, vw, vh
                     )
+                    anchors[group["label"]] = [
+                        project(np.array(a["center_um"]), view_bounds, vw, vh)
+                        for a in group["anchors"]
+                    ]
             if "Descending" in anchors:
-                ax, ay = anchors["Descending"]
+                _, ay = centers["Descending"]
                 boxed_text(vx + 8, int(ay) + vy - 49, "BRAIN", True)
                 boxed_text(vx + 8, int(ay) + vy - 27, "Descending / goal input")
-                draw.line(
-                    (vx + 16, int(ay) + vy - 4, vx + int(ax), vy + int(ay)),
-                    fill=(209, 219, 231, 180),
-                    width=1,
-                )
+                leaders((vx + 16, int(ay) + vy - 4), anchors["Descending"], vx, vy)
             if "Sensory input" in anchors:
-                ax, ay = anchors["Sensory input"]
+                _, ay = centers["Sensory input"]
                 boxed_text(vx + 6, int(ay) + vy + 19, "SENSORY INPUT", True)
                 boxed_text(vx + 6, int(ay) + vy + 39, context["sensory_detail"])
-                draw.line(
-                    (vx + 24, int(ay) + vy + 17, vx + int(ax), vy + int(ay)),
-                    fill=(209, 219, 231, 180),
-                    width=1,
-                )
+                leaders((vx + 24, int(ay) + vy + 17), anchors["Sensory input"], vx, vy)
             if "Motor cells" in anchors:
-                ax, ay = anchors["Motor cells"]
+                _, ay = centers["Motor cells"]
                 tx = vx + max(6, vw - 117)
                 boxed_text(tx, int(ay) + vy + 76, "MOTOR CELLS", True)
                 boxed_text(tx, int(ay) + vy + 97, context["motor_detail"])
-                draw.line(
-                    (tx + 20, int(ay) + vy + 73, vx + int(ax), vy + int(ay)),
-                    fill=(209, 219, 231, 180),
-                    width=1,
-                )
+                leaders((tx + 20, int(ay) + vy + 73), anchors["Motor cells"], vx, vy)
             boxed_text(vx + 8, height - 27, "VENTRAL NERVE CORD", True)
     return shadows, labels
 

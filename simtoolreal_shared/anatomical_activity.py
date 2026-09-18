@@ -20,6 +20,7 @@ from PIL import Image, ImageDraw, ImageFont
 from scipy import sparse
 
 from simtoolreal_shared.activity_trace import (
+    ACTIVITY_RENDER_VERSION,
     circuit_settings,
     frame_state_indices,
     output_paths,
@@ -342,7 +343,10 @@ def compose_frame(
         16,
         (126, 149, 169),
     )
-    top, bottom = int(136 * unit), int((675 if interpretation is not None else 735) * unit)
+    top, bottom = (
+        int(136 * unit),
+        int((675 if interpretation is not None else 735) * unit),
+    )
     if robot is not None:
         left_width = width // 2 - 2 * pad
         text(pad, 105, "01  ROBOT ROLLOUT", 17, (116, 214, 207))
@@ -410,7 +414,7 @@ def compose_frame(
     text(
         pad,
         856,
-        "Gray legs = schematic orientation. Gray CNS = dataset somas. One signed state per whole neuron."
+        "Gray legs = schematic orientation. Gray CNS = dataset somas. Lines label cell groups on both sides."
         if interpretation is not None
         else "Gray = dataset somas / inactive morphology. One modeled state per neuron; overlap colors blend.",
         14,
@@ -581,6 +585,7 @@ def render_activity(config: dict) -> dict:
         result = {
             "status": "complete",
             "schema_version": 1,
+            "render_version": ACTIVITY_RENDER_VERSION,
             "settings": settings,
             "trace_path": str(trace_path),
             "trace_sha256": sha256(trace_path),

@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+ACTIVITY_RENDER_VERSION = 2
 
 
 def repository_path(value) -> Path:
@@ -157,6 +158,7 @@ def circuit_complete(directory: Path, settings: dict) -> bool:
         return (
             metadata.get("status") == "complete"
             and metadata.get("settings") == settings
+            and metadata.get("render_version") == ACTIVITY_RENDER_VERSION
         )
     except (ValueError, OSError):
         return False

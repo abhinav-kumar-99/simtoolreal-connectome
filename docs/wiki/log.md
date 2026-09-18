@@ -853,3 +853,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Verified finite states, initial state and episode-local timing, exact ordered body IDs and sensory/descending/motor masks, 1,952-neuron anatomy coverage, hash-verified source checkpoints/configs and all-neuron readout captions. All six original trace/robot MP4 hashes stayed unchanged during annotation rendering.
 - Generated `verification.json`, original-recording provenance, per-case decoded previews and a six-case preview montage in ignored `evals/connectome/anatomical_1952_7b/`; cached replay rebuilt the task-paired gallery without simulator workers or additional encoding.
 - Implementation remains checkpointed on `feature/anatomical-circuit-video` for user evaluation. Preserved the pre-existing `.vscode/` and `tmp/` directories and existing worktrees/jobs.
+
+## [2026-09-18] fix | Preserve bilateral population callouts
+
+- Investigated the user's observation that sensory/motor label leaders targeted only the screen-right bulb. The cause was a pooled median across separated left/right arbor clusters; 68 versus 67 motor cells selects a location in one bulb despite nearly balanced counts.
+- Confirmed bilateral source populations: motor `somaSide` L/R = 68/67, sensory `rootSide` L/R = 220/164, descending `somaSide` L/R = 79/78. Source L-side arbors are screen-right in the unflipped native X-Z projection.
+- Replaced the pooled anchor with separate source-side anchors, added endpoint markers and the "Both front legs" caption, and clarified that leaders label groups rather than physical drive sites or activity paths.
+- Added renderer-version completion checks to refresh stale videos without repeating simulation. Focused anatomy/timing/encoding/completion/recording-reuse checks: 7 passed, including the one-cell-imbalance regression. Inspected the corrected real-data preview before rerendering all six recorded cases.
