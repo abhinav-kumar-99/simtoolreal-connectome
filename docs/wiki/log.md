@@ -831,3 +831,11 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Rejected non-boolean enablement, duplicate output names and disabled standalone rendering.
 - Added generated local `index.html` to the replay entrypoint for opening every combined video and downloading circuit-only videos, traces and metadata.
 - Focused anatomy/timing/encoding/completion tests passed (4); new modules and entrypoints pass Ruff checks. The first full replay completed with 800 frames at 80 fps and exactly 10 seconds for both outputs.
+
+## [2026-09-18] improve | Interpret anatomical activity with labels and leg guides
+
+- Added source-verified sensory/descending/motor captions, brain/VNC labels and approximate T1/T2/T3 orientation guides; faint leg silhouettes are explicitly schematic, not fabricated anatomical leg geometry.
+- Added four population mean-absolute-state bars and the actual all-neuron robot-action readout route. Masks/counts come from the exact hash-verified circuit artifact; sensory/motor anatomical captions additionally use source annotations.
+- Added appearance-only replay reuse with checkpoint/config/footage verification, preserving existing simulation recordings while rebuilding videos. New traces save their recording options and footage hash.
+- Inspected annotated real-data stills at three seconds. Focused recording, CPU/CUDA parity, timing, encoding, configuration, milestone and baseline checks: 57 passed; Ruff and diff checks passed.
+- Verified that all six completed 7B recordings can be rerendered without simulator workers. See `workflows/anatomical-activity-videos.md` for flags and helper/entrypoint usage.

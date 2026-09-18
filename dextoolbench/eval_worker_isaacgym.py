@@ -18,7 +18,7 @@ import torch
 from deployment.isaac.isaac_env import create_env
 from deployment.rl_player import RlPlayer
 from isaacgymenvs.utils.rendering import render_camera_sensors_for_current_step
-from simtoolreal_shared.activity_trace import ActivityRecorder, circuit_settings, repository_path, sha256
+from simtoolreal_shared.activity_trace import ActivityRecorder, circuit_settings, recording_options, repository_path, sha256
 
 TABLE_Z = 0.38
 
@@ -214,9 +214,12 @@ def run(config: dict) -> dict:
             "policy_config_sha256": sha256(config_path),
             "artifact_path": str(artifact_path), "artifact_sha256": sha256(artifact_path),
             "edge_count": int(policy.player.model.a2c_network.edge_count),
+            "readout_feature_population": policy.player.model.a2c_network.readout_feature_population,
             "control_dt_seconds": float(env.control_dt),
             "video_fps": int(config["video_fps"]),
             "video_frame_interval": int(config["video_frame_interval"]),
+            "recording_case": recording_options(config),
+            "rollout_sha256": sha256(video_path),
             "episode_results": episode_results,
         })
 

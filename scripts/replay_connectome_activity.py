@@ -100,12 +100,16 @@ def run(config: dict) -> dict:
         )
         directory.mkdir(parents=True, exist_ok=True)
         case_path = directory / "case.yaml"
+        previous_case = (
+            yaml.safe_load(case_path.read_text()) if case_path.exists() else None
+        )
         case_path.write_text(yaml.safe_dump(case, sort_keys=False))
         case.update(
             {
                 "case_config_path": str(case_path),
                 "log_path": str(directory / "eval.log"),
                 "label": f"{case['policy']}:{case['object_name']}:{case['task_name']}",
+                "_existing_recording_case": previous_case,
             }
         )
         print(f"Replaying {source_path}", flush=True)

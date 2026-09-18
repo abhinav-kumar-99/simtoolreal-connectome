@@ -10,6 +10,9 @@ runtime_environment:
 circuit:
   enabled: true
   fps_multiplier: 4
+  group_labels: true
+  leg_shadows: true
+  activity_bars: true
   resolution:
   - 1600
   - 900

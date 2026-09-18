@@ -145,7 +145,7 @@ def video_metric_names(config: dict) -> list[str]:
     return names
 
 
-def _completed_case(case: dict) -> dict | None:
+def _completed_case(case: dict, *, require_circuit: bool = True) -> dict | None:
     """Reuse a matching completed case so adding a metric does not rerun old videos."""
     output_path = Path(case["output_path"])
     if not output_path.is_file():
@@ -166,17 +166,44 @@ def _completed_case(case: dict) -> dict | None:
         video_path = Path(case["video_path"])
         if not video_path.is_file() or video_path.stat().st_size == 0:
             return None
-    from simtoolreal_shared.activity_trace import circuit_complete, circuit_settings
+    from simtoolreal_shared.activity_trace import circuit_complete, circuit_settings, recording_matches
     circuit = circuit_settings(case.get("circuit"))
     if circuit["enabled"]:
         if result.get("checkpoint_path") != str(Path(case["checkpoint_path"]).resolve()):
             return None
-        if not circuit_complete(output_path.parent, circuit):
+        if require_circuit and (not circuit_complete(output_path.parent, circuit) or not recording_matches(case)):
             return None
     return result
 
 
 def _run_case(case: dict, gpu: int, environment: dict[str, str]) -> dict:
+    from simtoolreal_shared.activity_trace import circuit_settings, recording_matches
+    circuit = circuit_settings(case.get("circuit"))
+    output_path = Path(case["output_path"])
+    evaluation = _completed_case(case, require_circuit=False)
+    reuse_recording = circuit["enabled"] and evaluation is not None and recording_matches(case)
+    if reuse_recording:
+        print(f"[{case['label']}] Rerendering saved activity; no simulator worker", flush=True)
+    else:
+        evaluation = _simulate_case(case, gpu, environment)
+    if circuit["enabled"]:
+        from simtoolreal_shared.anatomical_activity import render_activity
+        evaluation["circuit"] = render_activity({
+            "trace_path": str(output_path.parent / "activity.npz"),
+            "rollout_path": case["video_path"],
+            "output_directory": str(output_path.parent), "circuit": circuit,
+        })
+    evaluation.setdefault("gpu", gpu)
+    output_path.write_text(json.dumps(evaluation, indent=2, sort_keys=True) + "\n")
+    print(
+        f"[{case['label']}] task progress "
+        f"{evaluation['mean_task_progress_pct']:.1f}%",
+        flush=True,
+    )
+    return evaluation
+
+
+def _simulate_case(case: dict, gpu: int, environment: dict[str, str]) -> dict:
     case_path = Path(case["case_config_path"])
     log_path = Path(case["log_path"])
     child_environment = environment.copy()
@@ -206,24 +233,7 @@ def _run_case(case: dict, gpu: int, environment: dict[str, str]) -> dict:
         )
     if result.returncode not in (0, 139, -11):
         raise subprocess.CalledProcessError(result.returncode, command)
-    evaluation = json.loads(output_path.read_text())
-    from simtoolreal_shared.activity_trace import circuit_settings
-    circuit = circuit_settings(case.get("circuit"))
-    if circuit["enabled"]:
-        from simtoolreal_shared.anatomical_activity import render_activity
-        evaluation["circuit"] = render_activity({
-            "trace_path": str(output_path.parent / "activity.npz"),
-            "rollout_path": case["video_path"],
-            "output_directory": str(output_path.parent), "circuit": circuit,
-        })
-        output_path.write_text(json.dumps(evaluation, indent=2, sort_keys=True) + "\n")
-    evaluation["gpu"] = gpu
-    print(
-        f"[{case['label']}] task progress "
-        f"{evaluation['mean_task_progress_pct']:.1f}%",
-        flush=True,
-    )
-    return evaluation
+    return {**json.loads(output_path.read_text()), "gpu": gpu}
 
 
 def run(config: dict) -> dict:
@@ -298,12 +308,14 @@ def run(config: dict) -> dict:
                 }
                 case_directory.mkdir(parents=True, exist_ok=True)
                 case_config_path = case_directory / "case.yaml"
+                previous_case = yaml.safe_load(case_config_path.read_text()) if case_config_path.exists() else None
                 case_config_path.write_text(yaml.safe_dump(worker_config, sort_keys=False))
                 case = {
                     **worker_config,
                     "label": f"{metric_name}:{policy_name}:{task['object_name']}:{task['task_name']}",
                     "case_config_path": str(case_config_path),
                     "log_path": str(case_directory / "eval.log"),
+                    "_existing_recording_case": previous_case,
                 }
                 completed = _completed_case(case)
                 if completed is None:

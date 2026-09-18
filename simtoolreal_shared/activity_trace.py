@@ -24,6 +24,58 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def recording_options(case: dict) -> dict:
+    """Simulation options excluding appearance and output bookkeeping."""
+    excluded = {
+        "circuit",
+        "output_path",
+        "video_path",
+        "case_config_path",
+        "log_path",
+        "label",
+        "_existing_recording_case",
+    }
+    options = {key: value for key, value in case.items() if key not in excluded}
+    for key in ("checkpoint_path", "policy_config_path", "trajectory_path"):
+        if key in options:
+            options[key] = str(repository_path(options[key]).resolve())
+    return options
+
+
+def recording_matches(case: dict) -> bool:
+    """Allow appearance-only rerenders of a verified existing recording."""
+    trace_path = Path(case["output_path"]).parent / "activity.npz"
+    rollout_path = Path(case["video_path"])
+    try:
+        with np.load(trace_path, allow_pickle=False) as trace:
+            metadata = json.loads(str(trace["metadata"]))
+        previous = metadata.get("recording_case", case.get("_existing_recording_case"))
+        if previous is None or recording_options(previous) != recording_options(case):
+            return False
+        for key in ("checkpoint", "policy_config"):
+            path = repository_path(case[f"{key}_path"]).resolve()
+            if (
+                str(path) != metadata[f"{key}_path"]
+                or sha256(path) != metadata[f"{key}_sha256"]
+            ):
+                return False
+        if metadata.get("rollout_sha256"):
+            return sha256(rollout_path) == metadata["rollout_sha256"]
+        # Legacy traces can be verified against their successful first render.
+        render_path = trace_path.parent / "circuit_render.json"
+        rendered = (
+            json.loads(render_path.read_text())
+            if render_path.exists()
+            else json.loads(Path(case["output_path"]).read_text())["circuit"]
+        )
+        return (
+            sha256(rollout_path) == rendered["rollout_sha256"]
+            and sha256(trace_path) == rendered["trace_sha256"]
+        )
+    except (OSError, ValueError, KeyError):
+        return False
+
+
 def circuit_settings(value: dict | None) -> dict:
     settings = dict(value or {})
     settings.setdefault("enabled", False)
@@ -36,6 +88,10 @@ def circuit_settings(value: dict | None) -> dict:
     settings.setdefault("projection", ["x", "z"])
     settings.setdefault("vnc_bounds_um", [240, 560, 400, 1100])
     settings.setdefault("outputs", ["circuit", "combined"])
+    for key in ["group_labels", "leg_shadows", "activity_bars"]:
+        settings.setdefault(key, False)
+        if not isinstance(settings[key], bool):
+            raise TypeError(f"circuit.{key} must be a YAML boolean")
     if not isinstance(settings["enabled"], bool):
         raise TypeError("circuit.enabled must be a YAML boolean")
     if not settings["enabled"]:

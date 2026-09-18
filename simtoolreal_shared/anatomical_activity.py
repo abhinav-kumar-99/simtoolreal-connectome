@@ -167,6 +167,8 @@ class AnatomicalPanel:
         width: int,
         height: int,
         vnc_bounds,
+        interpretation: dict | None = None,
+        settings: dict | None = None,
     ):
         self.width, self.height = width, height
         somas = _soma_points(annotations)
@@ -260,6 +262,19 @@ class AnatomicalPanel:
         neutral = (1 - np.exp(-0.12 * self.density)).reshape(height, width, 1)
         self.background += neutral * np.asarray([27, 36, 43], dtype=np.float32)
         self.denominator = np.maximum(np.sqrt(self.density), 1)
+        self.label_overlay = None
+        if interpretation is not None:
+            from simtoolreal_shared.activity_interpretation import overlay_layers
+
+            shadows, self.label_overlay = overlay_layers(
+                interpretation, self.bounds, self.views, width, height, settings
+            )
+            image = Image.fromarray(
+                np.clip(self.background, 0, 255).astype(np.uint8)
+            ).convert("RGBA")
+            self.background = np.asarray(
+                Image.alpha_composite(image, shadows).convert("RGB")
+            ).astype(np.float32)
 
     def render(self, states: np.ndarray) -> np.ndarray:
         activity = np.clip(states, -1, 1).astype(np.float32)
@@ -271,11 +286,18 @@ class AnatomicalPanel:
         )
         opacity = (1 - np.exp(-0.9 * total / self.denominator))[:, None]
         pixels = self.background.reshape(-1, 3)
-        return (
+        result = (
             np.clip(pixels * (1 - opacity) + colors * opacity, 0, 255)
             .astype(np.uint8)
             .reshape(self.height, self.width, 3)
         )
+        if self.label_overlay is not None:
+            result = np.asarray(
+                Image.alpha_composite(
+                    Image.fromarray(result).convert("RGBA"), self.label_overlay
+                ).convert("RGB")
+            )
+        return result
 
 
 def _font(size: int):
@@ -290,6 +312,7 @@ def compose_frame(
     metadata: dict,
     seconds: float,
     episode: int,
+    activity_values: list[float] | None = None,
 ) -> np.ndarray:
     canvas = Image.new("RGB", (width, height), tuple(BACKGROUND.astype(int)))
     draw = ImageDraw.Draw(canvas)
@@ -305,14 +328,21 @@ def compose_frame(
         )
 
     text(pad, 20, "MALE CNS / DEXTEROUS TOOL CONTROL", 28)
+    interpretation = metadata.get("interpretation")
+    subtitle = "Real neuron anatomy  ·  recorded modeled activity  ·  synchronized robot motion"
+    if interpretation is not None:
+        subtitle = (
+            "Robot sensing → sensory cells   ·   Task goals → descending cells   ·   "
+            + interpretation["readout_label"]
+        )
     text(
         pad,
         64,
-        "Real neuron anatomy  ·  recorded modeled activity  ·  synchronized robot motion",
+        subtitle,
         16,
         (126, 149, 169),
     )
-    top, bottom = int(136 * unit), int(735 * unit)
+    top, bottom = int(136 * unit), int((675 if interpretation is not None else 735) * unit)
     if robot is not None:
         left_width = width // 2 - 2 * pad
         text(pad, 105, "01  ROBOT ROLLOUT", 17, (116, 214, 207))
@@ -333,6 +363,30 @@ def compose_frame(
     canvas.paste(Image.fromarray(panel), (panel_x, top + int(29 * unit)))
     text(panel_x + 10, 140, "FULL CNS CONTEXT", 15)
     text(panel_x + panel_width // 2 + 10, 140, "VNC DETAIL", 15)
+    if activity_values is not None:
+        column_width = (width - 2 * pad) / 4
+        for i, (group, strength) in enumerate(
+            zip(interpretation["groups"], activity_values)
+        ):
+            x = pad + i * column_width
+            text(x, 688, f"{group['label']} ({len(group['indices']):,})", 16)
+            text(x, 709, group["role"], 13, (126, 149, 169))
+            bar_x, bar_y = int(x), int(733 * unit)
+            bar_width = int(column_width - 95 * unit)
+            draw.rectangle(
+                (bar_x, bar_y, bar_x + bar_width, bar_y + int(8 * unit)),
+                fill=(37, 51, 69),
+            )
+            draw.rectangle(
+                (
+                    bar_x,
+                    bar_y,
+                    bar_x + int(bar_width * np.clip(strength, 0, 1)),
+                    bar_y + int(8 * unit),
+                ),
+                fill=(135, 169, 196),
+            )
+            text(bar_x + bar_width + 8, 725, f"{strength:.2f}", 14)
     text(
         pad,
         755,
@@ -348,13 +402,17 @@ def compose_frame(
     text(
         pad,
         828,
-        "Cyan = positive state     Orange = negative state     Fixed state scale: −1 to +1",
+        "Cyan = positive state   ·   Orange = negative state   ·   Bars = mean |state| (0–1)"
+        if activity_values is not None
+        else "Cyan = positive state     Orange = negative state     Fixed state scale: −1 to +1",
         16,
     )
     text(
         pad,
         856,
-        "Gray = dataset somas / inactive morphology. One modeled state per neuron; overlap colors blend.",
+        "Gray legs = schematic orientation. Gray CNS = dataset somas. One signed state per whole neuron."
+        if interpretation is not None
+        else "Gray = dataset somas / inactive morphology. One modeled state per neuron; overlap colors blend.",
         14,
         (126, 149, 169),
     )
@@ -429,9 +487,23 @@ def render_activity(config: dict) -> dict:
         frame_steps = np.repeat(trace["frame_step"], multiplier)
         cache = repository_path(settings["geometry_cache"])
         geometry = ensure_geometry(body_ids, cache)
+        context = None
+        if any(
+            settings[key] for key in ["group_labels", "leg_shadows", "activity_bars"]
+        ):
+            from simtoolreal_shared.activity_interpretation import (
+                interpretation_context,
+            )
+
+            context = interpretation_context(
+                metadata, body_ids, cache, repository_path(settings["annotations_path"])
+            )
+            metadata["interpretation"] = context
         width, height = settings["resolution"]
         pad = int(24 * height / 900)
-        panel_height = int((735 - 136 - 29) * height / 900)
+        panel_height = int(
+            ((675 if context is not None else 735) - 136 - 29) * height / 900
+        )
         panels = {}
         for name in settings["outputs"]:
             panel_width = width - 2 * pad if name == "circuit" else width // 2 - 2 * pad
@@ -442,6 +514,8 @@ def render_activity(config: dict) -> dict:
                 panel_width,
                 panel_height,
                 settings["vnc_bounds_um"],
+                context,
+                settings,
             )
         fps = video_fps * multiplier
         metadata["neuron_count"] = len(body_ids)
@@ -466,6 +540,13 @@ def render_activity(config: dict) -> dict:
                             int(frame_steps[n])
                             + subframe * metadata["video_frame_interval"] / multiplier
                         ) / (video_fps * metadata["video_frame_interval"])
+                        strengths = None
+                        if context is not None and settings["activity_bars"]:
+                            from simtoolreal_shared.activity_interpretation import (
+                                population_activity,
+                            )
+
+                            strengths = population_activity(context, states[indices[n]])
                         for name, writer in writers.items():
                             panel = panels[name].render(states[indices[n]])
                             writer.append_data(
@@ -477,6 +558,7 @@ def render_activity(config: dict) -> dict:
                                     metadata,
                                     seconds,
                                     int(frame_episodes[n]),
+                                    strengths,
                                 )
                             )
                     if (frame + 1) % 40 == 0:

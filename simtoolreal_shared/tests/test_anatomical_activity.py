@@ -5,10 +5,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from simtoolreal_shared.activity_interpretation import (
+    interpretation_context,
+    population_activity,
+)
 from simtoolreal_shared.activity_trace import (
     circuit_complete,
     circuit_settings,
     frame_state_indices,
+    recording_matches,
+    recording_options,
     sha256,
 )
 from simtoolreal_shared.anatomical_activity import (
@@ -59,7 +65,16 @@ def _geometry(tmp_path):
     )
     annotations = tmp_path / "annotations.feather"
     pd.DataFrame(
-        {"somaLocation": [np.array([1000, 0, 1000]), np.array([4000, 0, 4000])]}
+        {
+            "bodyId": [1, 2, 3],
+            "somaNeuromere": ["T1", "T2", "T3"],
+            "class": ["mechanosensory_tactile", "motor", "interneuron"],
+            "somaLocation": [
+                np.array([1000, 0, 1000]),
+                np.array([4000, 0, 4000]),
+                np.array([2000, 0, 5000]),
+            ],
+        }
     ).to_feather(annotations)
     return cache, annotations
 
@@ -129,3 +144,91 @@ def test_signed_activity_and_video_encoding(tmp_path):
 def test_old_video_is_not_a_complete_anatomical_case(tmp_path):
     (tmp_path / "rollout.mp4").write_bytes(b"old robot-only video")
     assert not circuit_complete(tmp_path, circuit_settings({"enabled": True}))
+
+
+def test_population_labels_follow_ordered_artifact_and_source_annotations(tmp_path):
+    cache, annotations = _geometry(tmp_path)
+    artifact = tmp_path / "artifact.npz"
+    ids = np.array([2, 1])
+    np.savez(
+        artifact,
+        body_ids=ids,
+        sensory_indices=[1],
+        descending_indices=[],
+        motor_indices=[0],
+    )
+    metadata = {
+        "artifact_path": str(artifact),
+        "artifact_sha256": sha256(artifact),
+        "readout_feature_population": "all",
+    }
+    context = interpretation_context(metadata, ids, cache, annotations)
+    assert context["readout_label"] == "All 2 cells feed robot actions"
+    # Cell 2 belongs to T2; never label it a front-leg cell from its mask alone.
+    assert context["motor_detail"] == "Selected motor cells"
+    assert context["sensory_detail"] == "Touch + position cells"
+    assert population_activity(context, np.array([-0.2, 0.8])) == pytest.approx(
+        [0.8, 0, 0.2, 0]
+    )
+    np.testing.assert_allclose(context["regions"][0]["center_um"], [8, 8])
+    with pytest.raises(ValueError, match="ordered neuron IDs"):
+        interpretation_context(metadata, ids[::-1], cache, annotations)
+    artifact.write_bytes(b"changed")
+    with pytest.raises(ValueError, match="artifact changed"):
+        interpretation_context(metadata, ids, cache, annotations)
+
+
+def test_appearance_changes_reuse_recording_but_simulation_changes_do_not(
+    tmp_path, monkeypatch
+):
+    import simtoolreal_shared.anatomical_activity as rendering
+    from scripts.run_connectome_evaluation import _run_case
+
+    checkpoint = tmp_path / "checkpoint.pth"
+    policy_config = tmp_path / "policy.yaml"
+    checkpoint.write_bytes(b"checkpoint")
+    policy_config.write_text("policy: example\n")
+    rollout = tmp_path / "rollout.mp4"
+    rollout.write_bytes(b"footage")
+    case = {
+        "policy": "actor",
+        "metric": "progress",
+        "action_selection": "mean",
+        "success_tolerance": 0.01,
+        "checkpoint_path": str(checkpoint),
+        "policy_config_path": str(policy_config),
+        "record_video": True,
+        "video_path": str(rollout),
+        "output_path": str(tmp_path / "eval.json"),
+        "label": "case",
+        "circuit": {"enabled": True, "group_labels": True},
+    }
+    metadata = {
+        "recording_case": recording_options(case),
+        "rollout_sha256": sha256(rollout),
+        "checkpoint_path": str(checkpoint),
+        "checkpoint_sha256": sha256(checkpoint),
+        "policy_config_path": str(policy_config),
+        "policy_config_sha256": sha256(policy_config),
+    }
+    np.savez(tmp_path / "activity.npz", metadata=np.asarray(json.dumps(metadata)))
+    evaluation = {
+        "policy": "actor",
+        "metric": "progress",
+        "action_selection": "mean",
+        "success_tolerance_m": 0.01,
+        "checkpoint_path": str(checkpoint),
+        "mean_task_progress_pct": 10.0,
+    }
+    (tmp_path / "eval.json").write_text(json.dumps(evaluation))
+    assert recording_matches(case)
+    changed = {**case, "circuit": {"enabled": True, "leg_shadows": True}}
+    assert recording_matches(changed)
+    monkeypatch.setattr(rendering, "render_activity", lambda _: {"status": "complete"})
+    result = _run_case(changed, 0, {})
+    assert (
+        result["circuit"]["status"] == "complete"
+    )  # no Isaac Gym or subprocess needed
+    assert not recording_matches({**case, "success_tolerance": 0.02})
+    checkpoint.write_bytes(b"different checkpoint at same path")
+    assert not recording_matches(case)
