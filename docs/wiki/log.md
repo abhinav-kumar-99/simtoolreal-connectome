@@ -860,3 +860,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Confirmed bilateral source populations: motor `somaSide` L/R = 68/67, sensory `rootSide` L/R = 220/164, descending `somaSide` L/R = 79/78. Source L-side arbors are screen-right in the unflipped native X-Z projection.
 - Replaced the pooled anchor with separate source-side anchors, added endpoint markers and the "Both front legs" caption, and clarified that leaders label groups rather than physical drive sites or activity paths.
 - Added renderer-version completion checks to refresh stale videos without repeating simulation. Focused anatomy/timing/encoding/completion/recording-reuse checks: 7 passed, including the one-cell-imbalance regression. Inspected the corrected real-data preview before rerendering all six recorded cases.
+
+## [2026-09-18] verify | Refresh all bilateral-callout videos
+
+- Completed all six version-2 renders (12 MP4s) using three CPU processes and the existing saved traces. No simulator workers were dispatched.
+- Verified both source-side anchors/counts for sensory, descending and motor groups, complete-frame decoding, 1600 × 900 resolution, 80 fps, matched per-case duration and unchanged original recording hashes.
+- Refreshed decoded previews, the six-case montage, verification metadata and local gallery. The existing replay YAML reuses these complete outputs; the standalone render YAML regenerates the corrected labels with no configuration changes.
