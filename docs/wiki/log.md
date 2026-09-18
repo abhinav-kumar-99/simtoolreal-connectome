@@ -788,3 +788,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Traced the RL Games and task observer writers: `/step`, `/iter` and `/time` aliases all receive the same environment-frame `global_step`; their suffixes do not select a TensorBoard axis.
 - Verified the active official-LSTM event file directly. All 771 reward-alias entries had identical values and steps from 196,608 through 151,584,768, while event wall timestamps spanned 2,128.256 seconds.
 - Recorded that TensorBoard's `Relative` or `Wall` axis must be selected for time. No logger or live process was changed.
+
+## [2026-09-18] query | Explain fly Gaussian entropy ceiling
+
+- Verified the active fly resolved configuration has `max_sigma: 3.0` and six coefficient-conditioned scale rows.
+- Derived the builder's shifted softplus ceiling as `sigma = 3 / (1 + 2 * exp(-r))`, preserving sigma one at initialization and giving a 73.009-nat upper bound for 29-dimensional raw Gaussian entropy.
+- Distinguished emitted-scale bounding from entropy-loss clamping and executed-action clipping; recorded that the official LSTM omits this custom ceiling. No live process was changed.

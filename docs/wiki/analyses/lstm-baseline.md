@@ -79,6 +79,19 @@ not optimized; the privileged central critic still supplies rollout values,
 GAE and its own value loss. The generic actor's optional
 `space.continuous.max_sigma` key is backward compatible when omitted.
 
+For the active fly profile, `max_sigma: 3.0` transforms each raw learned
+log-scale `r` into `log_sigma = log(3) - softplus(log(2) - r)`, equivalently
+`sigma = 3 / (1 + 2 * exp(-r))`. This preserves sigma one at initialization
+(`r=0`) and approaches three smoothly; the raw parameter is not clamped.
+The derivative of emitted log-sigma decreases toward zero near the ceiling.
+Each of six SAPG blocks has 29 independently learned raw scales. Bounding
+their emitted scales bounds the 29-dimensional diagonal Gaussian entropy
+above by `29 * (0.5 * log(2*pi*e) + log(3)) = 73.009` nats. This is not a
+direct clamp on the entropy scalar and does not measure diversity after
+hard clipping sampled actions to `[-1,1]`. The official LSTM profile omits
+this custom cap, so the active official-versus-fly comparison also differs
+in exploration parameterization.
+
 The actor's post-LSTM MLP has one 256-unit hidden layer, matching the fly
 actor's learned interface width. The privileged critic retains its inherited
 `[1024, 1024, 512, 512]` MLP so that critic capacity remains identical across
