@@ -1,0 +1,11 @@
+defaults:
+  - SimToolRealConnectome1952AdaptersMLPBetaSAPG
+  - _self_
+
+params:
+  network:
+    space:
+      continuous:
+        # Numerically positive but permits alpha/beta below one, including
+        # endpoint-peaked and U-shaped policies.
+        beta_min_shape: 0.0001

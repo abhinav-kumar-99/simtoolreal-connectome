@@ -1,0 +1,13 @@
+defaults:
+  - SimToolRealConnectomeSAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      interface_projections:
+        architecture: mlp
+        hidden_size: 256
+        activation: elu
+  config:
+    name: ${resolve_default:SimToolRealConnectomeMLPSAPG,${....experiment}}

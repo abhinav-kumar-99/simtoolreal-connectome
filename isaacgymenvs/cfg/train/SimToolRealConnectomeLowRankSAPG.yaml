@@ -1,0 +1,12 @@
+defaults:
+  - SimToolRealConnectomeSAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      adaptation:
+        weight_mode: low_rank
+        learn_dynamics: false
+  config:
+    name: ${resolve_default:SimToolRealConnectomeLowRankSAPG,${....experiment}}

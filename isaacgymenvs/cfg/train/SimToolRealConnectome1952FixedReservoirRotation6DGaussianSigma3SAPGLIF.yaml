@@ -1,0 +1,18 @@
+defaults:
+  - SimToolRealConnectome1952FixedReservoirRotation6DGaussianSigma3SAPG
+  - _self_
+
+# Hard-spiking fixed reservoir. The 60 Hz robot-control interval is divided
+# across neural_updates, so K=4 advances the LIF state by 4.1667 ms per update.
+params:
+  network:
+    connectome:
+      dynamics:
+        activation: lif
+        control_frequency_hz: 60.0
+        membrane_time_constant_ms: 10.0
+        spike_threshold: 0.25
+        refractory_period_ms: 2.0
+        input_current_scale: 1.5
+  config:
+    name: ${resolve_default:SimToolRealConnectome1952FixedReservoirRotation6DGaussianSigma3SAPGLIF,${....experiment}}

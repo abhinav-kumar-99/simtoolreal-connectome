@@ -16,11 +16,35 @@ from rl_games.algos_torch import sac_agent
 from rl_games.algos_torch import torch_ext
 
 
+def _eligibility_agent(**kwargs):
+    from rl_games.algos_torch.connectome_eligibility_agent import ConnectomeEligibilityAgent
+    return ConnectomeEligibilityAgent(**kwargs)
+
+
 def _restore(agent, args):
     if 'checkpoint' in args and args['checkpoint'] is not None and args['checkpoint'] !='':
         load_mode = args.get('checkpoint_load_mode', 'resume')
         if load_mode == 'resume':
             agent.restore(args['checkpoint'])
+        elif load_mode == 'resume_training_state':
+            weights = _load_checkpoint_weights(agent, args['checkpoint'])
+            required = {'model', 'optimizer', 'epoch', 'frame'}
+            missing = sorted(required.difference(weights))
+            if missing:
+                raise KeyError(
+                    f"Training-state checkpoint is missing required keys: {missing}"
+                )
+            agent.set_full_state_weights(
+                weights,
+                set_epoch=True,
+                restore_environment=False,
+            )
+            optimizer_entries = len(weights['optimizer'].get('state', {}))
+            print(
+                f"=> resumed model and actor optimizer from '{args['checkpoint']}' "
+                f"at epoch={int(weights['epoch'])}, frame={int(weights['frame'])}, "
+                f"optimizer_states={optimizer_entries}; started a fresh simulator rollout"
+            )
         elif load_mode == 'weights':
             weights = _load_checkpoint_weights(agent, args['checkpoint'])
             agent.set_weights(weights)
@@ -31,7 +55,10 @@ def _restore(agent, args):
                     print(f"Skipping central value checkpoint weights: {exc}")
             print(f"=> initialized model weights from '{args['checkpoint']}'")
         else:
-            raise ValueError(f"checkpoint_load_mode must be resume/weights, got {load_mode!r}")
+            raise ValueError(
+                "checkpoint_load_mode must be resume/resume_training_state/weights, "
+                f"got {load_mode!r}"
+            )
 
 
 def _load_checkpoint_weights(agent, checkpoint_path):
@@ -58,12 +85,14 @@ class Runner:
 
     def __init__(self, algo_observer=None):
         self.algo_factory = object_factory.ObjectFactory()
+        self.algo_factory.register_builder('connectome_eligibility', _eligibility_agent)
         self.algo_factory.register_builder('a2c_continuous', lambda **kwargs : a2c_continuous.A2CAgent(**kwargs))
         self.algo_factory.register_builder('a2c_discrete', lambda **kwargs : a2c_discrete.DiscreteA2CAgent(**kwargs)) 
         self.algo_factory.register_builder('sac', lambda **kwargs: sac_agent.SACAgent(**kwargs))
         #self.algo_factory.register_builder('dqn', lambda **kwargs : dqnagent.DQNAgent(**kwargs))
 
         self.player_factory = object_factory.ObjectFactory()
+        self.player_factory.register_builder('connectome_eligibility', lambda **kwargs: players.PpoPlayerContinuous(**kwargs))
         self.player_factory.register_builder('a2c_continuous', lambda **kwargs : players.PpoPlayerContinuous(**kwargs))
         self.player_factory.register_builder('a2c_discrete', lambda **kwargs : players.PpoPlayerDiscrete(**kwargs))
         self.player_factory.register_builder('sac', lambda **kwargs : players.SACPlayer(**kwargs))

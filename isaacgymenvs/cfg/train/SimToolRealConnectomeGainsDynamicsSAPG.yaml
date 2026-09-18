@@ -1,0 +1,12 @@
+defaults:
+  - SimToolRealConnectomeSAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      adaptation:
+        weight_mode: neuron_gains
+        learn_dynamics: true
+  config:
+    name: ${resolve_default:SimToolRealConnectomeGainsDynamicsSAPG,${....experiment}}

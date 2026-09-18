@@ -1,5 +1,5 @@
-import os
 from typing import Optional
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -40,8 +40,32 @@ class RlPlayer:
         self.set_env_state = lambda *args, **kwargs: None
 
         self.cfg = read_cfg(config_path=config_path, device=self.device)
+        self._validate_neural_updates(checkpoint_path)
         # self._run_sanity_checks()
         self.player = self.create_rl_player(checkpoint_path=checkpoint_path)
+
+    def _validate_neural_updates(self, checkpoint_path: Optional[str]) -> None:
+        """Reject timing mismatches against a checkpoint's saved run config.
+
+        Standalone exports still use their supplied YAML. Legacy connectome
+        configurations without the knob retain the historical K=1 default.
+        """
+        network = self.cfg['train']['params']['network']
+        if 'connectome' not in network or checkpoint_path is None:
+            return
+        actual = network['connectome']['dynamics'].get('neural_updates', 1)
+        for directory in list(Path(checkpoint_path).resolve().parents)[:4]:
+            saved_config = directory / 'resolved_config.yaml'
+            if not saved_config.is_file():
+                continue
+            saved = read_cfg(config_path=str(saved_config), device=self.device)
+            expected = saved['train']['params']['network']['connectome']['dynamics'].get('neural_updates', 1)
+            if actual != expected:
+                raise ValueError(
+                    f'Evaluation neural_updates={actual} differs from training '
+                    f'neural_updates={expected} in {saved_config}'
+                )
+            break
 
     def create_rl_player(
         self, checkpoint_path: Optional[str]
@@ -67,7 +91,6 @@ class RlPlayer:
         runner = Runner()
         runner.load(config)
 
-        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         player = runner.create_player()
         player.init_rnn()
         player.has_batch_dimension = True

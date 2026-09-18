@@ -1,0 +1,37 @@
+schema_version: 1
+preparation_kind: compact_paths
+output_directory: data/connectomes/processed/malecns_1952
+# Pinned completed audit inputs; prepare the front_leg_coverage audit first if absent.
+# Do not silently substitute a different audit snapshot, tie-breaking, or neuron set.
+sources:
+  neurons:
+    path: profiles/connectome/front_leg_coverage/candidate_neurons.csv
+    sha256: 4486dd46e3bcee4b3f87e10e0716b6232d44d95fb887a4a4169490fee99ee862
+  edges:
+    path: profiles/connectome/front_leg_coverage/reference_incoming_edges.csv.gz
+    sha256: d2e59372049b061c11450e013d9424d15ff369179839ab657ed6f0144de1aa3a
+  neurotransmitters:
+    path: data/connectomes/raw/malecns_v1_audit/neurotransmitters.feather
+    sha256: 95c9289220663abeb3409f3ad9e5a7f8a53f8093f5139d15502cd08da8879621
+selection:
+  minimum_synapses: 5
+  seed_groups: [front_proprioceptors, front_tactile, front_motors, grooming_dn_type_candidates, front_specific_descending, T1_13A, T1_13B, T1_09A, T1_23B]
+  population_groups:
+    sensory: [front_proprioceptors, front_tactile]
+    descending: [grooming_dn_type_candidates, front_specific_descending]
+    motor: [front_motors]
+  # Persist these subpopulation ports for structured robot input routing. Their
+  # union must remain the sensory port selected above.
+  artifact_population_groups:
+    front_proprioceptors: [front_proprioceptors]
+    front_tactile: [front_tactile]
+expected: {neurons: 1952, edges: 33720, sensory_neurons: 384, descending_neurons: 157, motor_neurons: 135}
+expected_selection:
+  seed_neurons: 1285
+  path_neurons: 1596
+  sensory_premotor_additions: 356
+  isolated_neurons: 44
+  body_ids_sha256: d6e3d907840e3f88d17b2c3807e9387c625efd9f3508027001725f410e7c5abc
+# Original model convention, NOT a claim that unknown transmitter cells are inhibitory.
+transmitter_signs: {acetylcholine: 1, gaba: -1, glutamate: -1, unclear: -1, missing: -1}
+normalization: {target: 1.0}

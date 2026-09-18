@@ -1,0 +1,16 @@
+defaults:
+  - SimToolRealConnectome1952AdaptersMLPSAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      artifact_path: data/connectomes/processed/malecns_262_distal_leg/biological.npz
+      expected:
+        neurons: 262
+        edges: 3194
+        sensory_neurons: 48
+        descending_neurons: 2
+        motor_neurons: 31
+  config:
+    name: ${resolve_default:SimToolRealConnectome262AdaptersMLPSAPG,${....experiment}}

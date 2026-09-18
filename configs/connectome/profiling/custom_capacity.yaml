@@ -1,0 +1,71 @@
+schema_version: 2
+seed: 7
+device: auto
+amp: true
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  MAX_JOBS: '1'
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+task_profile: SimToolRealLSTMAsymmetric
+policy_observations: 140
+actions: 29
+sapg_embedding_size: 32
+sapg_coefficient_ids: [50, 40, 30, 20, 10, 0]
+warmup_iterations: 1
+measure_iterations: 3
+repetitions: 1
+output_path: profiles/connectome/custom_capacity.json
+actors:
+  - name: adapters_torch_sparse
+    train_profile: SimToolRealConnectomeSAPG
+    operator_backend: torch_sparse
+  - name: adapters_dense
+    train_profile: SimToolRealConnectomeSAPG
+    operator_backend: dense
+  - name: low_rank_torch_sparse
+    train_profile: SimToolRealConnectomeLowRankSAPG
+    operator_backend: torch_sparse
+  - name: low_rank_dense
+    train_profile: SimToolRealConnectomeLowRankSAPG
+    operator_backend: dense
+  - name: edgewise_torch_sparse
+    train_profile: SimToolRealConnectomeEdgewiseSAPG
+    operator_backend: torch_sparse
+  - name: edgewise_dense
+    train_profile: SimToolRealConnectomeEdgewiseSAPG
+    operator_backend: dense
+  - name: lstm
+    train_profile: SimToolRealLSTMAsymmetricSAPG
+  - name: adapters_native_csr
+    train_profile: SimToolRealConnectomeSAPG
+    operator_backend: native_csr
+  - name: adapters_cusparse
+    train_profile: SimToolRealConnectomeSAPG
+    operator_backend: cusparse
+  - name: adapters_triton_fused
+    train_profile: SimToolRealConnectomeSAPG
+    operator_backend: triton_fused
+  - name: low_rank_native_csr
+    train_profile: SimToolRealConnectomeLowRankSAPG
+    operator_backend: native_csr
+  - name: low_rank_cusparse
+    train_profile: SimToolRealConnectomeLowRankSAPG
+    operator_backend: cusparse
+  - name: low_rank_triton_fused
+    train_profile: SimToolRealConnectomeLowRankSAPG
+    operator_backend: triton_fused
+  - name: edgewise_native_csr
+    train_profile: SimToolRealConnectomeEdgewiseSAPG
+    operator_backend: native_csr
+  - name: edgewise_cusparse
+    train_profile: SimToolRealConnectomeEdgewiseSAPG
+    operator_backend: cusparse
+  - name: edgewise_triton_fused
+    train_profile: SimToolRealConnectomeEdgewiseSAPG
+    operator_backend: triton_fused
+
+shapes:
+  - {name: rollout_24576, num_sequences: 24576, sequence_length: 1, backward: false, allow_oom: true}
+  - {name: train_6144x16, num_sequences: 6144, sequence_length: 16, backward: true, optimizer_step: true, allow_oom: true}

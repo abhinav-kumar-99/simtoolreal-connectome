@@ -1,0 +1,13 @@
+defaults:
+  - SimToolRealConnectome1952AdaptersMLPSAPG
+  - _self_
+
+params:
+  network:
+    space:
+      continuous:
+        distribution: gaussian
+        fixed_sigma: coef_cond
+        max_sigma: 3.0
+  config:
+    name: ${resolve_default:SimToolRealConnectome1952AdaptersMLPGaussianSigma3SAPG,${....experiment}}

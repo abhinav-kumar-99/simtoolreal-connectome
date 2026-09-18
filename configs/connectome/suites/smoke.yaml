@@ -1,0 +1,37 @@
+schema_version: 1
+name: malecns_smoke
+stages: [prepare, train]
+output_directory: train_dir/connectome/smoke
+preparation:
+  config: configs/connectome/malecns_4310.yaml
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles: [SimToolRealConnectomeSAPG]
+  seeds: [42]
+  gpu_assignments: [0]
+  num_envs: 384
+  sapg_block_size: 64
+  epochs: 2
+  minibatch_size: 1536
+  central_critic_minibatch_size: 1536
+  save_frequency: 1
+  save_best_after: 0
+  on_existing: fail
+  checkpoint:
+    mode: none
+    path: ''
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: smoke
+    tags: [malecns, smoke]
+  overrides:
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    task.env.forceScale: 20.0
+    task.env.torqueScale: 2.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

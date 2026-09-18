@@ -284,6 +284,9 @@ def launch_rlg_hydra(cfg: DictConfig, vec_env=None):
             "train": not cfg.test,
             "play": cfg.test,
             "checkpoint": cfg.checkpoint,
+            "checkpoint_load_mode": cfg.train.params.config.get(
+                "checkpoint_load_mode", "resume"
+            ),
             "sigma": cfg.sigma if cfg.sigma != "" else None,
         }
     )

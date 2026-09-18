@@ -1,0 +1,29 @@
+schema_version: 1
+seed: 7
+device: auto
+amp: true
+warmup_iterations: 3
+measure_iterations: 10
+output_path: profiles/connectome/lstm_vs_malecns.json
+
+task_profile: SimToolRealLSTMAsymmetric
+policy_observations: 140
+actions: 29
+sapg_embedding_size: 32
+sapg_coefficient_ids: [50, 40, 30, 20, 10, 0]
+
+actors:
+  - name: lstm
+    train_profile: SimToolRealLSTMAsymmetricSAPG
+  - name: malecns
+    train_profile: SimToolRealConnectomeSAPG
+
+shapes:
+  - name: rollout_384
+    num_sequences: 384
+    sequence_length: 1
+    backward: false
+  - name: train_384x16
+    num_sequences: 384
+    sequence_length: 16
+    backward: true

@@ -1,0 +1,15 @@
+defaults:
+  - SimToolRealConnectomeSAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      artifact_path: data/connectomes/processed/malecns_4310/degree_preserving_rewired.npz
+      graph_variant: degree_preserving_rewired
+      adaptation:
+        weight_mode: neuron_gains
+        learn_dynamics: true
+
+  config:
+    name: ${resolve_default:SimToolRealConnectomeRewiredSAPG,${....experiment}}

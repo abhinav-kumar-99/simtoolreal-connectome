@@ -85,6 +85,10 @@ env:
   objectBaseSize: 0.04
 
   observationType: "full_state"
+  # quaternion_xyzw preserves the released 140-value observation contract.
+  # rotation_6d replaces each palm/object quaternion with the first two
+  # rotation-matrix columns, producing 144 policy observations.
+  orientationObservationRepresentation: quaternion_xyzw
   successTolerance: 0.075
   targetSuccessTolerance: 0.01
   evalSuccessTolerance: null  # If None, will use the default success tolerance. Otherwise, will use this value for evaluation.
@@ -121,6 +125,8 @@ env:
   # Thus, it records a video every 600-1500s (10-25 minutes) of real time
   capture_video_freq: 6_000
   capture_video_len: 600
+  # Isaac Gym's default camera dimensions are divided by this factor.
+  cameraResolutionReductionFactor: 4
 
   # Camera-free interactive Three.js rollout capture. At 60 Hz, 600 frames is
   # a 10-second trajectory. `capture_viewer_once` is useful for evaluation.

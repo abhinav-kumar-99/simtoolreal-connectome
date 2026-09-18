@@ -1,0 +1,22 @@
+mode: sweep
+resume: true
+output_directory: profiles/connectome/visual_optimizations
+artifact_path: data/connectomes/processed/malecns_full_cns/biological.npz
+base_suite: configs/connectome/suites/ppo_full_cns_tanh_vision64x36_r4_smoke.yaml
+policy_config_path: train_dir/connectome/vision/ppo_full_cns_tanh_vision64x36_r4_smoke/00_ppo_full_cns_tanh_vision64x36_r4_smoke_visual_tanh_64x36_r4_seed42/resolved_config.yaml
+batches: [384, 768, 1536]
+warmup: 3
+iterations: 8
+steps: 24
+epochs: 12
+cases:
+  - {name: kernels, mode: kernel}
+  - {name: env_baseline, mode: environment, batch: 384, fused: false}
+  - {name: env_fused, mode: environment, batch: 384, fused: true}
+  - {name: baseline384, mode: train, batch: 384}
+  - {name: frozen384, mode: train, batch: 384, frozen: true}
+  - {name: captured384, mode: train, batch: 384, frozen: true, capture: true}
+  - {name: fused384, mode: train, batch: 384, frozen: true, capture: true, fused: true}
+  - {name: fused768, mode: train, batch: 768, frozen: true, capture: true, fused: true}
+  - {name: fused1536, mode: train, batch: 1536, frozen: true, capture: true, fused: true}
+  - {name: frozen_fused768, mode: train, batch: 768, frozen: true, fused: true}

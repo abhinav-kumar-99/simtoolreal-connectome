@@ -1,0 +1,66 @@
+# Two gains-enabled connectome actors that differ only in optimizer timing.
+schema_version: 1
+name: adaptation_100b_gains_update_timing
+stages: [prepare, train]
+output_directory: train_dir/connectome/adaptation_100b_gains_update_timing
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+preparation:
+  config: configs/connectome/malecns_4310.yaml
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - name: gains_new_update_timing
+      train_profile: SimToolRealConnectomeGainsSAPG
+      overrides:
+        train.params.config.max_epochs: 254313
+        train.params.config.minibatch_size: 98304
+        train.params.config.central_value_config.minibatch_size: 98304
+        ++train.params.config.rollout_accumulation_steps: 2
+        ++train.params.config.microbatch_size: 24576
+        ++train.params.config.central_value_config.microbatch_size: 24576
+    - name: gains_old_update_timing
+      train_profile: SimToolRealConnectomeGainsSAPG
+      overrides: {}
+  seeds: [42]
+  gpu_assignments: [0, 1]
+  max_parallel: 2
+  num_envs: 12288
+  sapg_block_size: 2048
+  # The old timing collects one 12,288 x 16 rollout per update phase.
+  epochs: 508626
+  max_frames: 100000000000
+  minibatch_size: 49152
+  central_critic_minibatch_size: 49152
+  # Save small inference-only evaluation snapshots at each requested milestone.
+  inference_checkpoint_interval_frames: 250000000
+  save_frequency: 3000
+  save_best_after: 100
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: adaptation_100b_gains_update_timing
+    tags: [malecns, neuron-gains, triton, one-hundred-billion-cap, update-timing]
+  overrides:
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    train.params.config.expl_reward_coef_scale: 0.005
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

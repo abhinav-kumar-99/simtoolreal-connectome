@@ -12,7 +12,7 @@ from rl_games.common import schedulers
 class CentralValueTrain(nn.Module):
 
     def __init__(self, state_shape, value_size, ppo_device, num_agents, horizon_length, num_actors, num_actions, 
-                seq_length, normalize_value, network, config, writter, max_epochs, multi_gpu, zero_rnn_on_done, type, coef_ids=None, coef_id_idx=None):
+                seq_length, normalize_value, network, config, writter, max_epochs, multi_gpu, zero_rnn_on_done, type, coef_ids=None, coef_id_idx=None, rollout_accumulation_steps=1):
         nn.Module.__init__(self)
 
         self.ppo_device = ppo_device
@@ -30,6 +30,7 @@ class CentralValueTrain(nn.Module):
         self.type = type
         self.coef_ids = coef_ids
         self.coef_id_idx = coef_id_idx
+        self.rollout_accumulation_steps = rollout_accumulation_steps
         state_config = {
             'value_size' : value_size,
             'input_shape' : state_shape,
@@ -61,7 +62,37 @@ class CentralValueTrain(nn.Module):
 
         self.minibatch_size_per_env = self.config.get('minibatch_size_per_env', 0)
         self.minibatch_size = self.config.get('minibatch_size', self.num_actors * self.minibatch_size_per_env)
-        self.num_minibatches = self.horizon_length * self.num_actors // self.minibatch_size
+        self.logical_minibatch_size = self.minibatch_size
+        self.microbatch_size = int(
+            self.config.get('microbatch_size', self.logical_minibatch_size)
+        )
+        if self.microbatch_size <= 0:
+            raise ValueError("central critic microbatch_size must be positive")
+        if self.logical_minibatch_size % self.microbatch_size != 0:
+            raise ValueError(
+                f"central critic minibatch_size {self.logical_minibatch_size} "
+                f"must be divisible by microbatch_size {self.microbatch_size}"
+            )
+        if self.microbatch_size % self.seq_length != 0:
+            raise ValueError(
+                f"central critic microbatch_size {self.microbatch_size} must be "
+                f"divisible by seq_length {self.seq_length}"
+            )
+        self.microbatches_per_minibatch = (
+            self.logical_minibatch_size // self.microbatch_size
+        )
+        print(
+            "central critic optimizer batch:",
+            self.logical_minibatch_size,
+            "physical microbatch:",
+            self.microbatch_size,
+            "nominal accumulation steps:",
+            self.microbatches_per_minibatch,
+        )
+        self.num_minibatches = (
+            self.horizon_length * self.num_actors
+            // self.logical_minibatch_size
+        )
         self.clip_value = config['clip_value']
 
         self.writter = writter
@@ -105,7 +136,15 @@ class CentralValueTrain(nn.Module):
                 config['print_stats'] = False
                 config['lr_schedule'] = None
 
-        self.dataset = datasets.PPODataset(self.batch_size, self.minibatch_size, True, self.is_rnn, self.ppo_device, self.seq_length)
+        self.dataset = datasets.PPODataset(
+            self.batch_size,
+            self.microbatch_size,
+            True,
+            self.is_rnn,
+            self.ppo_device,
+            self.seq_length,
+            logical_minibatch_size=self.logical_minibatch_size,
+        )
 
     def update_lr(self, lr):
         if self.multi_gpu:
@@ -127,6 +166,32 @@ class CentralValueTrain(nn.Module):
 
     def set_stats_weights(self, weights): 
         pass
+
+    def get_training_state(self):
+        """Return critic state that is not part of the module or optimizer."""
+        recurrent_state = None
+        if self.rnn_states is not None:
+            recurrent_state = [state.detach().clone() for state in self.rnn_states]
+        return {
+            'epoch': int(self.epoch_num),
+            'frame': int(self.frame),
+            'lr': float(self.lr),
+            'rnn_states': recurrent_state,
+        }
+
+    def set_training_state(self, state, restore_recurrent_state=True):
+        """Restore critic counters, scheduler input, and optional RNN state."""
+        self.epoch_num = int(state['epoch'])
+        self.frame = int(state['frame'])
+        self.lr = float(state['lr'])
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = self.lr
+
+        recurrent_state = state.get('rnn_states')
+        if restore_recurrent_state and recurrent_state is not None:
+            self.rnn_states = [
+                value.to(self.ppo_device) for value in recurrent_state
+            ]
         
     def update_dataset(self, batch_dict):
         value_preds = batch_dict['old_values']     
@@ -204,9 +269,21 @@ class CentralValueTrain(nn.Module):
 
         return value
 
-    def train_critic(self, input_dict):
+    def train_critic(
+        self,
+        input_dict,
+        *,
+        zero_grad=True,
+        optimizer_step=True,
+        loss_scale=1.0,
+    ):
         self.train()
-        loss = self.calc_gradients(input_dict)
+        loss = self.calc_gradients(
+            input_dict,
+            zero_grad=zero_grad,
+            optimizer_step=optimizer_step,
+            loss_scale=loss_scale,
+        )
         return loss.item()
 
     def update_multiagent_tensors(self, value_preds, returns, actions, dones):
@@ -223,23 +300,43 @@ class CentralValueTrain(nn.Module):
     def train_net(self):
         self.train()
         loss = 0
+        logical_batches = 0
         for _ in range(self.mini_epoch):
+            logical_loss = 0
             for idx in range(len(self.dataset)):
-                loss += self.train_critic(self.dataset[idx])
+                input_dict = self.dataset[idx]
+                microbatch_loss = self.train_critic(
+                    input_dict,
+                    zero_grad=self.dataset.last_zero_grad,
+                    optimizer_step=self.dataset.last_optimizer_step,
+                    loss_scale=self.dataset.last_loss_scale,
+                )
+                logical_loss += microbatch_loss * self.dataset.last_loss_scale
+                if self.dataset.last_optimizer_step:
+                    loss += logical_loss
+                    logical_batches += 1
+                    logical_loss = 0
             if self.normalize_input:
                 self.model.running_mean_std.eval()  # don't need to update statstics more than one miniepoch
-        avg_loss = loss / (self.mini_epoch * self.num_minibatches)
+        avg_loss = loss / logical_batches
 
         self.epoch_num += 1
         self.lr, _ = self.scheduler.update(self.lr, 0, self.epoch_num, 0, 0)
         self.update_lr(self.lr)
-        self.frame += self.batch_size
+        self.frame += self.batch_size * self.rollout_accumulation_steps
         if self.writter != None:
             self.writter.add_scalar('losses/cval_loss', avg_loss, self.frame)
             self.writter.add_scalar('info/cval_lr', self.lr, self.frame)        
         return avg_loss
 
-    def calc_gradients(self, batch):
+    def calc_gradients(
+        self,
+        batch,
+        *,
+        zero_grad=True,
+        optimizer_step=True,
+        loss_scale=1.0,
+    ):
         obs_batch = self._preproc_obs(batch['obs'])
         value_preds_batch = batch['old_values']
         returns_batch = batch['returns']
@@ -261,14 +358,15 @@ class CentralValueTrain(nn.Module):
         losses, _ = torch_ext.apply_masks([loss], rnn_masks_batch)
         loss = losses[0]
         #6print('aaa', loss.min(), loss.max(), loss.size())
-        if self.multi_gpu:
-            self.optimizer.zero_grad()
-        else:
-            for param in self.model.parameters():
-                param.grad = None
-        loss.backward()
+        if zero_grad:
+            if self.multi_gpu:
+                self.optimizer.zero_grad()
+            else:
+                for param in self.model.parameters():
+                    param.grad = None
+        (loss * loss_scale).backward()
 
-        if self.multi_gpu:
+        if optimizer_step and self.multi_gpu:
             # batch allreduce ops: see https://github.com/entity-neural-network/incubator/pull/220
             all_grads_list = []
             for param in self.model.parameters():
@@ -284,9 +382,10 @@ class CentralValueTrain(nn.Module):
                     )
                     offset += param.numel()
 
-        if self.truncate_grads:
+        if optimizer_step and self.truncate_grads:
             nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
 
-        self.optimizer.step()
+        if optimizer_step:
+            self.optimizer.step()
 
         return loss

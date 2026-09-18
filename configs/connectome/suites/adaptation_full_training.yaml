@@ -1,0 +1,42 @@
+# Prepared only: launch after accepting smoke and choosing the backend.
+schema_version: 1
+name: adaptation_matched
+stages: [prepare, train]
+output_directory: train_dir/connectome/adaptation_full
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+preparation:
+  config: configs/connectome/malecns_4310.yaml
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - SimToolRealConnectomeSAPG
+    - SimToolRealConnectomeGainsSAPG
+    - SimToolRealConnectomeLowRankSAPG
+    - SimToolRealConnectomeEdgewiseSAPG
+    - SimToolRealConnectomeGainsDynamicsSAPG
+  seeds: [42, 43, 44]
+  gpu_assignments: [0, 1]
+  num_envs: 24576
+  sapg_block_size: 4096
+  epochs: 1000000
+  minibatch_size: 98304
+  central_critic_minibatch_size: 98304
+  save_frequency: 3000
+  save_best_after: 100
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb: {enabled: true, project: simtoolreal-connectome, entity: '', group: adaptation_matched, tags: [malecns, adaptation]}
+  overrides:
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    task.env.forceScale: 20.0
+    task.env.torqueScale: 2.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0
+    train.params.network.connectome.operator_backend: triton_fused

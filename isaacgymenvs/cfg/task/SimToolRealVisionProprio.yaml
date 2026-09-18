@@ -1,0 +1,14 @@
+defaults:
+  - SimToolRealLSTMAsymmetricRotation6D
+  - _self_
+
+env:
+  obsList: [joint_pos, joint_vel, prev_action_targets, goal_keypoints_world, camera_luminance]
+  policyVision:
+    enabled: true
+    width: 96
+    height: 54
+  enableCameraSensors: true
+  enableDebugVis: false
+  VISUALIZE_PD_TARGET_AS_BLUE_ROBOT: false
+  capture_video: false

@@ -1,0 +1,64 @@
+# Continue the 768-env run with a capacity-tested 2304-env batch.
+schema_version: 1
+name: ppo_full_cns_tanh_vision_capacity2304_100b
+stages: [train]
+output_directory: train_dir/connectome/vision/ppo_full_cns_tanh_vision_capacity2304_100b
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+training:
+  task_profile: SimToolRealVisionProprio64x36R4
+  train_profiles:
+    - {name: visual_tanh_capacity, train_profile: SimToolRealFullCNSVisualReservoirGaussianSAPGFast}
+  seeds: [42]
+  gpu_assignments: [1]
+  max_parallel: 1
+  num_envs: 2304
+  sapg_block_size: 384
+  # Conservative epoch cap accepted by the suite; restored progress is retained.
+  epochs: 2712673
+  max_frames: 100000000000
+  minibatch_size: 9216
+  central_critic_minibatch_size: 9216
+  rollout_accumulation_steps: 1
+  actor_microbatch_size: 9216
+  central_critic_microbatch_size: 9216
+  inference_checkpoint_interval_frames: 1000000
+  save_frequency: 100
+  save_best_after: 100
+  on_existing: fail
+  checkpoint:
+    mode: resume_training_state
+    path: train_dir/connectome/vision/ppo_full_cns_tanh_vision_fast_100b/00_ppo_full_cns_tanh_vision_fast_100b_visual_tanh_fast_seed42/rl_runs/00_ppo_full_cns_tanh_vision_fast_100b_visual_tanh_fast_seed42/nn/00_ppo_full_cns_tanh_vision_fast_100b_visual_tanh_fast_seed42.pth
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: visual-tanh-capacity
+    tags: [malecns, vision, L1, L2, proprioception, fixed-input, tanh, frozen-inference, batch-2304]
+  overrides:
+    ++task.env.policyVision.fusedLuminance: true
+    train.params.config.kl_threshold: 0.004
+    train.params.config.learning_rate: 0.0001
+    train.params.config.max_lr: 0.001
+    train.params.config.use_others_experience: lf
+    train.params.config.off_policy_ratio: 1.0
+    ++train.params.config.use_experimental_cv: true
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    train.params.config.expl_reward_coef_scale: 0.005
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

@@ -1,0 +1,16 @@
+defaults:
+  - SimToolRealConnectomeGainsSAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      artifact_path: data/connectomes/processed/malecns_1952/biological.npz
+      expected:
+        neurons: 1952
+        edges: 33720
+        sensory_neurons: 384
+        descending_neurons: 157
+        motor_neurons: 135
+  config:
+    name: ${resolve_default:SimToolRealConnectome1952GainsSAPG,${....experiment}}

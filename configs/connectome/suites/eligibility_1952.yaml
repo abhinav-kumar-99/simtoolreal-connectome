@@ -1,0 +1,50 @@
+# From-scratch experimental pilot. Prepared, not automatically launched.
+schema_version: 1
+name: eligibility_1952
+stages: [prepare, train]
+output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/eligibility_1952
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+preparation:
+  config: configs/connectome/malecns_1952.yaml
+training:
+  algorithm: connectome_eligibility
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - {name: local_td, train_profile: SimToolRealConnectome1952Eligibility}
+  seeds: [42]
+  gpu_assignments: [0]
+  max_parallel: 1
+  num_envs: 384
+  sapg_block_size: 64
+  epochs: 160
+  max_frames: 983040
+  inference_checkpoint_interval_frames: 245760
+  save_frequency: 10
+  save_best_after: 0
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: eligibility_1952
+    tags: [malecns, eligibility, from-scratch]
+  overrides:
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

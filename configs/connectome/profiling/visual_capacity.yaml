@@ -1,0 +1,16 @@
+mode: sweep
+resume: true
+gpu: 1
+output_directory: profiles/connectome/visual_capacity
+base_suite: configs/connectome/suites/ppo_full_cns_tanh_vision64x36_r4_smoke.yaml
+epochs: 12
+discard_epochs: 2
+monitor_memory: true
+continue_on_failure: true
+timeout_seconds: 600
+cases:
+  # The initial batch3072 attempt is retained in artifacts; it SIGSEGVed
+  # before training and the original telemetry monitor also timed out.
+  - {name: batch2304, mode: train, batch: 2304, frozen: true, fused: true}
+  - {name: batch1920, mode: train, batch: 1920, frozen: true, fused: true}
+  - {name: batch2688, mode: train, batch: 2688, frozen: true, fused: true}

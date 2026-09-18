@@ -1,0 +1,56 @@
+defaults:
+  - SimToolRealLSTMAsymmetricSAPG
+  - _self_
+
+params:
+  network:
+    name: connectome_actor_critic
+    connectome:
+      artifact_path: data/connectomes/processed/malecns_4310/biological.npz
+      graph_variant: biological
+      operator_backend: triton_fused
+      dtype: float32
+      expected:
+        neurons: 4310
+        edges: 118920
+        sensory_neurons: 232
+        descending_neurons: 1236
+        motor_neurons: 130
+      observations:
+        policy_size: 140
+        sensory_size: 128
+        goal_size: 12
+        sensory_ranges: [[0, 125], [137, 140]]
+        goal_ranges: [[125, 137]]
+      sapg_embedding_size: 32
+      population_adapters:
+        bias: false
+      interface_projections:
+        architecture: linear
+        hidden_size: 256
+        activation: elu
+      dynamics:
+        activation: tanh
+        beta: 0.9
+        gain_bounds: [0.25, 4.0]
+        initial_gain: 1.0
+        initial_leak: 0.5
+        initial_bias: 0.0
+      adaptation:
+        weight_mode: adapters_only
+        learn_dynamics: false
+        rank: 4
+        edge_scale_bounds: [0.0625, 16.0]
+
+  config:
+    name: ${resolve_default:SimToolRealConnectomeSAPG,${....experiment}}
+    kl_threshold: 0.004
+    min_lr: 1.0e-6
+    max_lr: 1.0e-2
+    # Old timing is the connectome default. Suites may explicitly override it.
+    rollout_accumulation_steps: 1
+    minibatch_size: 49152
+    microbatch_size: ${.minibatch_size}
+    central_value_config:
+      minibatch_size: 49152
+      microbatch_size: ${.minibatch_size}

@@ -1,0 +1,76 @@
+schema_version: 1
+name: custom_smoke
+stages: [prepare, train]
+output_directory: train_dir/connectome/custom_smoke
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  MAX_JOBS: '1'
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+preparation:
+  config: configs/connectome/malecns_4310.yaml
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - name: adapters_cusparse
+      train_profile: SimToolRealConnectomeSAPG
+      overrides:
+        train.params.network.connectome.operator_backend: cusparse
+    - name: adapters_triton_fused
+      train_profile: SimToolRealConnectomeSAPG
+      overrides:
+        train.params.network.connectome.operator_backend: triton_fused
+    - name: gains_cusparse
+      train_profile: SimToolRealConnectomeGainsSAPG
+      overrides:
+        train.params.network.connectome.operator_backend: cusparse
+    - name: gains_triton_fused
+      train_profile: SimToolRealConnectomeGainsSAPG
+      overrides:
+        train.params.network.connectome.operator_backend: triton_fused
+    - name: low_rank_cusparse
+      train_profile: SimToolRealConnectomeLowRankSAPG
+      overrides:
+        train.params.network.connectome.operator_backend: cusparse
+    - name: low_rank_triton_fused
+      train_profile: SimToolRealConnectomeLowRankSAPG
+      overrides:
+        train.params.network.connectome.operator_backend: triton_fused
+    - name: edgewise_cusparse
+      train_profile: SimToolRealConnectomeEdgewiseSAPG
+      overrides:
+        train.params.network.connectome.operator_backend: cusparse
+    - name: edgewise_triton_fused
+      train_profile: SimToolRealConnectomeEdgewiseSAPG
+      overrides:
+        train.params.network.connectome.operator_backend: triton_fused
+    - name: gains_dynamics_cusparse
+      train_profile: SimToolRealConnectomeGainsDynamicsSAPG
+      overrides:
+        train.params.network.connectome.operator_backend: cusparse
+    - name: gains_dynamics_triton_fused
+      train_profile: SimToolRealConnectomeGainsDynamicsSAPG
+      overrides:
+        train.params.network.connectome.operator_backend: triton_fused
+  seeds: [42]
+  gpu_assignments: [1]
+  num_envs: 384
+  sapg_block_size: 64
+  epochs: 2
+  minibatch_size: 1536
+  central_critic_minibatch_size: 1536
+  save_frequency: 1
+  save_best_after: 0
+  on_existing: skip
+  checkpoint: {mode: none, path: ''}
+  wandb: {enabled: false, project: simtoolreal-connectome, entity: '', group: custom_smoke, tags: [malecns, custom_kernels, smoke]}
+  overrides:
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    task.env.forceScale: 20.0
+    task.env.torqueScale: 2.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

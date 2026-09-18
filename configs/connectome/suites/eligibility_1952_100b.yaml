@@ -1,0 +1,58 @@
+# Long from-scratch adapter + gains eligibility run on physical CUDA 0.
+schema_version: 1
+name: eligibility_1952_100b
+stages: [prepare, train]
+output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/eligibility_1952_100b
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+preparation:
+  config: configs/connectome/malecns_1952.yaml
+training:
+  algorithm: connectome_eligibility
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - {name: adapters_gains_local_td, train_profile: SimToolRealConnectome1952Eligibility}
+  seeds: [42]
+  gpu_assignments: [0]
+  max_parallel: 1
+  # This is the validated conservative eligibility geometry. Six blocks are
+  # retained for legacy task/player compatibility, not SAPG experience mixing.
+  num_envs: 384
+  sapg_block_size: 64
+  # The actor updates every vector step. A 512-step chunk writes every 196,608
+  # frames, exactly matching the old-timing PPO TensorBoard cadence.
+  epochs: 508627
+  max_frames: 100000137216
+  inference_checkpoint_interval_frames: 250000000
+  # Preserve the previous approximately 15.7M-frame recovery cadence after
+  # making logging chunks eight times shorter.
+  save_frequency: 80
+  save_best_after: 0
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: eligibility_1952_100b
+    tags: [malecns, eligibility, adapters, neuron-gains, from-scratch, one-hundred-billion]
+  overrides:
+    train.params.config.horizon_length: 512
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

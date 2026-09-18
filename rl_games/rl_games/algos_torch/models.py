@@ -1,8 +1,10 @@
-import rl_games.algos_torch.layers
+import math
+
 import numpy as np
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
+import rl_games.algos_torch.layers
 import rl_games.common.divergence as divergence
 from rl_games.common.extensions.distributions import CategoricalMasked
 from torch.distributions import Categorical
@@ -255,6 +257,15 @@ class ModelA2CContinuousLogStd(BaseModel):
         def is_rnn(self):
             return self.a2c_network.is_rnn()
 
+        def uses_cached_reservoir_features(self):
+            method = getattr(
+                self.a2c_network, 'uses_cached_reservoir_features', None
+            )
+            return bool(method is not None and method())
+
+        def get_reservoir_feature_count(self):
+            return self.a2c_network.get_reservoir_feature_count()
+
         def get_value_layer(self):
             return self.a2c_network.get_value_layer()
 
@@ -292,12 +303,220 @@ class ModelA2CContinuousLogStd(BaseModel):
                     'mus' : mu,
                     'sigmas' : sigma
                 }
+                if self.uses_cached_reservoir_features():
+                    result['reservoir_features'] = (
+                        self.a2c_network.last_reservoir_features
+                    )
                 return result
 
         def neglogp(self, x, mean, std, logstd):
             return 0.5 * (((x - mean) / std)**2).sum(dim=-1) \
                 + 0.5 * np.log(2.0 * np.pi) * x.size()[-1] \
                 + logstd.sum(dim=-1)
+
+
+class ModelA2CContinuousBeta(BaseModel):
+    """Independent trainable Beta shapes, affinely mapped to [-1, 1].
+
+    Players see actual action means/stds. Generic rollout storage slots retain
+    unit-interval samples and alpha/beta, not Gaussian moments. The trainer must
+    dispatch policy_kl below and apply bounds loss to action_mean, not alpha.
+    """
+
+    def __init__(self, network):
+        super().__init__('a2c')
+        self.network_builder = network
+
+    class Network(BaseModelNetwork):
+        def __init__(self, a2c_network, **kwargs):
+            super().__init__(**kwargs)
+            if getattr(a2c_network, 'action_distribution', None) != 'beta':
+                raise ValueError('Beta model requires continuous.distribution: beta')
+            self.a2c_network = a2c_network
+
+        def uses_cached_reservoir_features(self):
+            method = getattr(
+                self.a2c_network, 'uses_cached_reservoir_features', None
+            )
+            return bool(method is not None and method())
+
+        def get_reservoir_feature_count(self):
+            return self.a2c_network.get_reservoir_feature_count()
+
+        def is_rnn(self):
+            return self.a2c_network.is_rnn()
+
+        def get_value_layer(self):
+            return self.a2c_network.get_value_layer()
+
+        def get_default_rnn_state(self):
+            return self.a2c_network.get_default_rnn_state()
+
+        @staticmethod
+        def policy_kl(alpha, beta, old_alpha, old_beta, reduce=True):
+            from rl_games.algos_torch.torch_ext import beta_policy_kl
+            return beta_policy_kl(alpha, beta, old_alpha, old_beta, reduce)
+
+        def forward(self, input_dict):
+            is_train = input_dict.get('is_train', True)
+            input_dict['obs'] = self.norm_obs(input_dict['obs'])
+            alpha, beta, value, states = self.a2c_network(input_dict)
+            distribution = torch.distributions.Beta(alpha.float(), beta.float(), validate_args=False)
+            action_mean = 2.0 * distribution.mean - 1.0
+            if is_train:
+                return {
+                    'prev_neglogp': -(distribution.log_prob(input_dict['prev_actions']) - math.log(2.0)).sum(-1),
+                    'values': value,
+                    'entropy': (distribution.entropy() + math.log(2.0)).sum(-1),
+                    'rnn_states': states,
+                    'mus': alpha, 'sigmas': beta,
+                    'action_mean': action_mean,
+                }
+            unit_action = distribution.sample()
+            result = {
+                'neglogpacs': -(distribution.log_prob(unit_action) - math.log(2.0)).sum(-1),
+                'values': self.denorm_value(value),
+                'actions': 2.0 * unit_action - 1.0,
+                'mus': action_mean,
+                'sigmas': 2.0 * distribution.stddev,
+                'rnn_states': states,
+                'policy_storage_actions': unit_action,
+                'policy_storage_mus': alpha,
+                'policy_storage_sigmas': beta,
+            }
+            if self.uses_cached_reservoir_features():
+                result['reservoir_features'] = (
+                    self.a2c_network.last_reservoir_features
+                )
+            return result
+
+
+class ModelA2CContinuousTanhLogStd(BaseModel):
+    """PPO diagonal Gaussian transformed to the bounded action space by tanh.
+
+    Rollout buffers retain the pre-tanh action and mean so likelihood ratios and
+    Gaussian KL can be evaluated without numerically inverting saturated tanh
+    outputs.  ``actions`` and ``mus`` remain the values consumed by players and
+    the environment.
+    """
+
+    def __init__(self, network, entropy_samples=1):
+        BaseModel.__init__(self, 'a2c')
+        self.network_builder = network
+        if (
+            isinstance(entropy_samples, bool)
+            or int(entropy_samples) != entropy_samples
+        ):
+            raise TypeError('entropy_samples must be a positive integer')
+        entropy_samples = int(entropy_samples)
+        if entropy_samples <= 0:
+            raise ValueError('entropy_samples must be a positive integer')
+        self.entropy_samples = entropy_samples
+
+    def build(self, config):
+        obs_shape = config['input_shape']
+        normalize_value = config.get('normalize_value', False)
+        normalize_input = config.get('normalize_input', False)
+        value_size = config.get('value_size', 1)
+        extra_info_start_idx = config.get('coef_id_idx', None)
+        assert 'coef_id_idx' not in config or len(obs_shape) == 1
+        return self.Network(
+            self.network_builder.build(self.model_class, **config),
+            obs_shape=obs_shape,
+            normalize_value=normalize_value,
+            normalize_input=normalize_input,
+            value_size=value_size,
+            extra_info_start_idx=extra_info_start_idx,
+            entropy_samples=self.entropy_samples,
+        )
+
+    class Network(BaseModelNetwork):
+        def __init__(
+            self,
+            a2c_network,
+            entropy_samples,
+            **kwargs,
+        ):
+            BaseModelNetwork.__init__(self, **kwargs)
+            self.a2c_network = a2c_network
+            self.entropy_samples = entropy_samples
+
+        def is_rnn(self):
+            return self.a2c_network.is_rnn()
+
+        def get_value_layer(self):
+            return self.a2c_network.get_value_layer()
+
+        def get_default_rnn_state(self):
+            return self.a2c_network.get_default_rnn_state()
+
+        @staticmethod
+        def log_abs_det_jacobian(pre_tanh):
+            # Stable log(1 - tanh(x)^2), including saturated float32 outputs.
+            return 2.0 * (
+                math.log(2.0) - pre_tanh - F.softplus(-2.0 * pre_tanh)
+            )
+
+        def neglogp(self, pre_tanh, mean, logstd):
+            normalized = (pre_tanh - mean) * torch.exp(-logstd)
+            base_log_prob = (
+                -0.5 * normalized.square()
+                - logstd
+                - 0.5 * math.log(2.0 * math.pi)
+            )
+            transformed_log_prob = (
+                base_log_prob - self.log_abs_det_jacobian(pre_tanh)
+            )
+            return -transformed_log_prob.sum(dim=-1)
+
+        def squashed_entropy(self, distribution, mean, logstd):
+            sample_shape = (
+                torch.Size()
+                if self.entropy_samples == 1
+                else torch.Size((self.entropy_samples,))
+            )
+            pre_tanh = distribution.rsample(sample_shape)
+            entropy = self.neglogp(pre_tanh, mean, logstd)
+            if self.entropy_samples > 1:
+                entropy = entropy.mean(dim=0)
+            return entropy
+
+        def forward(self, input_dict):
+            is_train = input_dict.get('is_train', True)
+            prev_actions = input_dict.get('prev_actions', None)
+            input_dict['obs'] = self.norm_obs(input_dict['obs'])
+            mean, logstd, value, states = self.a2c_network(input_dict)
+            sigma = torch.exp(logstd)
+            distribution = torch.distributions.Normal(
+                mean, sigma, validate_args=False
+            )
+            if is_train:
+                entropy = self.squashed_entropy(distribution, mean, logstd)
+                prev_neglogp = self.neglogp(prev_actions, mean, logstd)
+                return {
+                    'prev_neglogp': torch.squeeze(prev_neglogp),
+                    'values': value,
+                    'entropy': entropy,
+                    'rnn_states': states,
+                    # Training and KL operate in the pre-tanh coordinates.
+                    'mus': mean,
+                    'sigmas': sigma,
+                }
+
+            pre_tanh_action = distribution.sample()
+            action = torch.tanh(pre_tanh_action)
+            neglogp = self.neglogp(pre_tanh_action, mean, logstd)
+            return {
+                'neglogpacs': torch.squeeze(neglogp),
+                'values': self.denorm_value(value),
+                'actions': action,
+                'pre_tanh_actions': pre_tanh_action,
+                'rnn_states': states,
+                'mus': torch.tanh(mean),
+                'pre_tanh_mus': mean,
+                'sigmas': sigma,
+            }
+
 
 class ModelMultiA2CContinuousLogStd(BaseModel):
     def __init__(self, network):
@@ -503,6 +722,3 @@ class ModelSACContinuous(BaseModel):
             mu, sigma = self.sac_network(input_dict)
             dist = SquashedNormal(mu, sigma)
             return dist
-
-
-

@@ -1,0 +1,47 @@
+defaults:
+  - SimToolRealConnectome1952AdaptersMLPBetaSAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      observations:
+        policy_size: 144
+        sensory_size: 58
+        context_size: 74
+        goal_size: 12
+        sensory_ranges: [[0, 58]]
+        context_ranges: [[58, 129], [141, 144]]
+        goal_ranges: [[129, 141]]
+      # These mappings contain no trainable parameters. Source ranges use the
+      # Rotation6D task observation order; target offsets index the selected
+      # MaleCNS population in deterministic artifact order.
+      fixed_input_encoder:
+        mode: population_code_v1
+        proprioceptor_artifact_key: front_proprioceptors_indices
+        tactile_artifact_key: front_tactile_indices
+        sensory_mappings:
+          # One position channel per DOF, followed by opponent velocity channels.
+          - {source_range: [0, 29], target_offset: 0, encoding: signed_tanh, scale: 1.0}
+          - {source_range: [29, 58], target_offset: 29, encoding: opponent_tanh, scale: 10.0}
+        descending_mappings:
+          - {source_range: [58, 87], target_offset: 0, encoding: signed_tanh, scale: 1.0}
+          - {source_range: [87, 90], target_offset: 29, encoding: signed_tanh, scale: 0.5}
+          - {source_range: [90, 102], target_offset: 32, encoding: signed_tanh, scale: 1.0}
+          - {source_range: [102, 117], target_offset: 44, encoding: signed_tanh, scale: 0.25}
+          - {source_range: [117, 129], target_offset: 59, encoding: signed_tanh, scale: 0.25}
+          - {source_range: [141, 144], target_offset: 71, encoding: signed_tanh, scale: 2.0}
+          - {source_range: [129, 141], target_offset: 74, encoding: opponent_tanh, scale: 0.25}
+      reservoir_readout:
+        enabled: true
+        feature_population: motor
+        condition_on_sapg: true
+        architecture: mlp
+        hidden_size: 128
+        activation: elu
+  config:
+    name: ${resolve_default:SimToolRealConnectome1952FixedReservoirRotation6DBetaSAPG,${....experiment}}
+    # Fixed physical encodings replace a learned/running observation transform.
+    normalize_input: false
+    # The privileged central critic remains active. The actor-side value head is
+    # disabled by the experiment YAML so only the policy readout is optimized.

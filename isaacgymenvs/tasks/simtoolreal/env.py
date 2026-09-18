@@ -49,11 +49,18 @@ from torch import Tensor
 
 import json
 
-from pytorch3d.transforms import (
-    axis_angle_to_matrix,
-    matrix_to_quaternion,
-    quaternion_to_matrix,
-)
+try:
+    from pytorch3d.transforms import (
+        axis_angle_to_matrix,
+        matrix_to_quaternion,
+        quaternion_to_matrix,
+    )
+except ImportError:
+    from simtoolreal_shared.rotation_transforms import (
+        axis_angle_to_matrix,
+        matrix_to_quaternion,
+        quaternion_to_matrix,
+    )
 
 from dextoolbench.objects import NAME_TO_OBJECT
 from isaacgymenvs.tasks.base.vec_task import VecTask
@@ -68,7 +75,7 @@ from isaacgymenvs.utils.observation_action_utils_sharpa import (
     compute_observation,
     create_urdf_object,
 )
-from isaacgymenvs.utils.rendering import render_camera_sensors_for_current_step
+from isaacgymenvs.utils.rendering import render_camera_sensors_for_current_step, simtoolreal_camera_pose
 from isaacgymenvs.utils.torch_jit_utils import (
     get_axis_params,
     quat_rotate,
@@ -80,6 +87,7 @@ from isaacgymenvs.utils.torch_jit_utils import (
 )
 from simtoolreal_shared.action_config import validate_privileged_actions
 from simtoolreal_shared.pose_html import portable_visual_urdf, render_pose_html
+from simtoolreal_shared.rotation_transforms import quaternion_xyzw_to_rotation_6d
 
 DATETIME_STR = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 VIEWER_PUBLIC_RAW_BASE = "https://raw.githubusercontent.com/tylerlum/simtoolreal/main/"
@@ -307,14 +315,29 @@ class SimToolReal(VecTask):
 
         print("Obs type:", self.obs_type)
 
+        self.orientation_observation_representation = self.cfg["env"].get(
+            "orientationObservationRepresentation", "quaternion_xyzw"
+        )
+        if self.orientation_observation_representation not in {
+            "quaternion_xyzw",
+            "rotation_6d",
+        }:
+            raise ValueError(
+                "orientationObservationRepresentation must be quaternion_xyzw "
+                "or rotation_6d"
+            )
+        orientation_size = (
+            6 if self.orientation_observation_representation == "rotation_6d" else 4
+        )
+
         self.obs_type_size_dict = {
             "joint_pos": self.num_hand_arm_dofs,
             "joint_vel": self.num_hand_arm_dofs,
             "prev_action_targets": self.num_hand_arm_dofs,
             "palm_pos": 3,
-            "palm_rot": 4,
+            "palm_rot": orientation_size,
             "palm_vel": 6,
-            "object_rot": 4,
+            "object_rot": orientation_size,
             "object_vel": 6,
             "fingertip_pos_rel_palm": 3 * self.num_fingertips,
             "keypoints_rel_palm": 3 * self.num_keypoints,
@@ -330,6 +353,28 @@ class SimToolReal(VecTask):
 
         self.state_list = self.cfg["env"]["stateList"]
         self.obs_list = self.cfg["env"]["obsList"]
+        self.vision_config = self.cfg['env'].get('policyVision', {})
+        self.policy_vision_enabled = bool(self.vision_config.get('enabled', False))
+        self.policy_camera_handles = []
+        self.policy_camera_render_interval = 1
+        self._policy_camera_observation_index = 0
+        self._policy_camera_luminance = None
+        self._policy_camera_rgba = None
+        if self.policy_vision_enabled:
+            if self.cfg['env'].get('goodResetBoundary', 0) > 0 or self.cfg['env'].get('saveStates', False):
+                raise ValueError('Vision currently requires ordinary resets and saveStates=false: hidden goal actors are not logical goal snapshots')
+            if not self.cfg['env']['enableCameraSensors']:
+                raise ValueError('policyVision requires enableCameraSensors')
+            if self.cfg['env'].get('enableDebugVis') or self.cfg['env'].get('VISUALIZE_PD_TARGET_AS_BLUE_ROBOT'):
+                raise ValueError('Policy cameras must not contain debug annotations')
+            render_interval = self.vision_config.get('renderInterval', 1)
+            if isinstance(render_interval, bool) or not isinstance(render_interval, int):
+                raise TypeError('policyVision.renderInterval must be an integer')
+            if render_interval < 1:
+                raise ValueError('policyVision.renderInterval must be positive')
+            self.policy_camera_render_interval = render_interval
+            self.obs_type_size_dict['camera_luminance'] = int(self.vision_config['width']) * int(self.vision_config['height'])
+            self.obs_type_size_dict['goal_keypoints_world'] = 3 * self.num_keypoints
 
         # assert that all obs in state_list and obs_list are keys of self.obs_type_size_dict
         for obs_type in self.state_list + self.obs_list:
@@ -339,6 +384,8 @@ class SimToolReal(VecTask):
 
         # assert that all obs in obs_list are also in state_list
         for obs_type in self.obs_list:
+            if self.policy_vision_enabled and obs_type in {'camera_luminance', 'goal_keypoints_world'}:
+                continue
             assert obs_type in self.state_list, (
                 f"Obs type {obs_type} not found in state_list but is in obs_list"
             )
@@ -383,8 +430,9 @@ class SimToolReal(VecTask):
         self.index_to_view = 0
 
         # Camera position and target for viewer
-        cam_target = gymapi.Vec3(0.0, 0.0, 0.53)
-        cam_pos = cam_target + gymapi.Vec3(0.0, -1.0, 0.5)
+        camera_position, camera_target = simtoolreal_camera_pose()
+        cam_target = gymapi.Vec3(*camera_target)
+        cam_pos = gymapi.Vec3(*camera_position)
         if self.viewer is not None:
             self.gym.viewer_camera_look_at(
                 self.viewer, self.envs[self.index_to_view], cam_pos, cam_target
@@ -392,6 +440,9 @@ class SimToolReal(VecTask):
 
         # Init camera for wandb logging
         self._initialize_camera_sensor(cam_pos=cam_pos, cam_target=cam_target)
+        if self.policy_vision_enabled:
+            self.policy_camera_tensors = [gymtorch.wrap_tensor(self.gym.get_camera_image_gpu_tensor(
+                self.sim, env, handle, gymapi.IMAGE_COLOR)) for env, handle in zip(self.envs, self.policy_camera_handles)]
         self._modify_render_settings_if_headless()
         self.viewer_state_frames = None
         self._viewer_capture_index = 0
@@ -2182,6 +2233,19 @@ class SimToolReal(VecTask):
 
             self.gym.end_aggregate(env_ptr)
 
+            if self.policy_vision_enabled:
+                properties = gymapi.CameraProperties()
+                properties.width = int(self.vision_config['width'])
+                properties.height = int(self.vision_config['height'])
+                properties.enable_tensors = True
+                handle = self.gym.create_camera_sensor(env_ptr, properties)
+                if handle < 0:
+                    raise RuntimeError('Failed to create policy camera')
+                position, target = simtoolreal_camera_pose()
+                self.gym.set_camera_location(handle, env_ptr,
+                    gymapi.Vec3(*position), gymapi.Vec3(*target))
+                self.policy_camera_handles.append(handle)
+
             self.envs.append(env_ptr)
             self.robots.append(robot_actor)
             self.objects.append(object_handle)
@@ -3072,9 +3136,47 @@ class SimToolReal(VecTask):
             self.closest_keypoint_max_dist_fixed_size,
         )
 
+    def _orientation_observation(self, quaternion_xyzw: Tensor) -> Tensor:
+        if self.orientation_observation_representation == "quaternion_xyzw":
+            return quaternion_xyzw
+        return quaternion_xyzw_to_rotation_6d(quaternion_xyzw)
+
     def populate_obs_and_states_buffers(self) -> None:
         num_dofs = self.num_hand_arm_dofs
         obs_dict = {}
+        if self.policy_vision_enabled:
+            should_render = (
+                self._policy_camera_luminance is None
+                or self._policy_camera_observation_index
+                % self.policy_camera_render_interval
+                == 0
+            )
+            if should_render:
+                render_camera_sensors_for_current_step(self.gym, self.sim, self.device)
+                self.gym.start_access_image_tensors(self.sim)
+                try:
+                    if self.vision_config.get('fusedLuminance', False):
+                        from simtoolreal_shared.vision_ops import rgba_luminance
+                        if self._policy_camera_rgba is None:
+                            self._policy_camera_rgba = torch.empty(
+                                (len(self.policy_camera_tensors), *self.policy_camera_tensors[0].shape),
+                                device=self.device, dtype=torch.uint8)
+                        torch.stack(self.policy_camera_tensors, out=self._policy_camera_rgba)
+                        output = (None if self._policy_camera_luminance is None else
+                                  self._policy_camera_luminance.view(self._policy_camera_rgba.shape[:-1]))
+                        self._policy_camera_luminance = rgba_luminance(
+                            self._policy_camera_rgba, output).flatten(1)
+                    else:
+                        rgb = torch.stack(self.policy_camera_tensors)[..., :3].float() / 255.0
+                        self._policy_camera_luminance = (
+                            rgb * rgb.new_tensor([.299, .587, .114])
+                        ).sum(-1).flatten(1)
+                finally:
+                    self.gym.end_access_image_tensors(self.sim)
+            obs_dict['camera_luminance'] = self._policy_camera_luminance
+            self._policy_camera_observation_index += 1
+            # Desired geometry only: no actual object pose or goal-error shortcut.
+            obs_dict['goal_keypoints_world'] = self.goal_keypoint_pos_fixed_size.flatten(1)
 
         # We first fill in the obs_dict with the values that should be given to the critic, which are clean
         # Then after creating state_buf, we add the noisy delayed object state observations and other observation changes to the policy's obs_buf
@@ -3093,9 +3195,13 @@ class SimToolReal(VecTask):
         # palm pos
         obs_dict["palm_pos"] = self.palm_center_pos
         # palm rot
-        obs_dict["palm_rot"] = self._palm_state[:, 3:7]
+        obs_dict["palm_rot"] = self._orientation_observation(
+            self._palm_state[:, 3:7]
+        )
         # object rot
-        obs_dict["object_rot"] = self.object_state[:, 3:7]
+        obs_dict["object_rot"] = self._orientation_observation(
+            self.object_state[:, 3:7]
+        )
         # keypoint distances relative to the palm of the hand
         keypoint_rel_pos_size = 3 * self.num_keypoints
         obs_dict["keypoints_rel_palm"] = self.keypoints_rel_palm.reshape(
@@ -3153,7 +3259,9 @@ class SimToolReal(VecTask):
         use_object_state_delay_noise = self.cfg["env"]["useObjectStateDelayNoise"]
         if use_object_state_delay_noise:
             # Add noise
-            obs_dict["object_rot"] = self.observed_object_state[:, 3:7]
+            obs_dict["object_rot"] = self._orientation_observation(
+                self.observed_object_state[:, 3:7]
+            )
             obs_dict["object_vel"] = (
                 self.observed_object_state[:, 7:13] * self.turn_off_object_vel_obs_scale
             )
@@ -3509,6 +3617,13 @@ class SimToolReal(VecTask):
             return
 
         unique_object_indices = torch.unique(torch.cat(object_indices).to(torch.int32))
+
+        if self.policy_vision_enabled:
+            # The goal is a separate logical tensor used by reward and the task
+            # channel. Park its visualization actor below the scene before every
+            # indexed update so neither policy nor evaluation cameras see it.
+            self.root_state_tensor[self.goal_object_indices, 2] = -100.0
+            unique_object_indices = torch.unique(torch.cat((unique_object_indices, self.goal_object_indices.to(torch.int32))))
 
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim,
@@ -4864,12 +4979,16 @@ class SimToolReal(VecTask):
 
     def _initialize_camera_sensor(self, cam_pos, cam_target) -> None:
         self.camera_properties = gymapi.CameraProperties()
-        RESOLUTION_REDUCTION_FACTOR_TO_SAVE_SPACE = 4
+        resolution_reduction_factor = int(
+            self.cfg["env"].get("cameraResolutionReductionFactor", 4)
+        )
+        if resolution_reduction_factor < 1:
+            raise ValueError("cameraResolutionReductionFactor must be at least 1")
         self.camera_properties.width = int(
-            self.camera_properties.width / RESOLUTION_REDUCTION_FACTOR_TO_SAVE_SPACE
+            self.camera_properties.width / resolution_reduction_factor
         )
         self.camera_properties.height = int(
-            self.camera_properties.height / RESOLUTION_REDUCTION_FACTOR_TO_SAVE_SPACE
+            self.camera_properties.height / resolution_reduction_factor
         )
         self.camera_handle = self.gym.create_camera_sensor(
             self.envs[self.index_to_view],

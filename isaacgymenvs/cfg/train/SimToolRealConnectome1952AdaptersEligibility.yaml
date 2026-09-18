@@ -1,0 +1,12 @@
+defaults:
+  - SimToolRealConnectome1952Eligibility
+  - _self_
+
+params:
+  network:
+    connectome:
+      adaptation:
+        weight_mode: adapters_only
+        learn_dynamics: false
+  config:
+    name: ${resolve_default:SimToolRealConnectome1952AdaptersEligibility,${....experiment}}

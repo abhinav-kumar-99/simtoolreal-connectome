@@ -64,6 +64,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
                 'multi_gpu' : self.multi_gpu,
                 'zero_rnn_on_done' : self.zero_rnn_on_done,
                 'type': 'simple' if 'learn_param' not in self.expl_type else 'extra_param',
+                'rollout_accumulation_steps': self.rollout_accumulation_steps,
             }
             if self.expl_type.startswith('mixed_expl'):
                 cv_config['coef_ids'] = self.intr_reward_coef_embd[::self.intr_coef_block_size,0]
@@ -71,7 +72,46 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             self.central_value_net = central_value.CentralValueTrain(**cv_config).to(self.ppo_device)
 
         self.use_experimental_cv = self.config.get('use_experimental_cv', True)
-        self.dataset = datasets.PPODataset(self.batch_size, self.minibatch_size, self.is_discrete, self.is_rnn, self.ppo_device, self.seq_length)
+        self.logical_minibatch_size = self.minibatch_size
+        self.microbatch_size = int(
+            self.config.get('microbatch_size', self.logical_minibatch_size)
+        )
+        if self.microbatch_size <= 0:
+            raise ValueError("microbatch_size must be positive")
+        if self.logical_minibatch_size % self.microbatch_size != 0:
+            raise ValueError(
+                f"minibatch_size {self.logical_minibatch_size} must be divisible "
+                f"by microbatch_size {self.microbatch_size}"
+            )
+        if self.microbatch_size % self.seq_length != 0:
+            raise ValueError(
+                f"microbatch_size {self.microbatch_size} must be divisible by "
+                f"seq_length {self.seq_length}"
+            )
+        self.microbatches_per_minibatch = (
+            self.logical_minibatch_size // self.microbatch_size
+        )
+        print(
+            "actor optimizer batch:",
+            self.logical_minibatch_size,
+            "physical microbatch:",
+            self.microbatch_size,
+            "nominal accumulation steps:",
+            self.microbatches_per_minibatch,
+        )
+        if self.microbatches_per_minibatch > 1 and os.getenv('LOG_OFF_POLICY_GRADS'):
+            raise ValueError(
+                "LOG_OFF_POLICY_GRADS is incompatible with gradient accumulation"
+            )
+        self.dataset = datasets.PPODataset(
+            self.batch_size,
+            self.microbatch_size,
+            self.is_discrete,
+            self.is_rnn,
+            self.ppo_device,
+            self.seq_length,
+            logical_minibatch_size=self.logical_minibatch_size,
+        )
         if self.normalize_value:
             self.value_mean_std = self.central_value_net.model.value_mean_std if self.has_central_value else self.model.value_mean_std
 
@@ -102,7 +142,14 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
     def get_masked_action_values(self, obs, action_masks):
         assert False
 
-    def calc_gradients(self, input_dict):
+    def calc_gradients(
+        self,
+        input_dict,
+        *,
+        zero_grad=True,
+        optimizer_step=True,
+        loss_scale=1.0,
+    ):
         value_preds_batch = input_dict['old_values']
         old_action_log_probs_batch = input_dict['old_logp_actions']
         advantage = input_dict['advantages']
@@ -121,6 +168,8 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             'prev_actions': actions_batch, 
             'obs' : obs_batch,
         }
+        if self.uses_cached_reservoir_features:
+            batch_dict['reservoir_features'] = input_dict['reservoir_features']
 
         rnn_masks = None
         if self.is_rnn:
@@ -138,6 +187,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             entropy = res_dict['entropy']
             mu = res_dict['mus']
             sigma = res_dict['sigmas']
+            action_mean = res_dict.get('action_mean', mu)
 
             a_loss = self.actor_loss_func(old_action_log_probs_batch, action_log_probs, advantage, self.ppo, curr_e_clip)
 
@@ -146,9 +196,9 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             else:
                 c_loss = torch.zeros((len(values), 1), device=self.ppo_device)
             if self.bound_loss_type == 'regularisation':
-                b_loss = self.reg_loss(mu)
+                b_loss = self.reg_loss(action_mean)
             elif self.bound_loss_type == 'bound':
-                b_loss = self.bound_loss(mu)
+                b_loss = self.bound_loss(action_mean)
             else:
                 b_loss = torch.zeros(len(mu), device=self.ppo_device)
             
@@ -174,19 +224,30 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
 
             loss = a_loss + 0.5 * c_loss * self.critic_coef - entropy_loss + b_loss * self.bounds_loss_coef
 
-            if self.multi_gpu:
-                self.optimizer.zero_grad()
-            else:
-                for param in self.model.parameters():
-                    param.grad = None
+            if zero_grad:
+                if self.multi_gpu:
+                    self.optimizer.zero_grad()
+                else:
+                    for param in self.model.parameters():
+                        param.grad = None
 
-        self.scaler.scale(loss).backward()
-        #TODO: Refactor this ugliest code of they year
-        all_grads = self.trancate_gradients_and_step()
+        self.scaler.scale(loss * loss_scale).backward()
+        if optimizer_step:
+            #TODO: Refactor this ugliest code of they year
+            all_grads = self.trancate_gradients_and_step()
+        else:
+            all_grads = torch.cat(
+                [
+                    torch.zeros_like(param).view(-1)
+                    for param in self.model.parameters()
+                    if param.requires_grad
+                ]
+            )
 
         with torch.no_grad():
             reduce_kl = rnn_masks is None
-            kl_dist = torch_ext.policy_kl(mu.detach(), sigma.detach(), old_mu_batch, old_sigma_batch, reduce_kl)
+            policy_kl = getattr(self.model, 'policy_kl', torch_ext.policy_kl)
+            kl_dist = policy_kl(mu.detach(), sigma.detach(), old_mu_batch, old_sigma_batch, reduce_kl)
             if rnn_masks is not None:
                 kl_dist = (kl_dist * rnn_masks).sum() / rnn_masks.numel()  #/ sum_mask
 
@@ -229,8 +290,20 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             kl_dist, self.last_lr, lr_mul, \
             mu.detach(), sigma.detach(), b_loss, extras)
 
-    def train_actor_critic(self, input_dict):
-        self.calc_gradients(input_dict)
+    def train_actor_critic(
+        self,
+        input_dict,
+        *,
+        zero_grad=True,
+        optimizer_step=True,
+        loss_scale=1.0,
+    ):
+        self.calc_gradients(
+            input_dict,
+            zero_grad=zero_grad,
+            optimizer_step=optimizer_step,
+            loss_scale=loss_scale,
+        )
         return self.train_result
 
     def reg_loss(self, mu):
@@ -259,15 +332,17 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
 
         loss.backward(retain_graph=retain_graph)
 
-        all_grads_list = []
-        for param in self.model.parameters():
-            if param.grad is not None:
-                all_grads_list.append(param.grad.view(-1))
-
-        all_grads = torch.cat(all_grads_list)
+        all_grads = torch.cat(
+            [
+                param.grad.view(-1)
+                if param.grad is not None
+                else torch.zeros_like(param).view(-1)
+                for param in self.model.parameters()
+                if param.requires_grad
+            ]
+        )
         if self.multi_gpu:
             # batch allreduce ops: see https://github.com/entity-neural-network/incubator/pull/220
             dist.all_reduce(all_grads, op=dist.ReduceOp.SUM)
         
         return all_grads
-

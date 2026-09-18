@@ -1,0 +1,42 @@
+schema_version: 1
+name: malecns_matched
+stages: [prepare, train]
+output_directory: train_dir/connectome/full
+preparation:
+  config: configs/connectome/malecns_4310.yaml
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - SimToolRealConnectomeGainsDynamicsSAPG
+    - SimToolRealConnectomeFrozenSAPG
+    - SimToolRealConnectomeRewiredSAPG
+    - SimToolRealConnectomeRandomSAPG
+    - SimToolRealLSTMAsymmetricSAPG
+  seeds: [42, 43, 44]
+  gpu_assignments: [0, 1]
+  num_envs: 24576
+  sapg_block_size: 4096
+  epochs: 1000000
+  minibatch_size: 98304
+  central_critic_minibatch_size: 98304
+  save_frequency: 3000
+  save_best_after: 100
+  on_existing: fail
+  checkpoint:
+    mode: none
+    path: ''
+  wandb:
+    enabled: true
+    project: simtoolreal-connectome
+    entity: ''
+    group: malecns-matched
+    tags: [malecns, matched-seeds, sapg]
+  overrides:
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    task.env.forceScale: 20.0
+    task.env.torqueScale: 2.0
+    task.env.objectAngVelPenaltyScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

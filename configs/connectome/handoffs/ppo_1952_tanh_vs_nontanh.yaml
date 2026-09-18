@@ -1,0 +1,17 @@
+schema_version: 1
+output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/resume_handoff_controller
+catch_up_suite: configs/connectome/suites/ppo_1952_mlp_adapters_tanh_resume_to_match.yaml
+comparison:
+  tag: rewards/step
+  target_step: 2378366976
+  window_points: 100
+  candidate: tanh
+  baseline: non_tanh
+  runs:
+    tanh:
+      summary_directory: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_mlp_adapters_tanh_kl016_lr01_100b/00_ppo_1952_mlp_adapters_tanh_kl016_lr01_100b_adapters_mlp_tanh_seed42/rl_runs/00_ppo_1952_mlp_adapters_tanh_kl016_lr01_100b_adapters_mlp_tanh_seed42/summaries
+    non_tanh:
+      summary_directory: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_mlp_adapters_kl004_lr01_100b/00_ppo_1952_mlp_adapters_kl004_lr01_100b_adapters_mlp_seed42/rl_runs/00_ppo_1952_mlp_adapters_kl004_lr01_100b_adapters_mlp_seed42/summaries
+continuation_suites:
+  tanh: configs/connectome/suites/ppo_1952_mlp_adapters_tanh_resume_continue.yaml
+  non_tanh: configs/connectome/suites/ppo_1952_mlp_adapters_nontanh_resume_continue.yaml

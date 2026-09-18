@@ -1,0 +1,6 @@
+schema_version: 1
+name: malecns_prepare
+stages: [prepare]
+output_directory: profiles/connectome/prepare
+preparation:
+  config: configs/connectome/malecns_4310.yaml
