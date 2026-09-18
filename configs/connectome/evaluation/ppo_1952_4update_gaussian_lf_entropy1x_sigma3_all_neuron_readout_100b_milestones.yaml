@@ -27,8 +27,11 @@ evaluation:
   metrics:
     paper_task_progress:
       success_tolerance_m: 0.02
+    checkpoint_training_tolerance:
+      success_tolerance_source: checkpoint_tensorboard
+      success_tolerance_tag: scalars/success_tolerance/frame
   videos:
-    metric: paper_task_progress
+    metrics: [paper_task_progress, checkpoint_training_tolerance]
     fps: 20
     frame_interval: 3
     camera_resolution_reduction_factor: 2

@@ -690,62 +690,17 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Initial production telemetry was finite through frame 1,769,472 with approximately 95K-101K warm total FPS, reward 34.7445, entropy 41.1834, KL `.00312`, and both actor and value losses present.
 - Confirmed that the existing port-6008 TensorBoard discovered the new production and smoke event streams without restart. GPU-0 trainer/watcher PIDs 261951/262494 were preserved.
 
-## [2026-09-16] query | Clarify actor and critic fly features
 
-- Distinguished the privileged central critic from the actor-side auxiliary value head: the central critic consumes no fly state, while `use_experimental_cv: true` trains the auxiliary head through actor features.
-- Recorded that the live motor-readout policy sends 135 fly states to its action MLP but all 1,952 states to its auxiliary value head; the all-neuron policy sends all 1,952 states to both heads.
-- Documented privileged-state-plus-detached-recurrent-features as a future recurrent-critic ablation, not an established improvement. No configuration or running process changed.
+## [2026-09-16] implement | Add checkpoint-tolerance milestone videos
 
-## [2026-09-16] query | Define the standard SimToolReal critic analogue
+- Extended YAML-owned milestone evaluation to generate two otherwise identical deterministic video sets per checkpoint: fixed paper tolerance `.02` and the exact training tolerance from `scalars/success_tolerance/frame` at that checkpoint's actual frame.
+- Added strict exact-frame TensorBoard resolution, per-metric video completion accounting and case-level reuse so existing fixed-tolerance videos are not rerendered during backfill.
+- Updated the active dense Gaussian watcher contract and added a structured Rotation-6D Gaussian watcher contract for its preserved 250M checkpoint. Both retain mean actions, coefficient ID 50, one-step waypoint scoring, trajectories, simulator overrides and rendering settings across the two sets.
+- Focused milestone/configuration tests passed; implementation was isolated on `feature/checkpoint-tolerance-videos` because the primary checkout contained unrelated dirty visual-reservoir work.
 
-- Distinguished asymmetric information from shared representation: privileged state is the defining central-critic contract, while actor memory is only an optional additional conditioning variable for a recurrent policy.
-- Defined the paper analogue as privileged central critic only and the released-code analogue as privileged central critic plus an auxiliary actor value head sharing the actor's post-recurrent trunk.
-- Recorded that neither current connectome readout is an exact shared-trunk reproduction. No configuration or running process changed.
+## [2026-09-16] launch | Start dual-tolerance video backfill
 
-## [2026-09-17] launch | Replace motor readout with all-neuron no-auxiliary comparison
-
-- Stopped only the GPU-0 motor-readout suite/trainer and its current milestone watcher; its artifacts remain preserved through the completed 5,750,194,176-frame inference milestone.
-- Added a fresh YAML-owned GPU-0 run and watcher matched to the GPU-1 all-neuron policy except for `use_experimental_cv: false`; configuration commit `51ee9c72`.
-- Launched suite/trainer/watcher PIDs 775098/775189/775104. At frame 1,376,256, reward, entropy, action loss, central-critic loss and KL were finite, actor `c_loss` was correctly zero, and invalid-KL flags were zero.
-- Preserved the GPU-1 all-neuron suite/trainer/watcher PIDs 543985/544079/555982 and confirmed the new run is visible in TensorBoard 6008 without restart.
-
-## [2026-09-17] fix | Complete central-critic recovery metadata
-
-- Audited live all-neuron PPO artifacts: full checkpoints already contained critic weights and Adam state, while inference milestones intentionally contained neither.
-- Confirmed that full checkpoints omitted the critic trainer's epoch, frame, scheduled-LR variable and optional recurrent state, so a resumed scheduled critic could restart its schedule at zero.
-- Added explicit central-value training metadata save/restore, legacy inference from actor counters plus critic optimizer LR, fresh-rollout handling that does not restore critic RNN state, and suite verification of the complete critic resume contract.
-- Existing trainers were not interrupted and continue writing the old schema until restarted; those checkpoints remain resumable through the compatibility path.
-
-## [2026-09-17] query | Current all-neuron parameter and edge count
-
-- Verified the live all-neuron MLP actor from its recovery checkpoint shapes: 692,268 declared trainable scalars, versus 7,811,468 for the original SimToolReal LSTM/SAPG actor.
-- Distinguished the GPU-0 no-auxiliary job's 690,315 actively gradient-receiving actor scalars from its still-declared 1,953-scalar unused value head; the GPU-1 auxiliary-loss job updates all 692,268.
-- Recorded the unchanged separate 2,037,769-scalar asymmetric critic and the current compact MaleCNS graph's 33,720 fixed directed connections, including the no-fly-circuit boundary for the original LSTM.
-
-## [2026-09-17] query | Learned interface MLP bottleneck limits
-
-- Derived the current all-neuron MLP actor counts at shared hidden widths 256/128/96/64 and distinguished algebraic input-rank limits from empirical decoder capacity.
-- The existing YAML exposes one shared interface width; 128 is the smallest setting that does not necessarily compress the 128-D sensory input, reducing the actor from 692,268 to 347,308 scalars.
-- A 128-sensory/64-descending/64-action 207,596-scalar design would require independently configurable widths; it is a proposed matched capacity ablation, not an implemented or evaluated policy.
-
-## [2026-09-17] docs | Add robot-to-fly mapping infographic
-
-- Added `docs/wiki/assets/robot-to-fly-neuron-mapping.png`, a 1,672 x 941 architecture diagram of the current learned-adapter all-neuron policy.
-- Embedded the diagram in the connectome actor concept page beside the exact 1,952-neuron and 33,720-edge dataflow description.
-
-## [2026-09-17] query | Aggressive asymmetric MLP capacity
-
-- Calculated 144,172 actor scalars for proposed `128/64/32` sensory/descending/action hidden widths, or 142,219 actively updated scalars when the auxiliary actor-value loss is disabled.
-- Distinguished the coordinate-full-rank `128/44/29` floor (134,206), an SAPG-structure-aware `128/18/29` candidate (128,980), and the already-supported direct-linear interfaces (115,016).
-- Widths below 29 on the action decoder impose a rank-limited action-synergy assumption; these counts are architectural bounds, not evidence of retained task performance.
-
-## [2026-09-17] implement | Independently sized 128/32/32 interface MLPs
-
-- Added backward-compatible sensory, descending, and readout hidden-width overrides; existing profiles still use the shared 256-unit width when the new keys are absent.
-- Added a clipped-Gaussian all-neuron `128/32/32` train profile and YAML-owned two-epoch full-geometry smoke entrypoint without launching or replacing either live job.
-- Verified the exact `128 -> 128 -> 384`, `44 -> 32 -> 157`, and `1,952 -> 32 -> 29` shapes. The resulting actor declares 137,740 trainable scalars, including the auxiliary value head and SAPG parameters.
-
-## [2026-09-17] query | Confirm active success-threshold curriculum
-
-- Revalidated the goal-tolerance curriculum from the raw environment scheduler: the 0.075 base tolerance reduces by 0.9 only after both 3,000 vector control steps and an all-12,288-environment mean of at least three completed goals per most recently completed episode.
-- Recorded that failed checks leave the update marker unchanged and therefore make the next qualifying control step advance immediately; `evalSuccessTolerance` is null for training and does not override the scheduler.
+- Replaced only dense Gaussian watcher PID 262494 with updated watcher PID 552085; dense trainer PID 261951 remained live and untouched. Started structured Rotation-6D watcher PID 552088 against its preserved 250M checkpoint.
+- The isolated worktree initially lacked the ignored generated MaleCNS NPZ, so first worker attempts failed before policy construction and were retained as retry diagnostics. Linked the existing read-only processed artifact into the worktree; both watchers then ran within available GPU memory and retried automatically.
+- The dense watcher reused all matching fixed-`.02` cases. Its first completed checkpoint-tolerance set at target 1.25B contained six total videos, three per metric; the resolved checkpoint tolerance was `0.07500000298`, mean actions remained deterministic, and an inspected MP4 decoded as H.264 at 800x450 with 200 frames. Dense historical backfill remained active at handoff. The preserved structured 250M checkpoint completed all six videos with three per metric, the same exact-frame tolerance, and no outstanding failure.
+- Applied the same dual-tolerance YAML contract to the concurrently launched all-neuron-readout Gaussian watcher so every current Gaussian policy evaluator uses the requested two-set protocol.

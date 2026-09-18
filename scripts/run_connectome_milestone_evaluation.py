@@ -5,22 +5,30 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import struct
 import sys
 import time
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import yaml
+from tensorboard.compat.proto.event_pb2 import Event
+from tensorboard.util import tensor_util
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from scripts.run_connectome_evaluation import run as run_evaluation
+from scripts.run_connectome_evaluation import run as run_evaluation, video_metric_names
 from simtoolreal_shared.milestone_checkpoints import (
     expected_milestone_targets,
     parse_milestone_checkpoint,
 )
+
+
+_SCALAR_CACHE: dict[tuple[str, str], dict] = {}
 
 
 def _load_yaml(path: Path) -> dict:
@@ -74,16 +82,96 @@ def _milestone_output_directory(
     )
 
 
+def _event_scalar(value, tag: str) -> float | None:
+    if value.tag != tag:
+        return None
+    try:
+        if value.HasField("tensor"):
+            array = np.asarray(tensor_util.make_ndarray(value.tensor))
+            if array.size != 1 or not np.issubdtype(array.dtype, np.number):
+                return None
+            return float(array.reshape(-1)[0])
+        if value.HasField("simple_value"):
+            return float(value.simple_value)
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def _scan_scalar_file(path: Path, offset: int, tag: str) -> tuple[int, dict[int, float]]:
+    """Incrementally read complete TensorBoard TFRecords for one scalar tag."""
+    values: dict[int, float] = {}
+    if path.stat().st_size < offset:
+        offset = 0
+    with path.open("rb") as stream:
+        stream.seek(offset)
+        while True:
+            record_start = stream.tell()
+            header = stream.read(12)
+            if len(header) < 12:
+                return record_start, values
+            length = struct.unpack("<Q", header[:8])[0]
+            if length > 1_000_000_000:
+                raise RuntimeError(f"Implausible TFRecord length {length} at {record_start}")
+            payload = stream.read(length)
+            footer = stream.read(4)
+            if len(payload) < length or len(footer) < 4:
+                return record_start, values
+            event = Event()
+            event.ParseFromString(payload)
+            if not event.HasField("summary"):
+                continue
+            for summary_value in event.summary.value:
+                number = _event_scalar(summary_value, tag)
+                if number is not None:
+                    values[int(event.step)] = number
+
+
+def _training_scalar_at_checkpoint(
+    checkpoint_path: Path, actual_frame: int, tag: str
+) -> float:
+    """Read the training scalar logged at the exact milestone checkpoint frame."""
+    run_directory = checkpoint_path.parent.parent
+    event_files = sorted(run_directory.rglob("events.out.tfevents.*"))
+    if not event_files:
+        raise RuntimeError(f"No TensorBoard event files under {run_directory}")
+    key = (str(run_directory.resolve()), tag)
+    cache = _SCALAR_CACHE.setdefault(key, {"offsets": {}, "values": {}})
+    for event_path in event_files:
+        path_key = str(event_path.resolve())
+        offset = int(cache["offsets"].get(path_key, 0))
+        next_offset, values = _scan_scalar_file(event_path, offset, tag)
+        cache["offsets"][path_key] = next_offset
+        cache["values"].update(values)
+    if actual_frame not in cache["values"]:
+        available = sorted(cache["values"])
+        nearest = min(available, key=lambda step: abs(step - actual_frame)) if available else None
+        raise RuntimeError(
+            f"No exact {tag!r} value at checkpoint frame {actual_frame}; "
+            f"nearest logged step is {nearest}"
+        )
+    value = float(cache["values"][actual_frame])
+    if not math.isfinite(value) or value <= 0:
+        raise RuntimeError(
+            f"Invalid {tag!r} value {value!r} at checkpoint frame {actual_frame}"
+        )
+    return value
+
+
 def _completed_summary(
-    output_directory: Path, policy_name: str, expected_videos: int
+    output_directory: Path,
+    policy_name: str,
+    video_metrics: list[str],
+    expected_videos_per_metric: int,
 ) -> bool:
     summary_path = output_directory / "summary.json"
     if not summary_path.is_file():
         return False
     summary = json.loads(summary_path.read_text())
-    return (
-        summary.get("action_selection") == "mean"
-        and summary.get("video_counts", {}).get(policy_name) == expected_videos
+    counts = summary.get("video_counts_by_metric", {}).get(policy_name, {})
+    return summary.get("action_selection") == "mean" and all(
+        counts.get(metric_name) == expected_videos_per_metric
+        for metric_name in video_metrics
     )
 
 
@@ -92,8 +180,25 @@ def _evaluation_config(
     policy: dict,
     checkpoint_path: Path,
     output_directory: Path,
+    actual_frame: int,
 ) -> dict:
     evaluation = deepcopy(config["evaluation"])
+    for metric in evaluation["metrics"].values():
+        source = metric.pop("success_tolerance_source", None)
+        if source is None:
+            continue
+        if source != "checkpoint_tensorboard":
+            raise ValueError(f"Unknown success_tolerance_source: {source}")
+        tag = str(
+            metric.pop(
+                "success_tolerance_tag", "scalars/success_tolerance/frame"
+            )
+        )
+        metric["success_tolerance_m"] = _training_scalar_at_checkpoint(
+            checkpoint_path, actual_frame, tag
+        )
+        metric["resolved_from_checkpoint_frame"] = int(actual_frame)
+        metric["resolved_from_tensorboard_tag"] = tag
     evaluation.update(
         {
             "schema_version": 1,
@@ -124,7 +229,9 @@ def run(config: dict) -> dict:
     max_frames = int(config["max_frames"])
     expected_targets = expected_milestone_targets(max_frames, interval)
     policies = config["policies"]
-    expected_videos = len(config["evaluation"]["eval_cases"])
+    configured_video_metrics = video_metric_names(config["evaluation"])
+    expected_videos_per_metric = len(config["evaluation"]["eval_cases"])
+    expected_videos = expected_videos_per_metric * len(configured_video_metrics)
     state_path = output_root / "milestone_status.json"
     state = {
         "schema_version": 1,
@@ -134,6 +241,8 @@ def run(config: dict) -> dict:
         "max_frames": max_frames,
         "expected_targets_per_policy": len(expected_targets),
         "expected_videos_per_target": expected_videos,
+        "expected_videos_per_metric": expected_videos_per_metric,
+        "video_metrics": configured_video_metrics,
         "completed": {},
         "failures": {},
     }
@@ -156,15 +265,22 @@ def run(config: dict) -> dict:
             )
             for target in expected_targets:
                 target_key = str(target)
-                if target_key in completed or target not in available:
+                if target not in available:
                     continue
                 checkpoint_path, parsed = available[target]
                 output_directory = _milestone_output_directory(
                     output_root, policy_name, target, parsed["actual"]
                 )
-                if not _completed_summary(
-                    output_directory, policy_name, expected_videos
-                ):
+                target_complete = _completed_summary(
+                    output_directory,
+                    policy_name,
+                    configured_video_metrics,
+                    expected_videos_per_metric,
+                )
+                if target_key in completed and target_complete:
+                    continue
+                completed.pop(target_key, None)
+                if not target_complete:
                     print(
                         f"Evaluating {policy_name} target {target:,} at "
                         f"actual frame {parsed['actual']:,} on GPU {policy['gpu']}",
@@ -177,6 +293,7 @@ def run(config: dict) -> dict:
                                 policy,
                                 checkpoint_path,
                                 output_directory,
+                                parsed["actual"],
                             )
                         )
                     except Exception as error:

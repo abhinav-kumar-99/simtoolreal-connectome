@@ -1203,6 +1203,32 @@ def test_hundred_billion_milestone_evaluation_is_mean_action_high_resolution() -
     assert len(config["evaluation"]["eval_cases"]) == 3
 
 
+def test_active_gaussian_watchers_generate_fixed_and_checkpoint_tolerance_videos() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    paths = [
+        "ppo_1952_4update_gaussian_lf_entropy1x_sigma3_100b_milestones.yaml",
+        "ppo_1952_4update_structured_rot6d_gaussian_lf_entropy1x_sigma3_100b_milestones.yaml",
+        "ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_100b_milestones.yaml",
+    ]
+    for name in paths:
+        config = yaml.safe_load(
+            (repository_root / "configs/connectome/evaluation" / name).read_text()
+        )
+        evaluation = config["evaluation"]
+        assert evaluation["action_selection"] == "mean"
+        assert evaluation["metrics"]["paper_task_progress"]["success_tolerance_m"] == 0.02
+        checkpoint_metric = evaluation["metrics"]["checkpoint_training_tolerance"]
+        assert checkpoint_metric == {
+            "success_tolerance_source": "checkpoint_tensorboard",
+            "success_tolerance_tag": "scalars/success_tolerance/frame",
+        }
+        assert evaluation["videos"]["metrics"] == [
+            "paper_task_progress",
+            "checkpoint_training_tolerance",
+        ]
+        assert len(evaluation["eval_cases"]) == 3
+
+
 def test_compact_adapters_replacement_owns_matched_training_and_evaluation() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     suite = yaml.safe_load(
