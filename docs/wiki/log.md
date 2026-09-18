@@ -882,3 +882,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Changed the header to "1,952 neurons / 33,720 connections" after verifying ordered body-ID and CSR-weight counts in the raw artifact/builder. 33,720 is not a neuron count or individual synaptic-contact count.
 - Renderer version 4 and view-rectangle-aware raster caches prevent incompatible split reuse. Inspected actual-data layout and the first native-resolution robot crop. Eight focused tests passed, including capture override routing/source preservation and recording identity invalidation.
 - Updated entrypoint/helper/configuration documentation. HD captures and CPU renders target the separate ignored `evals/connectome/anatomical_1952_7b_hd/`; final batch verification is recorded after completion.
+
+## [2026-09-18] verify | Complete native-camera anatomical HD batch
+
+- Completed six native 1600 × 900 task recordings and all 12 version-4 circuit/combined outputs at 1920 × 1080 / 80 fps in `evals/connectome/anatomical_1952_7b_hd/`.
+- Fully decoded every output; source/output frame counts are 200→800 or 201→804 and per-case durations match at 10 or 10.05 seconds. The cached replay then regenerated the six-card task-paired gallery without simulation or encoding.
+- Verified every source frame's colored robot/tool content stays inside the `[0.30, 0.06, 0.70, 0.88]` crop. Inspected encoded task previews and the six-case montage for robot, tool, table, overview size, labels and header semantics.
+- Reverified 1,952 neurons, 33,720 graph connections, all-neuron robot-action readout, population masks and bilateral sensory/descending/motor anchors. `verification.json`, `recording_provenance.json`, per-case previews and `preview_montage.png` preserve the generated evidence.
