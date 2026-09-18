@@ -2,7 +2,7 @@
 
 The compact fly control is a standard one-update LSTM matched to the current all-neuron actor's instantiated coefficient count.
 
-Last updated: 2026-09-17
+Last updated: 2026-09-18
 
 Related: [Connectome actor](../concepts/connectome-actor.md), [Experiment workflow](../workflows/connectome-experiments.md), [Compact training](compact-1952-training.md)
 
@@ -45,9 +45,16 @@ Runtime, memory and throughput are reported separately instead.
 
 The actor retains the fly run's coefficient-conditioned six-row Gaussian scale,
 smooth sigma-three ceiling, small action-head initialization, input
-normalization, auxiliary actor value loss, SAPG/LF objective and privileged
-central critic. The generic actor's optional `space.continuous.max_sigma` key is
-backward compatible when omitted.
+normalization, SAPG/LF objective and privileged central critic. The selected
+replacement sets `use_experimental_cv: false`, so the actor-side value head is
+not optimized; the privileged central critic still supplies rollout values,
+GAE and its own value loss. The generic actor's optional
+`space.continuous.max_sigma` key is backward compatible when omitted.
+
+The actor's post-LSTM MLP has one 256-unit hidden layer, matching the fly
+actor's learned interface width. The privileged critic retains its inherited
+`[1024, 1024, 512, 512]` MLP so that critic capacity remains identical across
+the fly-versus-LSTM actor comparison.
 
 ## YAML-driven workflow
 
@@ -63,15 +70,15 @@ the expected 733,796/733,790 counts. The helper reports trainable and frozen
 parameters, fixed edge values, excluded index buffers, hypothetical dense size,
 latency, throughput and memory.
 
-The two training entrypoints are configured but were not launched when this
-baseline was added:
+The smoke gate remains available but was not launched for the live handoff. The
+production command below is the contract used by the active trainer:
 
 ```bash
 # Two-epoch integration gate.
 .venv/bin/python scripts/run_connectome_suite.py \
   --config configs/connectome/suites/ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_smoke.yaml
 
-# Seed-42 production contract; do not start while the selected GPU is occupied.
+# Seed-42 production contract used by the live GPU-1 replacement.
 .venv/bin/python scripts/run_connectome_suite.py \
   --config configs/connectome/suites/ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_100b.yaml
 ```
@@ -82,7 +89,30 @@ perturbations. The train profile owns only the LSTM architecture, initialization
 and sigma ceiling. The suite helper owns process launch, resolved configuration,
 checkpoint validation and artifact paths.
 
-After training begins, the sentinel milestone watcher is:
+## Live replacement
+
+On 2026-09-18, the physical-GPU-1 all-neuron fly job with
+`use_experimental_cv: true` and its milestone watcher were stopped with all
+artifacts preserved. Its final printed frame count was 9,642,442,752. The
+physical-GPU-0 all-neuron fly job with `use_experimental_cv: false` was not
+changed.
+
+The 323-unit matched LSTM production suite then replaced the stopped GPU-1 job
+from a fresh seed-42 initialization. Its resolved contract has actor MLP units
+`[256]`, one LSTM transition per environment step, sequence length 16,
+`use_experimental_cv: false`, and the unchanged privileged critic. Initial
+telemetry through frame 5,505,024 was finite: aggregate entropy 41.1863, KL
+`.004638`, actor loss `-.002376`, actor-side value loss exactly zero, privileged
+critic loss `.083253`, and zero invalid-KL flags in both mini-epochs. This is an
+integration and liveness check, not learning evidence.
+
+The live tmux sessions are `connectome-lstm323-matched-noaux` and
+`connectome-lstm323-matched-noaux-eval`. Artifacts are rooted under
+`train_dir/connectome/lstm_baseline/ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_100b`;
+the production and watcher logs are under
+`profiles/connectome/lstm323_matched_noaux/`.
+
+The live sentinel milestone watcher uses:
 
 ```bash
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py \

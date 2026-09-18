@@ -2,7 +2,7 @@
 
 Durable project knowledge for the MaleCNS-constrained SimToolReal actor.
 
-Last updated: 2026-09-17
+Last updated: 2026-09-18
 
 Related: [Overview](overview.md), [Log](log.md)
 
@@ -28,12 +28,12 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Workflows
 
-- [Experiment workflow](workflows/connectome-experiments.md) — Current paired all-neuron auxiliary/no-auxiliary runs, fixed-reservoir suites, milestone videos, LF entropy runs, and the staged handoff. Last updated 2026-09-17.
+- [Experiment workflow](workflows/connectome-experiments.md) — Current no-auxiliary fly/LSTM pair, fixed-reservoir suites, milestone videos, LF entropy runs, and the staged handoff. Last updated 2026-09-18.
 - [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, early gain audit, and stopped-run status. Last updated 2026-09-14.
 
 ## Analyses
 
-- [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — Standard one-update 323-unit LSTM matched to the compact all-neuron fly actor's instantiated coefficient count. Last updated 2026-09-17.
+- [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — Live standard one-update 323-unit LSTM with a 256-wide actor MLP, no auxiliary actor-value loss, and matched instantiated coefficient count. Last updated 2026-09-18.
 - [Visual reservoir performance](analyses/visual-reservoir-performance.md) — Frozen inference, full-CNS capacity sweep, video-worker memory limits and 2,304-environment continuation. Last updated 2026-09-16.
 - [End-to-end system audit](analyses/system-audit-2026-09-15.md) — All 71 event histories, raw-source reproduction, cross-member KL, saturation, proposed Beta parameters and multi-rate neural timing. Last updated 2026-09-15.
 - [Minimal dexterity circuits](analyses/minimal-dexterity-circuit.md) — Exact 86/262/408-cell candidates, threshold rationale, and 262 training evidence weakening its full-task recommendation. Last updated 2026-09-15.

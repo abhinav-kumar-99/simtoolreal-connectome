@@ -2,7 +2,7 @@
 
 Append-only record of durable repository work.
 
-Last updated: 2026-09-17
+Last updated: 2026-09-18
 
 Related: [Index](index.md), [Overview](overview.md)
 
@@ -755,3 +755,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 
 - Revalidated the goal-tolerance curriculum from the raw environment scheduler: the 0.075 base tolerance reduces by 0.9 only after both 3,000 vector control steps and an all-12,288-environment mean of at least three completed goals per most recently completed episode.
 - Recorded that failed checks leave the update marker unchanged and therefore make the next qualifying control step advance immediately; `evalSuccessTolerance` is null for training and does not override the scheduler.
+## [2026-09-18] experiment | Replace auxiliary fly job with matched LSTM
+
+- Updated `SimToolRealLSTM323MatchedGaussianSigma3SAPG` and its suite contracts to make the 256-unit actor MLP, one-update recurrence, physical GPU 1 placement, and `use_experimental_cv: false` explicit.
+- Stopped only the physical-GPU-1 all-neuron fly trainer and watcher at printed frame 9,642,442,752; preserved their artifacts and left the physical-GPU-0 no-auxiliary fly trainer and watcher running.
+- Launched the fresh seed-42 LSTM production trainer and milestone watcher. Initial finite telemetry through frame 5,505,024 includes zero actor-side value loss, nonzero privileged critic loss, and zero invalid-KL flags.
+- Validated the changed LSTM suite contracts with 11 focused tests and a resolved-configuration audit. Early telemetry proves integration and liveness only, not learning quality.
