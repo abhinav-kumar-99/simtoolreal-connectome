@@ -782,3 +782,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added and launched a fresh official-profile seed-42 run with the fly job's 12,288 physical environments and six 2,048-environment SAPG blocks. It retains the official 98,304 minibatches, KL `.016`, entropy scale `.002`, force/torque 20/2 and `use_experimental_cv: true` without rollout accumulation.
 - Initial telemetry through frame 1,769,472 was finite with nonzero actor and privileged value losses and zero invalid-KL flags. The live watcher polls exact 250M milestones.
 - TensorBoard 6008 exposes the active run as `official_repo_lstm_sapg_seed42_env12288`; 13 focused tests passed.
+
+## [2026-09-18] query | Verify TensorBoard time-axis semantics
+
+- Traced the RL Games and task observer writers: `/step`, `/iter` and `/time` aliases all receive the same environment-frame `global_step`; their suffixes do not select a TensorBoard axis.
+- Verified the active official-LSTM event file directly. All 771 reward-alias entries had identical values and steps from 196,608 through 151,584,768, while event wall timestamps spanned 2,128.256 seconds.
+- Recorded that TensorBoard's `Relative` or `Wall` axis must be selected for time. No logger or live process was changed.

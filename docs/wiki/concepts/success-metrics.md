@@ -2,7 +2,7 @@
 
 TensorBoard training-success tags summarize the most recently completed random-goal episodes, while deterministic trajectory Task Progress is a separate post-training evaluation metric.
 
-Last updated: 2026-09-17
+Last updated: 2026-09-18
 
 Related: [Billion-step adaptation run](../analyses/adaptation-1b-run.md), [Experiment workflow](../workflows/connectome-experiments.md)
 
@@ -68,6 +68,17 @@ The policy mean, coefficient-conditioned action standard deviation, actor value,
 The observer filters the ordinary `successes` tensor to block 5 but computes `success_ratio` inside the environment before filtering, across all six blocks. This is why `successes / 50` need not equal `success_ratio`. With 2,048 environments, block means move in increments of 1/2,048; all-environment means move in increments of 1/12,288. Block 5 being selected for these ordinary training summaries should not be conflated with deployment: `deployment/rl_player.py` supplies coefficient ID 50, corresponding to block 0, and deterministic evaluation then uses that conditioned policy's mean action.
 
 Every `/frame`, `/iter`, and `/time` suffix is an alias written with the same scalar value and the same environment-frame `global_step`. The suffix does not select a different x-axis. TensorBoard's Step, Wall, and Relative controls determine whether the display uses environment frames or elapsed time.
+
+A live event-file audit of the seed-42 official LSTM run confirmed this rather
+than relying only on source inspection: all 771 available `rewards/step`,
+`rewards/iter`, and `rewards/time` entries had identical scalar values and
+identical steps from 196,608 through 151,584,768. Their event timestamps spanned
+2,128.256 seconds. The few-microsecond timestamp differences among the aliases
+only reflect three sequential writer calls. Thus selecting the `/time` tag
+while TensorBoard's x-axis remains `Step` still plots environment frames.
+Select TensorBoard's `Relative` axis for elapsed wall time or `Wall` for absolute
+timestamps; either axis works with the `/step` tag because wall time is event
+metadata, not encoded by the tag suffix.
 
 ### `true_objective`
 
