@@ -34,7 +34,7 @@ To generate the matched no-auxiliary threshold comparison, use the normal evalua
 
 This YAML fixes one no-auxiliary 7B checkpoint, deterministic mean actions, the three task cases, native 1600 × 900 capture, source quality 9, 1920 × 1080 combined output, and both success metrics. `paper_task_progress` uses the paper tolerance of 0.02 m. `checkpoint_training_tolerance` uses 0.039858076721429825 m, resolved from TensorBoard tag `scalars/success_tolerance/frame` at checkpoint frame 7,000,031,232. The resulting gallery places the metric and tolerance in every card title so the two result groups are distinguishable. `scripts/replay_connectome_activity.py` remains the saved-case replay entrypoint; its `write_video_index` helper creates the same local gallery from completed artifacts without rerunning the simulator.
 
-To force a fresh run on physical GPU 1, use `configs/connectome/evaluation/ppo_1952_7b_noaux_dual_tolerance_anatomical_hd_cuda1.yaml`. It keeps `gpu_assignments: [1]` and writes to a new `_cuda1` output directory, so the existing completed directory is not reused.
+To force a fresh run on physical GPU 1, use `configs/connectome/evaluation/ppo_1952_7b_noaux_dual_tolerance_anatomical_hd_cuda1.yaml`. It keeps `gpu_assignments: [1]` and writes to a new `_cuda1` output directory, so the existing completed directory is not reused. The noaux configs include both blue-brush trajectories, `sweep_forward` and `sweep_right`, in addition to the original three cases.
 
 For future ordinary or milestone evaluations, add this block to `videos` (under `evaluation.videos` in watcher configs):
 

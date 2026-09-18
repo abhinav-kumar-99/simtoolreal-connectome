@@ -52,3 +52,5 @@ eval_cases:
   - {object_category: marker, object_name: sharpie_marker, task_name: write_c}
   - {object_category: eraser, object_name: flat_eraser, task_name: wipe_smile}
   - {object_category: spatula, object_name: flat_spatula, task_name: flip_over}
+  - {object_category: brush, object_name: blue_brush, task_name: sweep_forward}
+  - {object_category: brush, object_name: blue_brush, task_name: sweep_right}

@@ -901,6 +901,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added `configs/connectome/evaluation/ppo_1952_7b_noaux_dual_tolerance_anatomical_hd_cuda1.yaml`, preserving the noaux checkpoint, both thresholds, native capture and circuit layout while setting `gpu_assignments: [1]` and a distinct `_cuda1` output directory.
 - The distinct destination is intentional: the normal evaluator reuses complete matching cases and otherwise prints the aggregate JSON without launching Isaac Gym workers. The new config forces fresh simulator capture on physical GPU 1 while preserving the previously verified output directory.
 
+## [2026-09-18] configure | Add blue-brush cases to noaux video generation
+
+- Added `blue_brush/sweep_forward` and `blue_brush/sweep_right` to both noaux dual-tolerance evaluation YAMLs. Existing marker, eraser and spatula cases remain unchanged; rerunning reuses their complete artifacts and schedules only the new brush cases.
+
 ## [2026-09-18] configure | Launch CUDA-1 small-MLP all-neuron fly control
 
 - Added `configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_mlp128x32x32_100b.yaml` as the CUDA-1 counterpart to the live no-auxiliary all-neuron fly run.
