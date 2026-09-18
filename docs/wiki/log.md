@@ -808,3 +808,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Verified the active fly resolved configuration has `max_sigma: 3.0` and six coefficient-conditioned scale rows.
 - Derived the builder's shifted softplus ceiling as `sigma = 3 / (1 + 2 * exp(-r))`, preserving sigma one at initialization and giving a 73.009-nat upper bound for 29-dimensional raw Gaussian entropy.
 - Distinguished emitted-scale bounding from entropy-loss clamping and executed-action clipping; recorded that the official LSTM omits this custom ceiling. No live process was changed.
+
+## [2026-09-18] consolidate | Merge active repository worktrees
+
+- Consolidated vision reservoir, checkpoint-tolerance videos, and LSTM baseline branches onto `main`; checkpointed the three user-selected local vision YAML changes.
+- Resolved wiki conflicts with explicit user authorization, preserving source-backed findings and both log histories. Evaluator merges retain milestone-target checkpoint resolution and dual-tolerance video reuse.
+- Focused evaluator/configuration/checkpoint and baseline checks: 48 passed. The consolidation worktree needed a link to shared ignored training artifacts for one existing configuration test.
+- Preserved `.vscode/`, `tmp/`, shared artifact links, existing worktrees, and running processes.
