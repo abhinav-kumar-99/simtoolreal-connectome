@@ -29,6 +29,34 @@ trainable. It is therefore a deliberately strong learned alternative rather
 than an equal trainable-degrees-of-freedom control. The unchanged 2,037,769
 parameter privileged central critic is excluded from both sides of the match.
 
+### What the coefficient match does not isolate
+
+The 323-unit result is a coefficient-budget control, not a unit-count-matched
+test of recurrent sparsity. A standard LSTM also carries both a hidden state
+and a cell state. Direct construction through the repository actor builder gives:
+
+| LSTM width | Recurrent state scalars per environment | Actor parameters | Interpretation |
+| ---: | ---: | ---: | --- |
+| 323 | 646 | 733,790 | instantiated-coefficient match |
+| 976 | 1,952 | 4,749,740 | scalar recurrent-state match (`h` plus `c`) |
+| 1,952 | 3,904 | 17,111,756 | hidden-output/unit-count match |
+
+Therefore a claim about the benefit of representing dynamics with 1,952 sparse
+units needs the 1,952-unit LSTM as an additional control. It holds the recurrent
+output width fixed and lets parameter count, memory and latency expose the cost
+of dense gated recurrence. The 323-unit control should still be retained: it
+asks whether the fly actor outperforms a much narrower learned recurrent model
+under approximately the same stored-coefficient budget. These are different
+questions and neither should be relabeled as the other.
+
+Even the 1,952-unit LSTM is not a pure topology control because its four gates,
+cell state and update equation differ from the fly rate network. Biological
+wiring attribution additionally requires 1,952-unit sparse controls with the
+same edge count and dynamics but randomized or degree-preserving rewired
+support. Report both equal-environment-frame and equal-wall-time results;
+runtime and memory advantages at equal width are direct sparsity benefits,
+while task-performance differences also reflect the recurrent equations.
+
 ## Architecture
 
 `SimToolRealLSTM323MatchedGaussianSigma3SAPG` consumes the same 140 policy

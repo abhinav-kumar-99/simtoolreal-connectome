@@ -762,3 +762,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Stopped only the physical-GPU-1 all-neuron fly trainer and watcher at printed frame 9,642,442,752; preserved their artifacts and left the physical-GPU-0 no-auxiliary fly trainer and watcher running.
 - Launched the fresh seed-42 LSTM production trainer and milestone watcher. Initial finite telemetry through frame 5,505,024 includes zero actor-side value loss, nonzero privileged critic loss, and zero invalid-KL flags.
 - Validated the changed LSTM suite contracts with 11 focused tests and a resolved-configuration audit. Early telemetry proves integration and liveness only, not learning quality.
+
+## [2026-09-18] query | Separate coefficient matching from sparsity matching
+
+- Verified through the actor builder that LSTM widths 323, 976 and 1,952 have 733,790, 4,749,740 and 17,111,756 actor parameters respectively.
+- Recorded that width 323 matches instantiated coefficients, width 976 matches the fly's 1,952 scalar state budget when counting LSTM hidden and cell states, and width 1,952 matches recurrent output/unit count but carries 3,904 state scalars.
+- Clarified that a 1,952-unit dense LSTM is needed alongside the 323-unit control to evaluate equal-width sparsity costs, while same-dynamics randomized sparse graphs remain necessary for biological-topology attribution. No live process was changed.
