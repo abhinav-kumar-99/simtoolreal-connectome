@@ -85,6 +85,38 @@ def test_matched_lstm_suites_disable_auxiliary_actor_value_loss(
     assert "no-actor-value-loss" in suite["training"]["wandb"]["tags"]
 
 
+def test_official_lstm_replacement_reproduces_repo_launch_with_seed_42() -> None:
+    suite_path = (
+        REPOSITORY_ROOT
+        / "configs/connectome/suites/ppo_official_repo_lstm_sapg_seed42.yaml"
+    )
+    with suite_path.open() as stream:
+        suite = yaml.safe_load(stream)
+
+    training = suite["training"]
+    assert training["train_profiles"] == [
+        {
+            "name": "official_lstm_sapg",
+            "train_profile": "SimToolRealLSTMAsymmetricSAPG",
+        }
+    ]
+    assert training["seeds"] == [42]
+    assert training["gpu_assignments"] == [1]
+    assert training["num_envs"] == 24576
+    assert training["sapg_block_size"] == 4096
+    assert training["minibatch_size"] == 98304
+    assert training["central_critic_minibatch_size"] == 98304
+    assert training["epochs"] == 1000000
+    assert "rollout_accumulation_steps" not in training
+    assert "actor_microbatch_size" not in training
+    assert training["overrides"][
+        "++train.params.config.use_experimental_cv"
+    ] is True
+    assert training["overrides"]["train.params.config.expl_reward_coef_scale"] == 0.002
+    assert training["overrides"]["task.env.forceScale"] == 20.0
+    assert training["overrides"]["task.env.torqueScale"] == 2.0
+
+
 def test_forward_is_one_lstm_transition_per_environment_timestep() -> None:
     torch.manual_seed(12)
     num_seqs, sequence_length = 2, 4
