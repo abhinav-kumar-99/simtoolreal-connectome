@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import fcntl
+import functools
 import hashlib
 import io
 import json
@@ -301,8 +302,40 @@ class AnatomicalPanel:
         return result
 
 
+@functools.lru_cache(maxsize=32)
 def _font(size: int):
     return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+
+
+def frame_layout(width: int, height: int, combined: bool, settings: dict) -> dict:
+    """Share the compact frame's geometry between rasterization and composition."""
+    unit = height / 900
+    pad, gap = round(24 * unit), round(20 * unit)
+    top, bottom = round(94 * unit), round(802 * unit)
+    if combined:
+        robot_width = round((width - 2 * pad - gap) * settings["robot_panel_fraction"])
+        panel_x = pad + robot_width + gap
+        panel_width = width - pad - panel_x
+    else:
+        robot_width, panel_x, panel_width = 0, pad, width - 2 * pad
+    return {
+        "pad": pad,
+        "top": top,
+        "bottom": bottom,
+        "robot_width": robot_width,
+        "panel_x": panel_x,
+        "panel_width": panel_width,
+        "panel_height": bottom - top,
+    }
+
+
+def crop_robot_frame(robot: np.ndarray, bounds: list[float]) -> np.ndarray:
+    """Crop the original camera image with one fixed normalized rectangle."""
+    h, w = robot.shape[:2]
+    x0, y0, x1, y1 = np.rint(np.asarray(bounds) * [w, h, w, h]).astype(int)
+    if x0 >= x1 or y0 >= y1:
+        raise ValueError("circuit.robot_crop is empty at the source camera resolution")
+    return robot[y0:y1, x0:x1]
 
 
 def compose_frame(
@@ -314,118 +347,126 @@ def compose_frame(
     seconds: float,
     episode: int,
     activity_values: list[float] | None = None,
+    settings: dict | None = None,
 ) -> np.ndarray:
+    settings = circuit_settings({"enabled": True, **(settings or {})})
+    layout = frame_layout(width, height, robot is not None, settings)
     canvas = Image.new("RGB", (width, height), tuple(BACKGROUND.astype(int)))
     draw = ImageDraw.Draw(canvas)
-    unit = height / 900
-    pad = int(24 * unit)
+    unit, font_unit = height / 900, min(height / 900, width / 1600)
+    pad = layout["pad"]
 
-    def text(x, y, label, size=19, color=(195, 208, 219)):
-        draw.text(
-            (int(x), int(y * unit)),
-            label,
-            font=_font(max(12, int(size * unit))),
-            fill=color,
-        )
+    def text(x, y, label, size=16, color=(195, 208, 219), right=False, max_width=None):
+        pixels = max(10, round(size * font_unit))
+        selected = _font(pixels)
+        while (
+            max_width is not None
+            and selected.getlength(label) > max_width
+            and pixels > 10
+        ):
+            pixels -= 1
+            selected = _font(pixels)
+        if right:
+            x -= selected.getlength(label)
+        draw.text((round(x), round(y * unit)), label, font=selected, fill=color)
+        return selected.getlength(label)
 
-    text(pad, 20, "MALE CNS / DEXTEROUS TOOL CONTROL", 28)
+    text(pad, 14, "FLY CIRCUIT / ROBOT CONTROL", 24)
+    text(
+        width - pad,
+        20,
+        f"{seconds:05.2f}s  ·  Episode {episode + 1}  ·  {metadata['neuron_count']:,} cells  ·  {metadata['edge_count']:,} links",
+        14,
+        (126, 149, 169),
+        right=True,
+        max_width=width * 0.48,
+    )
     interpretation = metadata.get("interpretation")
     subtitle = "Real neuron anatomy  ·  recorded modeled activity  ·  synchronized robot motion"
     if interpretation is not None:
         subtitle = (
-            "Robot sensing → sensory cells   ·   Task goals → descending cells   ·   "
+            "Sensing → sensory cells   ·   Goals/context → descending cells   ·   "
             + interpretation["readout_label"]
         )
-    text(
-        pad,
-        64,
-        subtitle,
-        16,
-        (126, 149, 169),
-    )
-    top, bottom = (
-        int(136 * unit),
-        int((675 if interpretation is not None else 735) * unit),
-    )
+    text(pad, 47, subtitle, 14, (126, 149, 169), max_width=width - 2 * pad)
+
+    panel_x, panel_width = layout["panel_x"], layout["panel_width"]
     if robot is not None:
-        left_width = width // 2 - 2 * pad
-        text(pad, 105, "01  ROBOT ROLLOUT", 17, (116, 214, 207))
-        image = Image.fromarray(robot)
-        image.thumbnail((left_width, bottom - top), Image.Resampling.LANCZOS)
+        text(pad, 73, "ROBOT SIMULATION", 16, (116, 214, 207))
+        image = Image.fromarray(crop_robot_frame(robot, settings["robot_crop"]))
+        scale = min(
+            layout["robot_width"] / image.width, layout["panel_height"] / image.height
+        )
+        image = image.resize(
+            (round(image.width * scale), round(image.height * scale)),
+            Image.Resampling.LANCZOS,
+        )
         canvas.paste(
             image,
             (
-                pad + (left_width - image.width) // 2,
-                top + (bottom - top - image.height) // 2,
+                pad + (layout["robot_width"] - image.width) // 2,
+                layout["top"] + (layout["panel_height"] - image.height) // 2,
             ),
         )
-        panel_x = width // 2 + pad
-        panel_width = width // 2 - 2 * pad
-    else:
-        panel_x, panel_width = pad, width - 2 * pad
-    text(panel_x, 105, "02  MALE CNS ANATOMICAL ACTIVITY", 17, (116, 214, 207))
-    canvas.paste(Image.fromarray(panel), (panel_x, top + int(29 * unit)))
-    text(panel_x + 10, 140, "FULL CNS CONTEXT", 15)
-    text(panel_x + panel_width // 2 + 10, 140, "VNC DETAIL", 15)
+    text(panel_x + 8, 73, "CNS OVERVIEW", 15, (116, 214, 207))
+    text(panel_x + panel_width // 2 + 8, 73, "VNC DETAIL", 15, (116, 214, 207))
+    canvas.paste(Image.fromarray(panel), (panel_x, layout["top"]))
+
     if activity_values is not None:
         column_width = (width - 2 * pad) / 4
         for i, (group, strength) in enumerate(
             zip(interpretation["groups"], activity_values)
         ):
             x = pad + i * column_width
-            text(x, 688, f"{group['label']} ({len(group['indices']):,})", 16)
-            text(x, 709, group["role"], 13, (126, 149, 169))
-            bar_x, bar_y = int(x), int(733 * unit)
-            bar_width = int(column_width - 95 * unit)
+            label_width = text(
+                x,
+                815,
+                f"{group['label']} ({len(group['indices']):,})",
+                14,
+                max_width=column_width - 16 * unit,
+            )
+            role_font = _font(max(10, round(12 * font_unit)))
+            role_width = role_font.getlength(group["role"])
+            if label_width + role_width + 20 * unit < column_width:
+                text(
+                    x + column_width - 16 * unit,
+                    817,
+                    group["role"],
+                    12,
+                    (126, 149, 169),
+                    right=True,
+                )
+            bar_x, bar_y = round(x), round(844 * unit)
+            bar_width = round(column_width - 70 * unit)
             draw.rectangle(
-                (bar_x, bar_y, bar_x + bar_width, bar_y + int(8 * unit)),
+                (bar_x, bar_y, bar_x + bar_width, bar_y + round(7 * unit)),
                 fill=(37, 51, 69),
             )
             draw.rectangle(
                 (
                     bar_x,
                     bar_y,
-                    bar_x + int(bar_width * np.clip(strength, 0, 1)),
-                    bar_y + int(8 * unit),
+                    bar_x + round(bar_width * np.clip(strength, 0, 1)),
+                    bar_y + round(7 * unit),
                 ),
                 fill=(135, 169, 196),
             )
-            text(bar_x + bar_width + 8, 725, f"{strength:.2f}", 14)
-    text(
-        pad,
-        755,
-        f"{metadata['policy']}  |  {metadata['object_name']} / {metadata['task_name']}",
-        17,
-    )
-    text(
-        pad,
-        790,
-        f"TIME {seconds:05.2f}s   ·   EPISODE {episode + 1}   ·   {metadata['neuron_count']:,} neurons / {metadata['edge_count']:,} connections",
-        17,
-    )
-    text(
-        pad,
-        828,
-        "Cyan = positive state   ·   Orange = negative state   ·   Bars = mean |state| (0–1)"
+            text(bar_x + bar_width + 8 * unit, 836, f"{strength:.2f}", 14)
+
+    legend = (
+        "Cyan: +state   ·   Orange: −state   ·   Bars: mean |state| (0–1)"
         if activity_values is not None
-        else "Cyan = positive state     Orange = negative state     Fixed state scale: −1 to +1",
-        16,
+        else "Cyan: +state   ·   Orange: −state   ·   State scale: −1 to +1"
     )
+    text(pad, 875, legend, 13, max_width=width * 0.60)
     text(
-        pad,
-        856,
-        "Gray legs = schematic orientation. Gray CNS = dataset somas. Lines label cell groups on both sides."
-        if interpretation is not None
-        else "Gray = dataset somas / inactive morphology. One modeled state per neuron; overlap colors blend.",
-        14,
+        width - pad,
+        877,
+        "Male CNS v1.0 · FlyEM/Janelia · CC BY 4.0 · X–Z",
+        11,
         (126, 149, 169),
-    )
-    text(
-        pad,
-        880,
-        "Male CNS v1.0 · FlyEM / Janelia · CC BY 4.0     |     EM X–Z projection · uniform anatomical scale",
-        12,
-        (126, 149, 169),
+        right=True,
+        max_width=width * 0.37,
     )
     return np.asarray(canvas)
 
@@ -504,19 +545,15 @@ def render_activity(config: dict) -> dict:
             )
             metadata["interpretation"] = context
         width, height = settings["resolution"]
-        pad = int(24 * height / 900)
-        panel_height = int(
-            ((675 if context is not None else 735) - 136 - 29) * height / 900
-        )
         panels = {}
         for name in settings["outputs"]:
-            panel_width = width - 2 * pad if name == "circuit" else width // 2 - 2 * pad
+            layout = frame_layout(width, height, name == "combined", settings)
             panels[name] = AnatomicalPanel(
                 body_ids,
                 cache,
                 repository_path(settings["annotations_path"]),
-                panel_width,
-                panel_height,
+                layout["panel_width"],
+                layout["panel_height"],
                 settings["vnc_bounds_um"],
                 context,
                 settings,
@@ -563,6 +600,7 @@ def render_activity(config: dict) -> dict:
                                     seconds,
                                     int(frame_episodes[n]),
                                     strengths,
+                                    settings,
                                 )
                             )
                     if (frame + 1) % 40 == 0:
@@ -599,6 +637,10 @@ def render_activity(config: dict) -> dict:
             "dataset": geometry["dataset"],
             "geometry_manifest": str(cache / "manifest.json"),
             "projection": settings["projection"],
+            "layout": {
+                name: frame_layout(width, height, name == "combined", settings)
+                for name in writers
+            },
             "state_semantics": "one signed tanh model state per whole neuron skeleton",
             "sampling": "latest recorded neural substep on rollout video clock; terminal hold; episode-local",
             "source": metadata,

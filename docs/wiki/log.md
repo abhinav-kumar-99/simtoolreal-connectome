@@ -866,3 +866,11 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Completed all six version-2 renders (12 MP4s) using three CPU processes and the existing saved traces. No simulator workers were dispatched.
 - Verified both source-side anchors/counts for sensory, descending and motor groups, complete-frame decoding, 1600 × 900 resolution, 80 fps, matched per-case duration and unchanged original recording hashes.
 - Refreshed decoded previews, the six-case montage, verification metadata and local gallery. The existing replay YAML reuses these complete outputs; the standalone render YAML regenerates the corrected labels with no configuration changes.
+
+## [2026-09-18] improve | Enlarge the simulation and compact video text
+
+- Added YAML-owned `robot_crop` and `robot_panel_fraction`, with normalized crop validation and a 40–70% width range. The six-case presets use `[0.22, 0.06, 0.78, 0.88]` and 58%; sampled source frames across all six rollouts keep the robot, tool and table in view.
+- Expanded the shared content height to 708 pixels at 1600 × 900 and scaled the cropped simulation to 860 × 708, preserving its aspect ratio. Timing/counts, population names/roles and legend/credits now use horizontal rows; removed model/task names and the gray-leg explanatory line from encoded frames.
+- Added shared viewport geometry, fixed camera cropping and render-layout metadata to the anatomy helper. Renderer version 3 triggers appearance-only refresh without new simulation recordings.
+- Inspected actual-data combined and circuit-only stills. All seven existing focused anatomy/timing/encoding/completion/recording-reuse tests passed. Batch encoding and verification are recorded separately when complete.
+- Updated `workflows/anatomical-activity-videos.md` with crop/width parameters and helper/entrypoint usage.

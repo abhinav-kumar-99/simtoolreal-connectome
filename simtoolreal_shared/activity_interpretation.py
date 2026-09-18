@@ -224,7 +224,18 @@ def overlay_layers(
                 boxed_text(tx, int(ay) + vy + 76, "MOTOR CELLS", True)
                 boxed_text(tx, int(ay) + vy + 97, context["motor_detail"])
                 leaders((tx + 20, int(ay) + vy + 73), anchors["Motor cells"], vx, vy)
-            boxed_text(vx + 8, height - 27, "VENTRAL NERVE CORD", True)
+            _, tail_y = project(
+                np.array([(view_bounds[0] + view_bounds[1]) / 2, view_bounds[3]]),
+                view_bounds,
+                vw,
+                vh,
+            )
+            boxed_text(
+                vx + 8,
+                min(height - 27, int(tail_y) + vy + 12),
+                "VENTRAL NERVE CORD",
+                True,
+            )
     return shadows, labels
 
 

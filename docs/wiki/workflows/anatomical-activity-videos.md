@@ -35,6 +35,8 @@ circuit:
   group_labels: true
   leg_shadows: true
   activity_bars: true
+  robot_crop: [0.22, 0.06, 0.78, 0.88]
+  robot_panel_fraction: 0.58
   resolution: [1600, 900]
   geometry_cache: data/connectomes/geometry/malecns_v1
   annotations_path: data/connectomes/raw/malecns_v1_audit/annotations.feather
@@ -58,6 +60,8 @@ The optional block defaults to disabled. Existing jobs are not restarted or enab
 | --- | --- |
 | `fps_multiplier` | Animation FPS relative to robot MP4; 4 makes 20 fps into 80 fps. |
 | `resolution` | Even output width/height; default 1600 × 900. |
+| `robot_crop` | Fixed camera crop `[xmin, ymin, xmax, ymax]`, normalized from 0 to 1. The shipped presets keep the robot, tool and table using `[0.22, 0.06, 0.78, 0.88]`; the general default is the full image. |
+| `robot_panel_fraction` | Simulation share of the combined view's usable width, from 0.4 to 0.7; default/presets 0.58. The cropped image is scaled to fit while preserving its aspect ratio. |
 | `geometry_cache` | SWC files, provenance manifest and cached raster projections. |
 | `annotations_path` | Native MaleCNS annotations supplying gray dataset soma context. |
 | `projection` | Fixed native EM X–Z view, with equal scale on both axes. |
@@ -66,6 +70,8 @@ The optional block defaults to disabled. Existing jobs are not restarted or enab
 | `group_labels` | Brain/VNC, sensory/descending/motor labels and T1/T2/T3 guides; enabled in the shipped presets. |
 | `leg_shadows` | Faint three-pair leg schematic showing anatomical orientation; enabled in the presets. |
 | `activity_bars` | Population mean absolute tanh state on a fixed 0–1 scale; enabled in the presets. |
+
+The compact layout puts time/episode/counts alongside the title, population roles alongside their names, and the color key alongside source credits. Model/task names and the gray-leg explanatory sentence are omitted from the encoded frames; case names and interpretation remain in the gallery. At 1600 × 900, the simulation viewport is 889 × 708 pixels. The preset crops an 800 × 450 camera frame to 448 × 369 and displays it at 860 × 708. Cropping only affects the combined render, preserving the saved camera footage and neural trace. Renderer version 3 invalidates earlier layouts for appearance-only rerendering.
 
 ## Timing and interpretation
 
@@ -84,7 +90,7 @@ The first annotated version used one pooled median per population and misleading
 ## Helpers, provenance and limits
 
 - `simtoolreal_shared/activity_trace.py` owns config defaults, completion checks, non-mutating state copies and episode-local video-clock sampling.
-- `simtoolreal_shared/anatomical_activity.py` validates/downloads the trace's ordered body IDs, converts 8 nm SWC coordinates to micrometers, caches sparse per-neuron raster masks, streams MP4s and verifies FPS/frame counts with `ffprobe`.
+- `simtoolreal_shared/anatomical_activity.py` validates/downloads the trace's ordered body IDs, converts 8 nm SWC coordinates to micrometers, caches sparse per-neuron raster masks, streams MP4s and verifies FPS/frame counts with `ffprobe`. Its `frame_layout` shares viewport geometry between anatomy rasterization and frame composition; `crop_robot_frame` applies the fixed camera ROI before aspect-preserving scaling. These helpers are imported by both entrypoints and have no separate CLI.
 - `simtoolreal_shared/activity_interpretation.py` verifies the circuit artifact's ordered IDs/hash, derives population masks and source-backed captions, adds static labels/leg guides, and computes the four activity summaries. It is imported by the renderer; it has no separate CLI.
 - `dextoolbench/eval_worker_isaacgym.py` records actual recurrent activity while executing the policy. The parent renders after this child exits, freeing GPU memory first. It is normally dispatched by the entrypoints rather than launched manually.
 - `connectome_network_builder.py` calls an optional observer after each native/fused tanh substep. No checkpoint parameters/buffers are added. Tests verify exact action/final-state equality on CPU and CUDA.

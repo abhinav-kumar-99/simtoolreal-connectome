@@ -13,6 +13,8 @@ circuit:
   group_labels: true
   leg_shadows: true
   activity_bars: true
+  robot_crop: [0.22, 0.06, 0.78, 0.88]
+  robot_panel_fraction: 0.58
   resolution:
   - 1600
   - 900
