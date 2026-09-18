@@ -98,15 +98,16 @@ the expected 733,796/733,790 counts. The helper reports trainable and frozen
 parameters, fixed edge values, excluded index buffers, hypothetical dense size,
 latency, throughput and memory.
 
-The smoke gate remains available but was not launched for the live handoff. The
-production command below is the contract used by the active trainer:
+The smoke gate remains available but was not launched for the historical
+parameter-matched handoff. The production command below is its preserved
+contract:
 
 ```bash
 # Two-epoch integration gate.
 .venv/bin/python scripts/run_connectome_suite.py \
   --config configs/connectome/suites/ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_smoke.yaml
 
-# Seed-42 production contract used by the live GPU-1 replacement.
+# Historical seed-42 parameter-matched production contract.
 .venv/bin/python scripts/run_connectome_suite.py \
   --config configs/connectome/suites/ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_100b.yaml
 ```
@@ -134,13 +135,57 @@ telemetry through frame 5,505,024 was finite: aggregate entropy 41.1863, KL
 critic loss `.083253`, and zero invalid-KL flags in both mini-epochs. This is an
 integration and liveness check, not learning evidence.
 
-The live tmux sessions are `connectome-lstm323-matched-noaux` and
-`connectome-lstm323-matched-noaux-eval`. Artifacts are rooted under
-`train_dir/connectome/lstm_baseline/ppo_lstm323_matched_gaussian_lf_entropy1x_sigma3_100b`;
-the production and watcher logs are under
-`profiles/connectome/lstm323_matched_noaux/`.
+This parameter-matched run was superseded on 2026-09-18 at printed frame
+261,685,248. Its trainer and watcher were stopped and its artifacts were
+preserved. It was replaced on physical GPU 1 by the repository's official
+legacy LSTM/SAPG method described below.
 
-The live sentinel milestone watcher uses:
+## Official repository-method replacement
+
+The active `SimToolRealLSTMAsymmetricSAPG` run reproduces the repository's
+legacy `launch_training.py` contract with seed 42 as the sole intentional
+training-setting deviation from its default seed 0. The resolved actor is a
+1,024-unit, one-update LSTM followed by `[1024, 1024, 512, 512]`; the critic has
+the same MLP widths. It uses 24,576 environments, six 4,096-environment SAPG
+blocks, 98,304-sample actor and critic minibatches, two mini-epochs, KL `.016`,
+entropy scale `.002`, force scale 20, torque scale 2 and explicit
+`use_experimental_cv: true`. Its unbounded coefficient-conditioned Gaussian is
+also the official profile rather than the sigma-three matched-baseline variant.
+
+The exact 24,576-environment geometry fit physical GPU 1 and completed multiple
+rollout and optimizer epochs, so the checked-in 12,288-environment
+memory-preserving fallback was not launched. Initial telemetry through frame
+3,538,944 was finite: reward 34.3556, actor loss `.02010`, actor-side value loss
+`.16852`, privileged critic loss `.11581`, entropy 41.2162, KL `.01363`, and
+zero invalid-KL flags in both mini-epochs. This establishes launch fidelity and
+liveness, not reproduction of published learning results.
+
+The live tmux sessions are `connectome-official-lstm-sapg-seed42` and
+`connectome-official-lstm-sapg-seed42-eval`. Artifacts are rooted under
+`train_dir/connectome/official_lstm/ppo_official_repo_lstm_sapg_seed42`; logs
+are under `profiles/connectome/official_lstm_sapg_seed42/`. TensorBoard 6008
+exposes the run as `official_repo_lstm_sapg_seed42`.
+
+The actual production and watcher entrypoints are:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/ppo_official_repo_lstm_sapg_seed42.yaml
+
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/ppo_official_repo_lstm_sapg_seed42_milestones.yaml
+```
+
+The suite YAML owns seed, physical GPU, environment/block geometry, profile,
+optimizer sizes, epoch budget, task randomization and explicit auxiliary-value
+setting. `run_connectome_suite.py` composes the Hydra configuration, launches
+the child trainer, streams logs and verifies its final checkpoint. The watcher
+polls for exact 250M-frame snapshots and evaluates three deterministic sentinel
+tasks. The `_memory_preserving` suite and watcher are helpers for a GPU that
+cannot hold 24,576 environments; they were validated but must not be launched
+concurrently with the exact run.
+
+The historical matched-LSTM watcher command was:
 
 ```bash
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py \

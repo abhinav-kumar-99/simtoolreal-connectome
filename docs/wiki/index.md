@@ -15,7 +15,7 @@ Related: [Overview](overview.md), [Log](log.md)
 - [Quantum-Coded Fruitfly](sources/summaries/quantum-coded-fruitfly.md) — Fixed population encoding, non-learning dopamine pulse, 100-word neural-input ablation, and the resulting structured-adapter direction. Last updated 2026-09-16.
 
 - [MaleCNS front-leg circuit](sources/summaries/malecns-front-leg-circuit.md) — Data identity, provenance, and anatomical-data versus executable-dynamics boundary. Last updated 2026-09-15.
-- [SimToolReal training references](sources/summaries/simtoolreal-training-references.md) — Published curve, critic-ablation contract, paper/code value-loss boundary, upstream numerical study export, and released checkpoint metadata. Last updated 2026-09-15.
+- [SimToolReal training references](sources/summaries/simtoolreal-training-references.md) — Published curve, critic-ablation contract, paper/code value-loss boundary, upstream numerical study export, released checkpoint metadata, and the live seed-42 official-method reproduction. Last updated 2026-09-18.
 
 ## Concepts
 
@@ -28,12 +28,12 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Workflows
 
-- [Experiment workflow](workflows/connectome-experiments.md) — Current no-auxiliary fly/LSTM pair, fixed-reservoir suites, milestone videos, LF entropy runs, and the staged handoff. Last updated 2026-09-18.
+- [Experiment workflow](workflows/connectome-experiments.md) — Current no-auxiliary fly and official repository LSTM runs, fixed-reservoir suites, milestone videos, LF entropy runs, and the staged handoff. Last updated 2026-09-18.
 - [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, early gain audit, and stopped-run status. Last updated 2026-09-14.
 
 ## Analyses
 
-- [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — Live standard one-update 323-unit LSTM with a 256-wide actor MLP, no auxiliary actor-value loss, and matched instantiated coefficient count. Last updated 2026-09-18.
+- [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — Historical 323-unit coefficient match, exact sparsity-control boundary, and the active official 1,024-unit repository-method replacement. Last updated 2026-09-18.
 - [Visual reservoir performance](analyses/visual-reservoir-performance.md) — Frozen inference, full-CNS capacity sweep, video-worker memory limits and 2,304-environment continuation. Last updated 2026-09-16.
 - [End-to-end system audit](analyses/system-audit-2026-09-15.md) — All 71 event histories, raw-source reproduction, cross-member KL, saturation, proposed Beta parameters and multi-rate neural timing. Last updated 2026-09-15.
 - [Minimal dexterity circuits](analyses/minimal-dexterity-circuit.md) — Exact 86/262/408-cell candidates, threshold rationale, and 262 training evidence weakening its full-task recommendation. Last updated 2026-09-15.

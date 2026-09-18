@@ -768,3 +768,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Verified through the actor builder that LSTM widths 323, 976 and 1,952 have 733,790, 4,749,740 and 17,111,756 actor parameters respectively.
 - Recorded that width 323 matches instantiated coefficients, width 976 matches the fly's 1,952 scalar state budget when counting LSTM hidden and cell states, and width 1,952 matches recurrent output/unit count but carries 3,904 state scalars.
 - Clarified that a 1,952-unit dense LSTM is needed alongside the 323-unit control to evaluate equal-width sparsity costs, while same-dynamics randomized sparse graphs remain necessary for biological-topology attribution. No live process was changed.
+
+## [2026-09-18] experiment | Replace matched LSTM with official repository method
+
+- Stopped the physical-GPU-1 323-unit matched-LSTM trainer and watcher at printed frame 261,685,248, preserving its checkpoints, event history and evaluation artifacts; the GPU-0 fly trainer and watcher were not changed.
+- Added exact and memory-preserving YAML contracts for the repository's legacy `SimToolRealLSTMAsymmetricSAPG` launch. Both use the user-selected seed 42; the exact contract otherwise retains 24,576 environments, 4,096/block, 98,304 minibatches, KL `.016`, entropy scale `.002`, force/torque 20/2 and `use_experimental_cv: true`.
+- The exact geometry fit GPU 1 and completed multiple optimizer epochs, so the fallback was not launched. Initial telemetry through frame 3,538,944 was finite with nonzero actor and privileged value losses and zero invalid-KL flags.
+- Launched the official run's 250M-frame milestone watcher and exposed its summaries on TensorBoard 6008 as `official_repo_lstm_sapg_seed42`. Twelve focused configuration/recurrent tests passed.

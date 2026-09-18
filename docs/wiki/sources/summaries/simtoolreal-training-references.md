@@ -2,7 +2,7 @@
 
 SimToolReal provides a published five-seed reward curve, a later upstream seed-0 numerical export, and a terminal pretrained checkpoint, but no raw five-seed paper history. The paper directly supports the privileged asymmetric critic, while the released code's additional actor-side value loss is not described or ablated in the paper.
 
-Last updated: 2026-09-15
+Last updated: 2026-09-18
 
 Related: [Billion-step adaptation run](../../analyses/adaptation-1b-run.md), [Experiment workflow](../../workflows/connectome-experiments.md)
 
@@ -25,6 +25,18 @@ The paper contains no description of `use_experimental_cv`, an auxiliary actor-s
 - The paper's stated algorithm only establishes the separate privileged critic. Setting `use_experimental_cv: false` while retaining `central_value_config` preserves that paper-backed mechanism and removes an undocumented auxiliary loss.
 
 No published ablation determines whether the inherited auxiliary actor-value objective helps or hurts SimToolReal. A matched true-versus-false run with identical privileged critic inputs is required to answer that question.
+
+### Live official-method reproduction
+
+On 2026-09-18, the tracked legacy launch was materialized as a YAML-owned live
+run on physical GPU 1. Seed 42 is the only intentional training-setting change
+from `launch_training.py`'s default seed 0. The run retains 24,576 environments,
+4,096 environments per SAPG block, 98,304-sample minibatches, the official
+1,024-unit LSTM and MLPs, entropy scale `.002`, KL `.016`, force/torque scales
+20/2 and the released-code default `use_experimental_cv: true`. The exact
+physical geometry completed optimizer updates on this GPU, so the prepared
+12,288-environment rollout/microbatch fallback was not used. Early finite
+telemetry is an integration result only and does not reproduce the paper curve.
 
 ## Available comparison data
 
