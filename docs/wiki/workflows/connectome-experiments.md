@@ -413,20 +413,29 @@ prior environment population on **each** rank:
 .venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_noaux_mlp128x32x32_ddp_15360_smoke.yaml
 
 # Fresh two-rank 100B-frame run on physical GPUs 0 and 1.
-.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_noaux_mlp128x32x32_ddp_15360_100b.yaml
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_noaux_mlp128x32x32_ddp_15360_mb24576_100b.yaml
 
 # Paper-tolerance and exact checkpoint-training-tolerance videos.
-.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_noaux_mlp128x32x32_ddp_15360_100b_milestones.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_noaux_mlp128x32x32_ddp_15360_mb24576_100b_milestones.yaml
 ```
 
 `training.distributed: true` makes the suite entrypoint launch one synchronized
 policy with two `torchrun` ranks over `gpu_assignments: [0, 1]`; it does not
 launch two independent policies. Each rank owns 15,360 simulator environments,
 exactly 1.25 times the previous 12,288, for 30,720 simultaneous environments
-in total. Each rank retains six SAPG blocks (`sapg_block_size: 2560`) and four
-local minibatches per horizon (`minibatch_size: 61440`); gradients are averaged
-across ranks. One global epoch therefore represents 491,520 environment frames,
+in total. Each rank retains six SAPG blocks (`sapg_block_size: 2560`) and uses
+`minibatch_size: 24576`; gradient averaging therefore restores the original
+49,152-sample nominal global batch. LF adds a seventh block, so the local
+286,720-sample training set produces 11 optimizer steps per mini-epoch and 22
+per two-mini-epoch training epoch. One global epoch represents 491,520 frames,
 and 203,450 complete epochs produce 99,999,744,000 frames under the 100B cap.
+This yields 4,475,900 synchronized actor updates over the full budget. The
+earlier 61,440-per-rank launch is preserved as a stopped pilot rather than
+mixed into this fresh run.
+
+The production output lives below
+`train_dir/connectome/adaptation_100b_gains_update_timing`, the log root already
+served by TensorBoard port 6008.
 
 The policy still uses the 1,952-cell all-neuron no-auxiliary clipped-Gaussian
 contract and the `128/32/32` sensory/descending/readout interface MLPs. The

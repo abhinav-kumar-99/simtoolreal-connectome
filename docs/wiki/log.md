@@ -918,3 +918,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added a two-rank smoke and a fresh 100B production suite using the no-auxiliary all-neuron `128/32/32` MLP profile. Production uses 15,360 environments and six 2,560-environment SAPG blocks per rank, 61,440-sample local actor/critic minibatches, and 203,450 epochs for 99,999,744,000 global frames.
 - Added a milestone watcher that generates both fixed paper-tolerance and exact checkpoint-training-tolerance videos for the three standard deterministic cases every 250M global frames.
 - The two-epoch smoke completed on both GPUs and reload-verified the two-rank terminal checkpoint with a finite 29-action deployment output.
+
+## [2026-09-18] configure | Halve the DDP minibatch and expose it on TensorBoard 6008
+
+- Stopped the 61,440-per-rank DDP pilot and its milestone watcher with artifacts preserved.
+- Added a fresh 24,576-per-rank production contract. NCCL gradient averaging gives the original 49,152-sample nominal global batch; LF's seventh block produces 11 optimizer steps per mini-epoch, 22 per epoch, and 4,475,900 actor updates over 203,450 epochs.
+- Added a matching watcher for paper-tolerance and exact checkpoint-training-tolerance videos. The new training output is rooted under `train_dir/connectome/adaptation_100b_gains_update_timing`, which the existing TensorBoard server on port 6008 already watches.
