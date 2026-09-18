@@ -29,13 +29,15 @@ No published ablation determines whether the inherited auxiliary actor-value obj
 ### Live official-method reproduction
 
 On 2026-09-18, the tracked legacy launch was materialized as a YAML-owned live
-run on physical GPU 1. Seed 42 is the only intentional training-setting change
-from `launch_training.py`'s default seed 0. The run retains 24,576 environments,
-4,096 environments per SAPG block, 98,304-sample minibatches, the official
+run on physical GPU 1. The exact 24,576-environment geometry completed optimizer
+updates but was stopped at frame 18,087,936 when equal physical environment
+count with the fly job was selected. The active run uses seed 42 and 12,288
+environments as intentional deviations from `launch_training.py`'s seed-0 and
+24,576-environment defaults. It retains six SAPG blocks at 2,048 environments
+each, 98,304-sample minibatches, the official
 1,024-unit LSTM and MLPs, entropy scale `.002`, KL `.016`, force/torque scales
-20/2 and the released-code default `use_experimental_cv: true`. The exact
-physical geometry completed optimizer updates on this GPU, so the prepared
-12,288-environment rollout/microbatch fallback was not used. Early finite
+20/2 and the released-code default `use_experimental_cv: true`. It performs one
+12,288-by-16 rollout per update phase without rollout accumulation. Early finite
 telemetry is an integration result only and does not reproduce the paper curve.
 
 ## Available comparison data

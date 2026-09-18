@@ -143,37 +143,45 @@ legacy LSTM/SAPG method described below.
 ## Official repository-method replacement
 
 The active `SimToolRealLSTMAsymmetricSAPG` run reproduces the repository's
-legacy `launch_training.py` contract with seed 42 as the sole intentional
-training-setting deviation from its default seed 0. The resolved actor is a
-1,024-unit, one-update LSTM followed by `[1024, 1024, 512, 512]`; the critic has
-the same MLP widths. It uses 24,576 environments, six 4,096-environment SAPG
-blocks, 98,304-sample actor and critic minibatches, two mini-epochs, KL `.016`,
+legacy `launch_training.py` contract with seed 42 and 12,288 physical
+environments as the two intentional deviations from its defaults. The resolved
+actor is a 1,024-unit, one-update LSTM followed by
+`[1024, 1024, 512, 512]`; the critic has the same MLP widths. The active run
+retains 98,304-sample actor and critic minibatches, two mini-epochs, KL `.016`,
 entropy scale `.002`, force scale 20, torque scale 2 and explicit
 `use_experimental_cv: true`. Its unbounded coefficient-conditioned Gaussian is
 also the official profile rather than the sigma-three matched-baseline variant.
 
-The exact 24,576-environment geometry fit physical GPU 1 and completed multiple
-rollout and optimizer epochs, so the checked-in 12,288-environment
-memory-preserving fallback was not launched. Initial telemetry through frame
-3,538,944 was finite: reward 34.3556, actor loss `.02010`, actor-side value loss
-`.16852`, privileged critic loss `.11581`, entropy 41.2162, KL `.01363`, and
-zero invalid-KL flags in both mini-epochs. This establishes launch fidelity and
-liveness, not reproduction of published learning results.
+The exact 24,576-environment geometry fit physical GPU 1, but it was stopped at
+printed frame 18,087,936 when the user selected the fly job's physical
+environment count. Its artifacts remain preserved. The active fresh run uses
+12,288 environments and six 2,048-environment SAPG blocks, while retaining the
+official 98,304-sample minibatches and every other setting above. It does not
+use rollout accumulation, so its update phase consumes 196,608 fresh frames,
+matching the fly job's simultaneous environment count and rollout length but
+not its smaller 49,152-sample minibatches.
 
-The live tmux sessions are `connectome-official-lstm-sapg-seed42` and
-`connectome-official-lstm-sapg-seed42-eval`. Artifacts are rooted under
-`train_dir/connectome/official_lstm/ppo_official_repo_lstm_sapg_seed42`; logs
-are under `profiles/connectome/official_lstm_sapg_seed42/`. TensorBoard 6008
-exposes the run as `official_repo_lstm_sapg_seed42`.
+Initial reduced-environment telemetry through frame 1,769,472 was finite:
+reward 42.1621, actor loss `.00917`, actor-side value loss `.24833`, privileged
+critic loss `.17640`, entropy 41.1773, KL `.01073`, and zero invalid-KL flags in
+both mini-epochs. This establishes launch fidelity and liveness, not
+reproduction of published learning results.
+
+The live tmux sessions are `connectome-official-lstm-sapg-seed42-env12288` and
+`connectome-official-lstm-sapg-seed42-env12288-eval`. Artifacts are rooted under
+`train_dir/connectome/official_lstm/ppo_official_repo_lstm_sapg_seed42_env12288`;
+logs are under `profiles/connectome/official_lstm_sapg_seed42_env12288/`.
+TensorBoard 6008 exposes the run as
+`official_repo_lstm_sapg_seed42_env12288`.
 
 The actual production and watcher entrypoints are:
 
 ```bash
 .venv/bin/python scripts/run_connectome_suite.py \
-  --config configs/connectome/suites/ppo_official_repo_lstm_sapg_seed42.yaml
+  --config configs/connectome/suites/ppo_official_repo_lstm_sapg_seed42_env12288.yaml
 
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py \
-  --config configs/connectome/evaluation/ppo_official_repo_lstm_sapg_seed42_milestones.yaml
+  --config configs/connectome/evaluation/ppo_official_repo_lstm_sapg_seed42_env12288_milestones.yaml
 ```
 
 The suite YAML owns seed, physical GPU, environment/block geometry, profile,
@@ -181,9 +189,9 @@ optimizer sizes, epoch budget, task randomization and explicit auxiliary-value
 setting. `run_connectome_suite.py` composes the Hydra configuration, launches
 the child trainer, streams logs and verifies its final checkpoint. The watcher
 polls for exact 250M-frame snapshots and evaluates three deterministic sentinel
-tasks. The `_memory_preserving` suite and watcher are helpers for a GPU that
-cannot hold 24,576 environments; they were validated but must not be launched
-concurrently with the exact run.
+tasks. The original 24,576-environment suite and `_memory_preserving` suite are
+preserved historical/alternative contracts and must not be launched
+concurrently with the active 12,288-environment run.
 
 The historical matched-LSTM watcher command was:
 

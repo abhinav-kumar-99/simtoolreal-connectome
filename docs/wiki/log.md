@@ -775,3 +775,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added exact and memory-preserving YAML contracts for the repository's legacy `SimToolRealLSTMAsymmetricSAPG` launch. Both use the user-selected seed 42; the exact contract otherwise retains 24,576 environments, 4,096/block, 98,304 minibatches, KL `.016`, entropy scale `.002`, force/torque 20/2 and `use_experimental_cv: true`.
 - The exact geometry fit GPU 1 and completed multiple optimizer epochs, so the fallback was not launched. Initial telemetry through frame 3,538,944 was finite with nonzero actor and privileged value losses and zero invalid-KL flags.
 - Launched the official run's 250M-frame milestone watcher and exposed its summaries on TensorBoard 6008 as `official_repo_lstm_sapg_seed42`. Twelve focused configuration/recurrent tests passed.
+
+## [2026-09-18] experiment | Match official LSTM environment count to fly
+
+- Stopped the 24,576-environment official LSTM trainer and watcher at printed frame 18,087,936 with all artifacts preserved; the physical-GPU-0 fly trainer and watcher were not changed.
+- Added and launched a fresh official-profile seed-42 run with the fly job's 12,288 physical environments and six 2,048-environment SAPG blocks. It retains the official 98,304 minibatches, KL `.016`, entropy scale `.002`, force/torque 20/2 and `use_experimental_cv: true` without rollout accumulation.
+- Initial telemetry through frame 1,769,472 was finite with nonzero actor and privileged value losses and zero invalid-KL flags. The live watcher polls exact 250M milestones.
+- TensorBoard 6008 exposes the active run as `official_repo_lstm_sapg_seed42_env12288`; 13 focused tests passed.
