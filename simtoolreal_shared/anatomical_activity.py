@@ -179,9 +179,10 @@ class AnatomicalPanel:
         overview_bounds = [float(xmin), float(xmax), float(zmin), float(zmax)]
         # Fixed bounds from the dataset, never from activity or the current actor.
         self.bounds = [overview_bounds, list(vnc_bounds)]
+        split = round(width * (settings or {}).get("overview_panel_fraction", 0.65))
         self.views = [
-            (8, 0, width // 2 - 12, height),
-            (width // 2 + 4, 0, width // 2 - 12, height),
+            (8, 0, split - 12, height),
+            (split + 4, 0, width - split - 12, height),
         ]
         provenance = {
             "body_ids": [int(x) for x in body_ids],
@@ -189,7 +190,8 @@ class AnatomicalPanel:
             "height": height,
             "bounds": self.bounds,
             "annotations_sha256": sha256(annotations),
-            "raster_version": 1,
+            "views": self.views,
+            "raster_version": 2,
         }
         manifest = json.loads((cache / "manifest.json").read_text())
         provenance["skeleton_hashes"] = [
@@ -326,6 +328,7 @@ def frame_layout(width: int, height: int, combined: bool, settings: dict) -> dic
         "panel_x": panel_x,
         "panel_width": panel_width,
         "panel_height": bottom - top,
+        "overview_width": round(panel_width * settings["overview_panel_fraction"]),
     }
 
 
@@ -375,7 +378,7 @@ def compose_frame(
     text(
         width - pad,
         20,
-        f"{seconds:05.2f}s  ·  Episode {episode + 1}  ·  {metadata['neuron_count']:,} cells  ·  {metadata['edge_count']:,} links",
+        f"{seconds:05.2f}s  ·  Episode {episode + 1}  ·  {metadata['neuron_count']:,} neurons  ·  {metadata['edge_count']:,} connections",
         14,
         (126, 149, 169),
         right=True,
@@ -390,7 +393,7 @@ def compose_frame(
         )
     text(pad, 47, subtitle, 14, (126, 149, 169), max_width=width - 2 * pad)
 
-    panel_x, panel_width = layout["panel_x"], layout["panel_width"]
+    panel_x = layout["panel_x"]
     if robot is not None:
         text(pad, 73, "ROBOT SIMULATION", 16, (116, 214, 207))
         image = Image.fromarray(crop_robot_frame(robot, settings["robot_crop"]))
@@ -409,7 +412,7 @@ def compose_frame(
             ),
         )
     text(panel_x + 8, 73, "CNS OVERVIEW", 15, (116, 214, 207))
-    text(panel_x + panel_width // 2 + 8, 73, "VNC DETAIL", 15, (116, 214, 207))
+    text(panel_x + layout["overview_width"] + 8, 73, "VNC DETAIL", 15, (116, 214, 207))
     canvas.paste(Image.fromarray(panel), (panel_x, layout["top"]))
 
     if activity_values is not None:

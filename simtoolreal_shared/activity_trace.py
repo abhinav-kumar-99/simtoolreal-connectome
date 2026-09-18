@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-ACTIVITY_RENDER_VERSION = 3
+ACTIVITY_RENDER_VERSION = 4
 
 
 def repository_path(value) -> Path:
@@ -91,6 +91,7 @@ def circuit_settings(value: dict | None) -> dict:
     settings.setdefault("outputs", ["circuit", "combined"])
     settings.setdefault("robot_crop", [0.0, 0.0, 1.0, 1.0])
     settings.setdefault("robot_panel_fraction", 0.58)
+    settings.setdefault("overview_panel_fraction", 0.65)
     for key in ["group_labels", "leg_shadows", "activity_bars"]:
         settings.setdefault(key, False)
         if not isinstance(settings[key], bool):
@@ -134,6 +135,15 @@ def circuit_settings(value: dict | None) -> dict:
     ):
         raise ValueError(
             "circuit.robot_panel_fraction must be a number between 0.4 and 0.7"
+        )
+    overview_fraction = settings["overview_panel_fraction"]
+    if (
+        isinstance(overview_fraction, bool)
+        or not isinstance(overview_fraction, (int, float))
+        or not 0.4 <= overview_fraction <= 0.8
+    ):
+        raise ValueError(
+            "circuit.overview_panel_fraction must be a number between 0.4 and 0.8"
         )
     if settings["projection"] != ["x", "z"]:
         raise ValueError("The anatomical preset currently supports projection: [x, z]")

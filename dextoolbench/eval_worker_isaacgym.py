@@ -198,6 +198,7 @@ def run(config: dict) -> dict:
             video_path,
             all_video_frames,
             fps=int(config["video_fps"]),
+            quality=int(config.get("video_quality", 5)),
             macro_block_size=2,
         )
 

@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import imageio.v2 as imageio
 import numpy as np
@@ -251,5 +252,60 @@ def test_appearance_changes_reuse_recording_but_simulation_changes_do_not(
         result["circuit"]["status"] == "complete"
     )  # no Isaac Gym or subprocess needed
     assert not recording_matches({**case, "success_tolerance": 0.02})
+    assert not recording_matches({**case, "camera_resolution_reduction_factor": 1})
+    assert not recording_matches({**case, "video_quality": 9})
     checkpoint.write_bytes(b"different checkpoint at same path")
     assert not recording_matches(case)
+
+
+def test_replay_capture_overrides_reach_worker_without_changing_source(
+    tmp_path, monkeypatch
+):
+    import yaml
+
+    import scripts.replay_connectome_activity as replay
+
+    paths = {}
+    for key in ["checkpoint_path", "policy_config_path", "trajectory_path"]:
+        path = tmp_path / key
+        path.write_text("source")
+        paths[key] = str(path)
+    source = tmp_path / "source" / "case.yaml"
+    source.parent.mkdir()
+    case = {
+        **paths,
+        "metric": "progress",
+        "policy": "actor",
+        "object_name": "marker",
+        "task_name": "write",
+        "camera_resolution_reduction_factor": 2,
+    }
+    source.write_text(yaml.safe_dump(case))
+    original = source.read_bytes()
+    seen = []
+    monkeypatch.setattr(replay, "_completed_case", lambda _: None)
+
+    def worker(case, gpu, environment):
+        seen.append(case)
+        return {key: case[key] for key in ["policy", "object_name", "task_name"]}
+
+    monkeypatch.setattr(replay, "_run_case", worker)
+    config = {
+        "schema_version": 1,
+        "case_paths": [str(source)],
+        "output_directory": str(tmp_path / "hd"),
+        "circuit": {"enabled": True},
+        "camera_resolution_reduction_factor": 1,
+        "video_quality": 9,
+    }
+    result = replay.run(config)
+    assert result["cases"] == 1
+    assert seen[0]["camera_resolution_reduction_factor"] == 1
+    assert seen[0]["video_quality"] == 9
+    assert source.read_bytes() == original
+    saved = yaml.safe_load(
+        (Path(seen[0]["output_path"]).parent / "case.yaml").read_text()
+    )
+    assert (
+        saved["camera_resolution_reduction_factor"] == 1 and saved["video_quality"] == 9
+    )

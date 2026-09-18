@@ -1,7 +1,9 @@
-# Replay both actors at the shared 7B milestone, preserving existing videos.
+# Replay both actors at the shared 7B milestone with full-resolution camera capture.
 schema_version: 1
-output_directory: evals/connectome/anatomical_1952_7b
-gpu: 0
+output_directory: evals/connectome/anatomical_1952_7b_hd
+gpu: 1
+camera_resolution_reduction_factor: 1
+video_quality: 9
 runtime_environment:
   CC: /usr/bin/gcc
   CXX: /usr/bin/g++
@@ -13,11 +15,15 @@ circuit:
   group_labels: true
   leg_shadows: true
   activity_bars: true
-  robot_crop: [0.22, 0.06, 0.78, 0.88]
-  robot_panel_fraction: 0.58
+  robot_crop:
+  - 0.3
+  - 0.06
+  - 0.7
+  - 0.88
+  robot_panel_fraction: 0.4
   resolution:
-  - 1600
-  - 900
+  - 1920
+  - 1080
   geometry_cache: data/connectomes/geometry/malecns_v1
   annotations_path: data/connectomes/raw/malecns_v1_audit/annotations.feather
   projection:
@@ -31,6 +37,7 @@ circuit:
   outputs:
   - circuit
   - combined
+  overview_panel_fraction: 0.65
 case_paths:
 - evals/connectome/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_100b_milestones/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/target_007000000000_actual_007000031232/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/sharpie_marker/write_c/case.yaml
 - evals/connectome/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_100b_milestones/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/target_007000000000_actual_007000031232/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/flat_eraser/wipe_smile/case.yaml

@@ -1,18 +1,22 @@
-# Rerender the first replayed example without Isaac Gym.
-trace_path: evals/connectome/anatomical_1952_7b/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/sharpie_marker/write_c/activity.npz
-rollout_path: evals/connectome/anatomical_1952_7b/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/sharpie_marker/write_c/rollout.mp4
-output_directory: evals/connectome/anatomical_1952_7b/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/sharpie_marker/write_c
+# Rerender the first HD replay without Isaac Gym.
+trace_path: evals/connectome/anatomical_1952_7b_hd/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/sharpie_marker/write_c/activity.npz
+rollout_path: evals/connectome/anatomical_1952_7b_hd/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/sharpie_marker/write_c/rollout.mp4
+output_directory: evals/connectome/anatomical_1952_7b_hd/paper_task_progress/gaussian_lf_entropy1x_sigma3_all_neurons_noaux/sharpie_marker/write_c
 circuit:
   enabled: true
   fps_multiplier: 4
   group_labels: true
   leg_shadows: true
   activity_bars: true
-  robot_crop: [0.22, 0.06, 0.78, 0.88]
-  robot_panel_fraction: 0.58
+  robot_crop:
+  - 0.3
+  - 0.06
+  - 0.7
+  - 0.88
+  robot_panel_fraction: 0.4
   resolution:
-  - 1600
-  - 900
+  - 1920
+  - 1080
   geometry_cache: data/connectomes/geometry/malecns_v1
   annotations_path: data/connectomes/raw/malecns_v1_audit/annotations.feather
   projection:
@@ -26,3 +30,4 @@ circuit:
   outputs:
   - circuit
   - combined
+  overview_panel_fraction: 0.65

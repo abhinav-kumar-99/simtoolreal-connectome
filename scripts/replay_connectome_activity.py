@@ -86,6 +86,21 @@ def run(config: dict) -> dict:
         raise ValueError("Replay requires circuit.enabled: true")
     if not config.get("case_paths"):
         raise ValueError("Replay requires nonempty case_paths")
+    capture_options = {}
+    for key, minimum, maximum in [
+        ("camera_resolution_reduction_factor", 1, None),
+        ("video_quality", 0, 10),
+    ]:
+        if key in config:
+            value = config[key]
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < minimum
+                or (maximum is not None and value > maximum)
+            ):
+                raise ValueError(f"Invalid replay {key}: {value!r}")
+            capture_options[key] = value
     environment = os.environ.copy()
     environment["PYTHONPATH"] = os.pathsep.join(
         [str(ROOT / "rl_games"), str(ROOT), environment.get("PYTHONPATH", "")]
@@ -127,6 +142,7 @@ def run(config: dict) -> dict:
                 "circuit": settings,
             }
         )
+        case.update(capture_options)
         directory.mkdir(parents=True, exist_ok=True)
         case_path = directory / "case.yaml"
         previous_case = (

@@ -874,3 +874,11 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added shared viewport geometry, fixed camera cropping and render-layout metadata to the anatomy helper. Renderer version 3 triggers appearance-only refresh without new simulation recordings.
 - Inspected actual-data combined and circuit-only stills. All seven existing focused anatomy/timing/encoding/completion/recording-reuse tests passed. Batch encoding and verification are recorded separately when complete.
 - Updated `workflows/anatomical-activity-videos.md` with crop/width parameters and helper/entrypoint usage.
+
+## [2026-09-18] improve | Enlarge CNS overview and capture sharper task footage
+
+- The user found the version-3 overview too small. Added `overview_panel_fraction` (preset/default 0.65), reduced the HD simulation allocation to 40%, and tightened side cropping to `[0.30, 0.06, 0.70, 0.88]`.
+- Added replay YAML capture overrides for camera reduction factor and source MP4 quality. The HD preset captures native 1600 × 900 (factor 1) at quality 9 and composes 1920 × 1080 output, preserving the 20/80 fps clocks and pinned source checkpoints/cases.
+- Changed the header to "1,952 neurons / 33,720 connections" after verifying ordered body-ID and CSR-weight counts in the raw artifact/builder. 33,720 is not a neuron count or individual synaptic-contact count.
+- Renderer version 4 and view-rectangle-aware raster caches prevent incompatible split reuse. Inspected actual-data layout and the first native-resolution robot crop. Eight focused tests passed, including capture override routing/source preservation and recording identity invalidation.
+- Updated entrypoint/helper/configuration documentation. HD captures and CPU renders target the separate ignored `evals/connectome/anatomical_1952_7b_hd/`; final batch verification is recorded after completion.

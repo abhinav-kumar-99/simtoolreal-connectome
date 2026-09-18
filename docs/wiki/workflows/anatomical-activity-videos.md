@@ -14,7 +14,7 @@ From the normal repository checkout, replay the six paper-tolerance cases for bo
 .venv/bin/python scripts/replay_connectome_activity.py --config configs/connectome/visualization/replay_1952_7b.yaml
 ```
 
-The YAML owns `case_paths`, `output_directory`, one physical `gpu`, `runtime_environment`, and `circuit`. Each source `case.yaml` supplies its checkpoint, resolved policy config, trajectory, tolerance, episode count, camera sampling and simulator overrides. Replay writes new robot footage, `activity.npz`, `circuit.mp4`, `rollout_with_circuit.mp4`, and `circuit_render.json` into the new directory, plus a local `index.html` at the output root for browsing all pairs. Existing videos are preserved. Activity matches the newly replayed footage; exact reproduction of an old MP4 is not assumed. Re-running reuses complete cases with matching circuit settings. Appearance changes rerender saved traces without a simulator worker after verifying simulation options, checkpoint/config hashes and footage. New traces embed the recording configuration and footage hash; legacy traces additionally use the previous case YAML and successful render hashes.
+The YAML owns `case_paths`, `output_directory`, one physical `gpu`, `runtime_environment`, optional `camera_resolution_reduction_factor` / `video_quality` capture overrides, and `circuit`. Each source `case.yaml` supplies its checkpoint, resolved policy config, trajectory, tolerance, episode count, camera sampling and simulator overrides. Capture overrides apply only to the new destination cases. Replay writes new robot footage, `activity.npz`, `circuit.mp4`, `rollout_with_circuit.mp4`, and `circuit_render.json` into the new directory, plus a local `index.html` at the output root for browsing all pairs. Existing source videos are preserved. Activity matches the newly replayed footage; exact reproduction of an old MP4 is not assumed. Re-running reuses complete cases with matching circuit settings. Appearance changes rerender saved traces without a simulator worker after verifying simulation options, checkpoint/config hashes and footage. Camera resolution or source encoding quality changes require a new recording. New traces embed the recording configuration and footage hash; legacy traces additionally use the previous case YAML and successful render hashes.
 
 To change appearance without rerunning Isaac Gym:
 
@@ -24,7 +24,7 @@ To change appearance without rerunning Isaac Gym:
 
 This YAML owns `trace_path`, `rollout_path`, `output_directory`, and `circuit`. Paths are absolute or relative to the repository root. Generated geometry and videos are ignored by Git.
 
-Open `evals/connectome/anatomical_1952_7b/index.html` in a browser to browse the six pairs, with actors grouped by task. The gallery explains the color/bar/leg conventions and provides 0.25×, 0.5× and normal-speed playback for closer inspection; this does not change encoded FPS or synchronization.
+The current preset writes the HD batch to `evals/connectome/anatomical_1952_7b_hd/`, retaining the earlier `anatomical_1952_7b/` recordings. Open the destination's `index.html` to browse the six pairs, with actors grouped by task. The gallery explains the color/bar/leg conventions and provides 0.25×, 0.5× and normal-speed playback for closer inspection; this does not change encoded FPS or synchronization.
 
 For future ordinary or milestone evaluations, add this block to `videos` (under `evaluation.videos` in watcher configs):
 
@@ -35,9 +35,10 @@ circuit:
   group_labels: true
   leg_shadows: true
   activity_bars: true
-  robot_crop: [0.22, 0.06, 0.78, 0.88]
-  robot_panel_fraction: 0.58
-  resolution: [1600, 900]
+  robot_crop: [0.30, 0.06, 0.70, 0.88]
+  robot_panel_fraction: 0.40
+  overview_panel_fraction: 0.65
+  resolution: [1920, 1080]
   geometry_cache: data/connectomes/geometry/malecns_v1
   annotations_path: data/connectomes/raw/malecns_v1_audit/annotations.feather
   projection: [x, z]
@@ -54,14 +55,19 @@ Run the existing entrypoint with that YAML:
 
 The optional block defaults to disabled. Existing jobs are not restarted or enabled automatically. An enabled watcher backfills configured checkpoints whose robot-only outputs lack activity artifacts. Multiple video metrics retain independent rollouts/traces. Existing video FPS, camera sampling/resolution and deterministic mean actions remain authoritative.
 
+For full-resolution capture in ordinary/milestone evaluations, set `videos.camera_resolution_reduction_factor: 1` alongside `videos.circuit` (under `evaluation` in watcher YAMLs). The replay preset instead sets the capture override at the top level. The camera's native size is 1600 × 900: factor 1 captures that size, versus factor 2 at 800 × 450. Changing only `circuit.resolution` scales the composition and cannot recover missing camera detail.
+
 ## Important configuration
 
 | Parameter | Meaning |
 | --- | --- |
 | `fps_multiplier` | Animation FPS relative to robot MP4; 4 makes 20 fps into 80 fps. |
-| `resolution` | Even output width/height; default 1600 × 900. |
-| `robot_crop` | Fixed camera crop `[xmin, ymin, xmax, ymax]`, normalized from 0 to 1. The shipped presets keep the robot, tool and table using `[0.22, 0.06, 0.78, 0.88]`; the general default is the full image. |
-| `robot_panel_fraction` | Simulation share of the combined view's usable width, from 0.4 to 0.7; default/presets 0.58. The cropped image is scaled to fit while preserving its aspect ratio. |
+| `resolution` | Even output width/height; general default 1600 × 900, HD presets 1920 × 1080. |
+| `robot_crop` | Fixed camera crop `[xmin, ymin, xmax, ymax]`, normalized from 0 to 1. The HD presets keep the robot, tool and table using `[0.30, 0.06, 0.70, 0.88]`; the general default is the full image. |
+| `robot_panel_fraction` | Simulation share of the combined view's usable width, from 0.4 to 0.7; general default 0.58, HD presets 0.40. The cropped image is scaled to fit while preserving its aspect ratio. |
+| `overview_panel_fraction` | CNS overview share of the anatomy panel width, from 0.4 to 0.8; default/presets 0.65. The remaining width goes to VNC detail. |
+| Top-level `camera_resolution_reduction_factor` | Replay-only capture override; positive integer, preset 1 for native 1600 × 900. Omit to retain each source case's setting. |
+| Top-level `video_quality` | Replay-only source MP4 quality override, integer 0–10, preset 9. Higher values retain more detail and increase file size. Omit to retain source configuration / worker default 5. |
 | `geometry_cache` | SWC files, provenance manifest and cached raster projections. |
 | `annotations_path` | Native MaleCNS annotations supplying gray dataset soma context. |
 | `projection` | Fixed native EM X–Z view, with equal scale on both axes. |
@@ -71,7 +77,9 @@ The optional block defaults to disabled. Existing jobs are not restarted or enab
 | `leg_shadows` | Faint three-pair leg schematic showing anatomical orientation; enabled in the presets. |
 | `activity_bars` | Population mean absolute tanh state on a fixed 0–1 scale; enabled in the presets. |
 
-The compact layout puts time/episode/counts alongside the title, population roles alongside their names, and the color key alongside source credits. Model/task names and the gray-leg explanatory sentence are omitted from the encoded frames; case names and interpretation remain in the gallery. At 1600 × 900, the simulation viewport is 889 × 708 pixels. The preset crops an 800 × 450 camera frame to 448 × 369 and displays it at 860 × 708. Cropping only affects the combined render, preserving the saved camera footage and neural trace. Renderer version 3 invalidates earlier layouts for appearance-only rerendering.
+The compact layout puts time/episode/counts alongside the title, population roles alongside their names, and the color key alongside source credits. Model/task names and the gray-leg explanatory sentence are omitted from the encoded frames; case names and interpretation remain in the gallery. The original version-3 compact layout gave the simulation 58% and split anatomy equally, leaving the overview small. The HD presets give the simulation 40% and the overview 65% of the remaining anatomy width. At 1920 × 1080, the simulation viewport is 735 × 849, the anatomy panel is 1103 × 849, and its overview allocation is 717 pixels wide. The tighter camera crop is 640 × 738 from native footage and scales to 735 × 848. Cropping only affects the combined render, preserving the saved camera footage and neural trace. Renderer version 4 invalidates earlier layouts; raster cache identity includes the actual view rectangles so changing the split cannot reuse incompatible geometry.
+
+The header says **1,952 neurons / 33,720 connections**. The builder verifies 1,952 ordered body IDs and 33,720 stored CSR connection weights against the selected circuit artifact. Connections are neuron-to-neuron graph entries, not additional neurons or a count of individual synaptic contacts.
 
 ## Timing and interpretation
 
