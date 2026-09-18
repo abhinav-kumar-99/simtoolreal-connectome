@@ -117,6 +117,26 @@ def test_official_lstm_replacement_reproduces_repo_launch_with_seed_42() -> None
     assert training["overrides"]["task.env.torqueScale"] == 2.0
 
 
+def test_official_lstm_fly_environment_match_retains_six_sapg_blocks() -> None:
+    suite_path = (
+        REPOSITORY_ROOT
+        / "configs/connectome/suites/ppo_official_repo_lstm_sapg_seed42_env12288.yaml"
+    )
+    with suite_path.open() as stream:
+        suite = yaml.safe_load(stream)
+
+    training = suite["training"]
+    assert training["seeds"] == [42]
+    assert training["num_envs"] == 12288
+    assert training["sapg_block_size"] == 2048
+    assert training["num_envs"] // training["sapg_block_size"] == 6
+    assert training["minibatch_size"] == 98304
+    assert "rollout_accumulation_steps" not in training
+    assert training["overrides"][
+        "++train.params.config.use_experimental_cv"
+    ] is True
+
+
 def test_forward_is_one_lstm_transition_per_environment_timestep() -> None:
     torch.manual_seed(12)
     num_seqs, sequence_length = 2, 4
