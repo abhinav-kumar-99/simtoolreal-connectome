@@ -610,6 +610,23 @@ The evaluation contract reports both configured-base definitions found in the so
 
 `configs/connectome/suites/ppo_fly1952_k4_k2_fixed_lr1e4_100b.yaml` launches two independent 1,952-cell all-neuron-readout fly actors at seed 42: K=4 on physical GPU 0 and K=2 on physical GPU 1. Both retain the stopped fly profile's 140-value learned adapter map, frozen recurrent graph, rollout-reference timing, 12,288 environments, SAPG/LF population, no auxiliary actor value loss, task contract and 100B-frame cap. `train.params.config.lr_schedule: constant` replaces only the adaptive actor scheduler with the identity scheduler, keeping actor LR at `1e-4`; the central critic remains at its inherited fixed `1e-4`. `neural_updates` is the sole actor-architecture variable.
 
+The resolved actor fields still contain `min_lr: 1e-6`, `max_lr: 1e-3`,
+`kl_threshold: .004` and `schedule_type: rollout`, but the constant schedule
+selects `IdentityScheduler`, so neither the bounds nor KL currently change the
+actor LR. If adaptive scheduling is selected, one same-conditioned KL decision
+is made after both PPO mini-epochs: invalid or negative KL, or KL above `.008`,
+divides LR by 1.5; KL below `.002` multiplies LR by 1.5; the inclusive
+`.002--.008` band holds LR. The central critic's resolved learning rate is also
+`1e-4`; its `.016` KL field is not an adaptive rule because the central-value
+trainer uses an identity scheduler unless configured for linear decay. To make
+a fresh constant-LR experiment uniformly lower, lower both
+`train.params.config.learning_rate` and
+`train.params.config.central_value_config.learning_rate` in the suite YAML.
+Changing the YAML cannot mutate an already-running process, and
+`resume_training_state` restores both optimizer LRs from the checkpoint, so a
+continuation needs an explicit post-restore LR override if optimizer moments
+and counters must be retained.
+
 Both cases use the shifted soft Sigma-3 ceiling. For raw log-scale `r`, the
 emitted standard deviation is `sigma=3/(1+2 exp(-r))`, so the distribution's
 log-scale Jacobian is `d log(sigma)/dr=1-sigma/3`. The transform preserves

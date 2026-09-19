@@ -1010,3 +1010,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Derived the exact shifted ceiling `sigma=3/(1+2 exp(-r))` and Jacobian `d log(sigma)/dr=1-sigma/3`. It preserves unit sigma at raw log scale zero but reduces the raw-scale gradient to `2/3` there, so attenuation is not localized to the ceiling.
 - Read current TensorBoard entropy and saved raw sigma rows. At K=4 frame 432,537,600 and K=2 frame 511,180,800, geometric sigma remains about `0.995--1.165`, yet mean cap Jacobians are only `.611--.668`. A frozen-raw-parameter no-cap calculation raises mean six-block entropy by about 1.00 nats for K=4 and 1.14 nats for K=2; this is diagnostic, not a matched from-scratch causal result.
 - No trainer, configuration or process was changed.
+
+## [2026-09-19] query | Explain live learning-rate bounds and KL rule
+
+- Confirmed from both saved resolved configurations that actor LR is fixed at `1e-4` under `lr_schedule: constant`; configured bounds `[1e-6, 1e-3]`, KL target `.004` and rollout KL computation are present but cannot change LR through the identity scheduler.
+- Recorded the dormant adaptive rule: invalid/negative KL or KL above `.008` divides LR by 1.5, KL below `.002` multiplies it by 1.5, and the inclusive middle band holds it. Rollout scheduling makes one same-conditioned decision after both mini-epochs.
+- Confirmed the privileged critic is independently fixed at `1e-4`; its `.016` KL field does not control its identity scheduler. A uniformly lower fresh run must lower both actor and critic learning-rate fields.
+- `resume_training_state` restores actor optimizer LR and central-critic optimizer/training LR from the checkpoint, overriding lower constructor values. Preserving optimizer history while lowering continuation LR therefore requires an explicit post-restore override rather than only editing the suite YAML. No live process or configuration was changed.
