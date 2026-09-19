@@ -2,7 +2,7 @@
 
 The compact fly control is a standard one-update LSTM matched to the current all-neuron actor's instantiated coefficient count.
 
-Last updated: 2026-09-18
+Last updated: 2026-09-19
 
 Related: [Connectome actor](../concepts/connectome-actor.md), [Experiment workflow](../workflows/connectome-experiments.md), [Compact training](compact-1952-training.md)
 
@@ -252,6 +252,26 @@ The dual-tolerance watcher is PID 671483 in
 `connectome-asymmetric-matched-pair-100b-eval`. A symlink exposes both summary
 streams to the existing TensorBoard server on port 6008. These observations
 establish placement and launch health, not comparative learning performance.
+
+### Small-MLP fly scheduler equivalence
+
+A direct comparison of the saved resolved YAML for the current asymmetric
+`128/32/32` fly and the earlier no-auxiliary all-neuron run confirms an
+identical actor adaptive-KL learning-rate contract: `lr_schedule: adaptive`,
+`schedule_type: standard`, initial LR `1e-4`, bounds `[1e-6, 1e-3]`, KL target
+`.004`, two PPO mini-epochs, 49,152-sample minibatches, and LF reuse ratio 1.
+Both are independent single-GPU jobs with four logical minibatches per mini-
+epoch. The scheduler therefore receives the same LF-weighted KL population and
+makes one decision after each mini-epoch: multiply LR by 1.5 below KL `.002`,
+divide it by 1.5 above `.008` or for invalid KL, and otherwise leave it
+unchanged, subject to the configured bounds.
+
+This is scheduler equivalence, not trajectory equivalence. The smaller
+interface MLP changes policy weights, gradients and rollouts, so its measured
+KL values and resulting LR history can differ from the earlier actor even
+though the controller, cadence and sample geometry are the same. The KL is a
+feedback signal for adaptive LR rather than a separately weighted KL penalty in
+the PPO objective.
 
 ```bash
 .venv/bin/python scripts/run_connectome_evaluation.py \

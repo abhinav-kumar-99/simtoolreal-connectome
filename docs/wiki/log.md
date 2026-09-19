@@ -2,7 +2,7 @@
 
 Append-only record of durable repository work.
 
-Last updated: 2026-09-18
+Last updated: 2026-09-19
 
 Related: [Index](index.md), [Overview](overview.md)
 
@@ -945,3 +945,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added one fresh YAML-owned pair: the 323-unit parameter-matched LSTM actor on physical CUDA 0 and the 1,952-neuron all-neuron `128/32/32` fly actor on physical CUDA 1. Both use the identical inherited `[1024, 1024, 512, 512]` privileged asymmetric critic, no actor-side auxiliary value loss, 12,288 environments, 49,152 actor/critic batches, LF/1.0, seed 42 and a fresh 100B-frame budget.
 - Seven focused configuration and accumulation tests passed. Live process environments and NVIDIA UUIDs verify PID 671749 on CUDA 0 for the LSTM and PID 671748 on CUDA 1 for the fly; both report four logical minibatches per PPO mini-epoch and 196,608-frame epoch increments.
 - The coordinator runs in tmux `connectome-asymmetric-matched-pair-100b` as PID 671476. The dual paper/checkpoint-tolerance watcher runs in `connectome-asymmetric-matched-pair-100b-eval` as PID 671483. Both event streams are linked into and discovered by TensorBoard port 6008.
+
+## [2026-09-19] query | Verify small-MLP fly adaptive-KL scheduler
+
+- Compared the current asymmetric `128/32/32` fly's saved resolved YAML with the specified earlier no-auxiliary all-neuron run. Both use the same adaptive/standard actor LR scheduler, initial LR `1e-4`, bounds `[1e-6, 1e-3]`, KL target `.004`, two mini-epochs, 49,152-sample minibatches and LF/1.0 population.
+- Both independent single-GPU runs have four logical minibatches per mini-epoch and one scheduler decision after each mini-epoch. The controller multiplies LR by 1.5 below KL `.002`, divides by 1.5 above `.008` or on invalid KL, and otherwise leaves it unchanged.
+- Recorded that identical scheduler semantics do not imply identical KL/LR trajectories because the smaller interface MLP changes the learned policy, gradients and collected rollouts. No process or training configuration was changed.
