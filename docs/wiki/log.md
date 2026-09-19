@@ -1003,3 +1003,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 
 - Recursively compared the stopped fly's saved resolved configuration with the live replacement K=4 resolved configuration. The only training-semantic difference is `train.params.config.lr_schedule`: `adaptive` became `constant`; both retain K=4, `schedule_type: rollout`, base actor LR `1e-4`, actor/critic batch geometry, central-critic LR `1e-4`, LF/SAPG, all-neuron readout, frozen graph, seed and task settings.
 - The remaining resolved-config differences are run name, artifact/Hydra directories, and W&B group/name/tags. They do not alter optimization or simulator behavior. The stopped run's final TensorBoard actor LR was `5.0625e-4` at frame 2,522,873,856 after adaptive scheduling; the current actor is held at `1e-4`.
+
+## [2026-09-19] query | Audit soft entropy-cap gradients in live K=4/K=2 jobs
+
+- Inventoried the live trainers and confirmed only the matched K=4 and K=2 fly jobs are training; both resolve to the coefficient-conditioned Sigma-3 Gaussian profile with entropy scale `.005`.
+- Derived the exact shifted ceiling `sigma=3/(1+2 exp(-r))` and Jacobian `d log(sigma)/dr=1-sigma/3`. It preserves unit sigma at raw log scale zero but reduces the raw-scale gradient to `2/3` there, so attenuation is not localized to the ceiling.
+- Read current TensorBoard entropy and saved raw sigma rows. At K=4 frame 432,537,600 and K=2 frame 511,180,800, geometric sigma remains about `0.995--1.165`, yet mean cap Jacobians are only `.611--.668`. A frozen-raw-parameter no-cap calculation raises mean six-block entropy by about 1.00 nats for K=4 and 1.14 nats for K=2; this is diagnostic, not a matched from-scratch causal result.
+- No trainer, configuration or process was changed.

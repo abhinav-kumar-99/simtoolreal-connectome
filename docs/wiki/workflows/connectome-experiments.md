@@ -610,6 +610,24 @@ The evaluation contract reports both configured-base definitions found in the so
 
 `configs/connectome/suites/ppo_fly1952_k4_k2_fixed_lr1e4_100b.yaml` launches two independent 1,952-cell all-neuron-readout fly actors at seed 42: K=4 on physical GPU 0 and K=2 on physical GPU 1. Both retain the stopped fly profile's 140-value learned adapter map, frozen recurrent graph, rollout-reference timing, 12,288 environments, SAPG/LF population, no auxiliary actor value loss, task contract and 100B-frame cap. `train.params.config.lr_schedule: constant` replaces only the adaptive actor scheduler with the identity scheduler, keeping actor LR at `1e-4`; the central critic remains at its inherited fixed `1e-4`. `neural_updates` is the sole actor-architecture variable.
 
+Both cases use the shifted soft Sigma-3 ceiling. For raw log-scale `r`, the
+emitted standard deviation is `sigma=3/(1+2 exp(-r))`, so the distribution's
+log-scale Jacobian is `d log(sigma)/dr=1-sigma/3`. The transform preserves
+`sigma=1` at `r=0`, but its Jacobian there is already `2/3`; it therefore
+attenuates all gradients through log scale, including the entropy term, from
+initialization rather than only near Sigma 3. In the saved K=4 frame-432,537,600
+and K=2 frame-511,180,800 checkpoints, per-block geometric sigmas were only
+`0.997--1.144` and `0.995--1.165`, while mean cap Jacobians were
+`0.619--0.668` and `0.611--0.668`. Thus the current rows are far from the
+ceiling but their raw-scale gradients are about 33--39% smaller than the
+identity parameterization at the same emitted distribution. Removing the cap
+from those frozen raw parameters would raise mean six-block raw Gaussian
+entropy from 42.995 to 43.993 nats for K=4 and from 43.225 to 44.365 nats for
+K=2; this frozen-parameter calculation is not a prediction of the full
+from-scratch uncapped optimization trajectory. Adam can partly normalize a
+common gradient rescaling, while the nonlinear Jacobian and finite reachable
+scale still change longer-run dynamics.
+
 Run the suite from the repository root:
 
 ```bash
