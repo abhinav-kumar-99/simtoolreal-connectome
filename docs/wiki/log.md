@@ -2,7 +2,7 @@
 
 Append-only record of durable repository work.
 
-Last updated: 2026-09-18
+Last updated: 2026-09-19
 
 Related: [Index](index.md), [Overview](overview.md)
 
@@ -815,3 +815,158 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Resolved wiki conflicts with explicit user authorization, preserving source-backed findings and both log histories. Evaluator merges retain milestone-target checkpoint resolution and dual-tolerance video reuse.
 - Focused evaluator/configuration/checkpoint and baseline checks: 48 passed. The consolidation worktree needed a link to shared ignored training artifacts for one existing configuration test.
 - Preserved `.vscode/`, `tmp/`, shared artifact links, existing worktrees, and running processes.
+
+## [2026-09-18] implement | Anatomical circuit activity videos
+
+- Added YAML-owned saved-case replay and trace-only rendering entrypoints, optional ordinary/milestone evaluation recording, and source-derived native X-Z anatomy with overview/VNC detail.
+- Recorded every compact tanh neural substep without changing actions/state or checkpoint schema; the CPU/CUDA parity and focused integration/configuration tests passed (55 total).
+- Downloaded and validated the exact 1,952 circuit body IDs: 194,668,453 bytes of official MaleCNS v1.0 SWC geometry, with URL/hash provenance and strict missing-geometry failures.
+- Added separate/combined video encoding at four times the rollout FPS, episode-local resampling and terminal holds; enabled completion checks require traces, rendered videos and matching successful metadata.
+- Documentation: `workflows/anatomical-activity-videos.md`, linked from the index and experiment workflow, explains both scripts, helpers, YAML parameters, timing and modeled-state interpretation.
+- The first actual 7B no-auxiliary marker replay produced a valid activity trace and inspected anatomical preview; full batch completion is recorded separately after artifact verification.
+
+## [2026-09-18] fix | Protect geometry caches and expose local video index
+
+- Made projected-raster cache writes atomic for parallel evaluator queues; existing geometry downloads use a cache lock.
+- Rejected non-boolean enablement, duplicate output names and disabled standalone rendering.
+- Added generated local `index.html` to the replay entrypoint for opening every combined video and downloading circuit-only videos, traces and metadata.
+- Focused anatomy/timing/encoding/completion tests passed (4); new modules and entrypoints pass Ruff checks. The first full replay completed with 800 frames at 80 fps and exactly 10 seconds for both outputs.
+
+## [2026-09-18] improve | Interpret anatomical activity with labels and leg guides
+
+- Added source-verified sensory/descending/motor captions, brain/VNC labels and approximate T1/T2/T3 orientation guides; faint leg silhouettes are explicitly schematic, not fabricated anatomical leg geometry.
+- Added four population mean-absolute-state bars and the actual all-neuron robot-action readout route. Masks/counts come from the exact hash-verified circuit artifact; sensory/motor anatomical captions additionally use source annotations.
+- Added appearance-only replay reuse with checkpoint/config/footage verification, preserving existing simulation recordings while rebuilding videos. New traces save their recording options and footage hash.
+- Inspected annotated real-data stills at three seconds. Focused recording, CPU/CUDA parity, timing, encoding, configuration, milestone and baseline checks: 57 passed; Ruff and diff checks passed.
+- Verified that all six completed 7B recordings can be rerendered without simulator workers. See `workflows/anatomical-activity-videos.md` for flags and helper/entrypoint usage.
+
+## [2026-09-18] improve | Browse matched tasks at slower playback speeds
+
+- Updated the generated local video gallery to group actors by task, explain state/bar/leg conventions and offer 0.25×/0.5×/1× playback.
+- Gallery links respect the requested circuit/combined outputs even when older unrequested MP4s remain. Verified six cards, paired task ordering, existing file targets and playback options; Ruff/diff checks passed.
+- Clarified that internal algorithm updates are placed uniformly on the animation clock, rather than measured physiological/wall-clock events.
+
+## [2026-09-18] verify | Complete all six annotated 7B task pairs
+
+- Completed the full six-case replay and interpretability rerender for both compact all-neuron actors at target 7B / actual 7,000,031,232 frames, across marker/eraser/spatula tasks.
+- All 12 requested MP4s passed complete-frame decoding and 1600 × 900 / 80 fps / exact frame-count checks. Each video matches its 20 fps source footage's 10 or 10.05 second duration.
+- Verified finite states, initial state and episode-local timing, exact ordered body IDs and sensory/descending/motor masks, 1,952-neuron anatomy coverage, hash-verified source checkpoints/configs and all-neuron readout captions. All six original trace/robot MP4 hashes stayed unchanged during annotation rendering.
+- Generated `verification.json`, original-recording provenance, per-case decoded previews and a six-case preview montage in ignored `evals/connectome/anatomical_1952_7b/`; cached replay rebuilt the task-paired gallery without simulator workers or additional encoding.
+- Implementation remains checkpointed on `feature/anatomical-circuit-video` for user evaluation. Preserved the pre-existing `.vscode/` and `tmp/` directories and existing worktrees/jobs.
+
+## [2026-09-18] fix | Preserve bilateral population callouts
+
+- Investigated the user's observation that sensory/motor label leaders targeted only the screen-right bulb. The cause was a pooled median across separated left/right arbor clusters; 68 versus 67 motor cells selects a location in one bulb despite nearly balanced counts.
+- Confirmed bilateral source populations: motor `somaSide` L/R = 68/67, sensory `rootSide` L/R = 220/164, descending `somaSide` L/R = 79/78. Source L-side arbors are screen-right in the unflipped native X-Z projection.
+- Replaced the pooled anchor with separate source-side anchors, added endpoint markers and the "Both front legs" caption, and clarified that leaders label groups rather than physical drive sites or activity paths.
+- Added renderer-version completion checks to refresh stale videos without repeating simulation. Focused anatomy/timing/encoding/completion/recording-reuse checks: 7 passed, including the one-cell-imbalance regression. Inspected the corrected real-data preview before rerendering all six recorded cases.
+
+## [2026-09-18] verify | Refresh all bilateral-callout videos
+
+- Completed all six version-2 renders (12 MP4s) using three CPU processes and the existing saved traces. No simulator workers were dispatched.
+- Verified both source-side anchors/counts for sensory, descending and motor groups, complete-frame decoding, 1600 × 900 resolution, 80 fps, matched per-case duration and unchanged original recording hashes.
+- Refreshed decoded previews, the six-case montage, verification metadata and local gallery. The existing replay YAML reuses these complete outputs; the standalone render YAML regenerates the corrected labels with no configuration changes.
+
+## [2026-09-18] improve | Enlarge the simulation and compact video text
+
+- Added YAML-owned `robot_crop` and `robot_panel_fraction`, with normalized crop validation and a 40–70% width range. The six-case presets use `[0.22, 0.06, 0.78, 0.88]` and 58%; sampled source frames across all six rollouts keep the robot, tool and table in view.
+- Expanded the shared content height to 708 pixels at 1600 × 900 and scaled the cropped simulation to 860 × 708, preserving its aspect ratio. Timing/counts, population names/roles and legend/credits now use horizontal rows; removed model/task names and the gray-leg explanatory line from encoded frames.
+- Added shared viewport geometry, fixed camera cropping and render-layout metadata to the anatomy helper. Renderer version 3 triggers appearance-only refresh without new simulation recordings.
+- Inspected actual-data combined and circuit-only stills. All seven existing focused anatomy/timing/encoding/completion/recording-reuse tests passed. Batch encoding and verification are recorded separately when complete.
+- Updated `workflows/anatomical-activity-videos.md` with crop/width parameters and helper/entrypoint usage.
+
+## [2026-09-18] improve | Enlarge CNS overview and capture sharper task footage
+
+- The user found the version-3 overview too small. Added `overview_panel_fraction` (preset/default 0.65), reduced the HD simulation allocation to 40%, and tightened side cropping to `[0.30, 0.06, 0.70, 0.88]`.
+- Added replay YAML capture overrides for camera reduction factor and source MP4 quality. The HD preset captures native 1600 × 900 (factor 1) at quality 9 and composes 1920 × 1080 output, preserving the 20/80 fps clocks and pinned source checkpoints/cases.
+- Changed the header to "1,952 neurons / 33,720 connections" after verifying ordered body-ID and CSR-weight counts in the raw artifact/builder. 33,720 is not a neuron count or individual synaptic-contact count.
+- Renderer version 4 and view-rectangle-aware raster caches prevent incompatible split reuse. Inspected actual-data layout and the first native-resolution robot crop. Eight focused tests passed, including capture override routing/source preservation and recording identity invalidation.
+- Updated entrypoint/helper/configuration documentation. HD captures and CPU renders target the separate ignored `evals/connectome/anatomical_1952_7b_hd/`; final batch verification is recorded after completion.
+
+## [2026-09-18] verify | Complete native-camera anatomical HD batch
+
+- Completed six native 1600 × 900 task recordings and all 12 version-4 circuit/combined outputs at 1920 × 1080 / 80 fps in `evals/connectome/anatomical_1952_7b_hd/`.
+- Fully decoded every output; source/output frame counts are 200→800 or 201→804 and per-case durations match at 10 or 10.05 seconds. The cached replay then regenerated the six-card task-paired gallery without simulation or encoding.
+- Verified every source frame's colored robot/tool content stays inside the `[0.30, 0.06, 0.70, 0.88]` crop. Inspected encoded task previews and the six-case montage for robot, tool, table, overview size, labels and header semantics.
+- Reverified 1,952 neurons, 33,720 graph connections, all-neuron robot-action readout, population masks and bilateral sensory/descending/motor anchors. `verification.json`, `recording_provenance.json`, per-case previews and `preview_montage.png` preserve the generated evidence.
+
+## [2026-09-18] verify | Complete noaux dual-tolerance anatomical HD batch
+
+- Added a YAML-owned normal-evaluation comparison that fixes the actual 7B noaux checkpoint, mean-action policy, three task cases, native 1600 × 900 capture, quality-9 source footage and version-4 1920 × 1080 / 80 fps circuit layout. It evaluates paper task progress at 0.02 m and checkpoint training tolerance at exactly 0.039858076721429825 m, resolved from `scalars/success_tolerance/frame` at frame 7,000,031,232.
+- Completed six cases and 12 MP4s in `evals/connectome/anatomical_1952_7b_noaux_dual_tolerance_hd/`. Every MP4 fully decoded; output frame counts were exactly four times the 20 fps source counts, and crop-content checks passed on every source frame. The six-case montage was inspected for task framing, CNS overview, labels, threshold titles and activity bars.
+- Paper tolerance averaged 27.6094% task progress; checkpoint tolerance averaged 77.3333%. The relaxed-threshold eraser episode reached success at 5.6 seconds, while the other cases ran for 10 or 10.05 seconds. The local gallery has six metric/tolerance-labeled cards and was regenerated without another simulator run.
+
+## [2026-09-18] configure | Force fresh noaux video evaluation on CUDA:1
+
+- Added `configs/connectome/evaluation/ppo_1952_7b_noaux_dual_tolerance_anatomical_hd_cuda1.yaml`, preserving the noaux checkpoint, both thresholds, native capture and circuit layout while setting `gpu_assignments: [1]` and a distinct `_cuda1` output directory.
+- The distinct destination is intentional: the normal evaluator reuses complete matching cases and otherwise prints the aggregate JSON without launching Isaac Gym workers. The new config forces fresh simulator capture on physical GPU 1 while preserving the previously verified output directory.
+
+## [2026-09-18] configure | Add blue-brush cases to noaux video generation
+
+- Added `blue_brush/sweep_forward` and `blue_brush/sweep_right` to both noaux dual-tolerance evaluation YAMLs. Existing marker, eraser and spatula cases remain unchanged; rerunning reuses their complete artifacts and schedules only the new brush cases.
+
+## [2026-09-18] configure | Launch CUDA-1 small-MLP all-neuron fly control
+
+- Added `configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_mlp128x32x32_100b.yaml` as the CUDA-1 counterpart to the live no-auxiliary all-neuron fly run.
+- The suite preserves the same 1,952-neuron prepared graph, all-neuron actor readout, privileged critic, no-auxiliary loss setting, seed, environment/batch geometry, optimizer/objective, task overrides, checkpoint cadence, and 100B-frame budget. It selects only the pre-existing `128/32/32` sensory/descending/readout MLP train profile; output identity and physical GPU placement are intentionally distinct.
+
+## [2026-09-18] implement | Add synchronized two-GPU small-MLP training
+
+- Stopped the full-size CUDA-0 and small-MLP CUDA-1 trainer process groups while preserving their run artifacts; unrelated milestone watchers were left running.
+- Extended `run_connectome_suite.py` with YAML-owned `training.distributed: true`: it launches one `torchrun` policy across all listed GPUs, exposes the complete device list, validates the frame cap against world size, and records all participating devices. Ordinary suite contracts remain single-GPU.
+- Corrected the dormant multi-GPU runtime to select rank-local Isaac Gym and PPO devices and use NCCL through the launcher's rendezvous. Previously both ranks were hardwired to logical CUDA 0 and the suite always supplied `multi_gpu=false`.
+- Added a two-rank smoke and a fresh 100B production suite using the no-auxiliary all-neuron `128/32/32` MLP profile. Production uses 15,360 environments and six 2,560-environment SAPG blocks per rank, 61,440-sample local actor/critic minibatches, and 203,450 epochs for 99,999,744,000 global frames.
+- Added a milestone watcher that generates both fixed paper-tolerance and exact checkpoint-training-tolerance videos for the three standard deterministic cases every 250M global frames.
+- The two-epoch smoke completed on both GPUs and reload-verified the two-rank terminal checkpoint with a finite 29-action deployment output.
+
+## [2026-09-18] configure | Halve the DDP minibatch and expose it on TensorBoard 6008
+
+- Stopped the 61,440-per-rank DDP pilot and its milestone watcher with artifacts preserved.
+- Added a fresh 24,576-per-rank production contract. NCCL gradient averaging gives the original 49,152-sample nominal global batch; LF's seventh block produces 11 optimizer steps per mini-epoch, 22 per epoch, and 4,475,900 actor updates over 203,450 epochs.
+- Added a matching watcher for paper-tolerance and exact checkpoint-training-tolerance videos. The new training output is rooted under `train_dir/connectome/adaptation_100b_gains_update_timing`, which the existing TensorBoard server on port 6008 already watches.
+
+## [2026-09-18] correct | Restore five logical DDP updates per PPO epoch
+
+- Stopped the 24,576-logical-minibatch DDP trainer and matching watcher at epoch 189 / 92,405,760 global frames, preserving their complete run and evaluation artifacts.
+- Added a fresh YAML-owned replacement with 15,360 environments per rank, 49,152-sample logical actor/critic minibatches, and 24,576-sample physical microbatches. The unchanged two PPO mini-epochs now apply five synchronized actor steps and five separate critic steps per mini-epoch, or ten of each per training epoch.
+- Focused configuration and gradient-accumulation checks passed seven tests. Both live ranks report `num_minibatches: 5`, logical optimizer batch 49,152, physical microbatch 24,576, and nominal accumulation two. Global frame counters advance by exactly 491,520 per epoch.
+- Launched the trainer in tmux `connectome-ddp-small-mlp-logical49152` (coordinator PID 363903, torchrun PID 364173, rank PIDs 364247/364249) and the dual paper/checkpoint-tolerance watcher in `connectome-ddp-small-mlp-logical49152-eval` (PID 363908). TensorBoard port 6008 discovered the new summary path.
+
+## [2026-09-18] relaunch | Return DDP to the original environment population
+
+- Stopped the 15,360-environment-per-rank trainer and matching watcher at epoch 168 / 82,083,840 global frames, preserving their training and evaluation artifacts.
+- Added and launched the replacement at the original 12,288 environments and six 2,048-environment SAPG blocks per rank. It keeps 49,152-sample logical actor/critic batches and the halved 24,576-sample physical per-rank microbatches, with two-way gradient accumulation before every synchronized step.
+- Both ranks report four logical minibatches per PPO mini-epoch, logical optimizer batch 49,152, physical microbatch 24,576, and nominal accumulation two. Two unchanged PPO mini-epochs therefore give eight actor steps and eight separate critic steps per training epoch; the number of synchronized updates matches the original one-GPU schedule while each normal update averages 98,304 global samples.
+- The 254,313-epoch contract reaches 99,999,940,608 global frames. The trainer is live in tmux `connectome-ddp-small-mlp-env12288` (coordinator PID 434253, torchrun PID 434536, rank PIDs 434643/434644); the paper/checkpoint-tolerance watcher is live in `connectome-ddp-small-mlp-env12288-eval` (PID 434259), and TensorBoard port 6008 discovered the replacement summary path.
+
+## [2026-09-18] launch | Pair the matched LSTM and asymmetric fly
+
+- Stopped only the two-rank DDP fly trainer and its matching watcher at epoch 753 / 295,698,432 global frames; their artifacts remain preserved. Unrelated historical milestone watchers were not signaled.
+- Added one fresh YAML-owned pair: the 323-unit parameter-matched LSTM actor on physical CUDA 0 and the 1,952-neuron all-neuron `128/32/32` fly actor on physical CUDA 1. Both use the identical inherited `[1024, 1024, 512, 512]` privileged asymmetric critic, no actor-side auxiliary value loss, 12,288 environments, 49,152 actor/critic batches, LF/1.0, seed 42 and a fresh 100B-frame budget.
+- Seven focused configuration and accumulation tests passed. Live process environments and NVIDIA UUIDs verify PID 671749 on CUDA 0 for the LSTM and PID 671748 on CUDA 1 for the fly; both report four logical minibatches per PPO mini-epoch and 196,608-frame epoch increments.
+- The coordinator runs in tmux `connectome-asymmetric-matched-pair-100b` as PID 671476. The dual paper/checkpoint-tolerance watcher runs in `connectome-asymmetric-matched-pair-100b-eval` as PID 671483. Both event streams are linked into and discovered by TensorBoard port 6008.
+
+## [2026-09-19] query | Verify small-MLP fly adaptive-KL scheduler
+
+- Compared the current asymmetric `128/32/32` fly's saved resolved YAML with the specified earlier no-auxiliary all-neuron run. Both use the same adaptive/standard actor LR scheduler, initial LR `1e-4`, bounds `[1e-6, 1e-3]`, KL target `.004`, two mini-epochs, 49,152-sample minibatches and LF/1.0 population.
+- Both independent single-GPU runs have four logical minibatches per mini-epoch and one scheduler decision after each mini-epoch. The controller multiplies LR by 1.5 below KL `.002`, divides by 1.5 above `.008` or on invalid KL, and otherwise leaves it unchanged.
+- Recorded that identical scheduler semantics do not imply identical KL/LR trajectories because the smaller interface MLP changes the learned policy, gradients and collected rollouts. No process or training configuration was changed.
+
+## [2026-09-19] diagnose | Explain growing fly KL without LR decay
+
+- Read the current small-MLP fly's raw port-6008 scalars through frame 1,186,725,888. Median aggregate KL increased monotonically across six 200M-frame bands from `.00549` to `.04040`; this is not a smoothing artifact.
+- Mini-epoch-0 median KL rose from `.00905` to `.07920`, while mini-epoch 1 stayed near `.0016`--`.0019`. In 120 of the latest 200 epochs, the first scheduler decision divided LR by 1.5 and the second multiplied it by 1.5, exactly canceling. The authoritative end-of-epoch LR was `.000197531` at both window endpoints.
+- Traced `info/last_lr` to the final actor minibatch return: it precedes the mini-epoch-1 scheduler call and is not necessarily the epoch's final LR. The explicit per-mini-epoch tags show the real transitions. Dataset means/scales are refreshed after each minibatch, and LF KL includes relabeled cross-member samples, so the feedback is local rather than a cumulative trust-region bound. No process or configuration was changed.
+
+## [2026-09-19] query | Classify PPO versus scheduler bug
+
+- Verified that the clipped PPO ratio still uses rollout-time `old_logp_actions` across both mini-epochs; `update_mu_sigma` mutates only the separate Gaussian parameters used for KL diagnostics and LR scheduling. The core PPO ratio therefore retains its frozen behavior-policy reference.
+- Recorded that adaptive target-KL LR control is an extension rather than a defining PPO requirement. The per-mini-epoch scheduler and distribution-reference refresh are inherited RL-Games behavior, but LF relabeling retains source-conditioned distribution parameters and makes the first KL partly a conditioning mismatch.
+- Classified the current failure as an LF/scheduler integration or control-design bug: a low refreshed-reference second-pass KL can reverse the LR reduction caused by a high first-pass KL. Separately, `info/last_lr` is misleading telemetry because it precedes the final scheduler decision. No process or configuration was changed.
+
+## [2026-09-19] fix | Relaunch matched pair with one rollout KL decision
+
+- Added opt-in `schedule_type: rollout`. It keeps rollout means/scales immutable across both PPO mini-epochs, excludes LF-relabeled samples only from scheduler KL, uses the final mini-epoch's same-conditioned rollout-reference KL, and applies exactly one adaptive-LR decision per rollout update. LF/1.0 training samples and the PPO objective are unchanged. Corrected `info/last_lr` to report the post-decision LR.
+- Added fresh YAML-owned 100B matched-pair and dual-tolerance milestone contracts. Fifty-four focused KL, configuration, recurrent-baseline and accumulation tests passed.
+- Stopped the original matched-pair trainer group and its in-progress watcher with artifacts preserved. Launched the fresh replacement as coordinator PID 1720057, LSTM PID 1720325 on CUDA 0, fly PID 1720327 on CUDA 1 and watcher PID 1720062. Resolved YAMLs retain LF, two mini-epochs and 49,152-sample batches.
+- Initial TensorBoard streams contain exactly one rollout decision per frame step, both diagnostic mini-epoch rollout-reference KLs, no legacy per-mini-epoch LR decisions, and corrected final LR telemetry. Port 6008 discovered both fresh streams; the watcher retains paper- and checkpoint-tolerance videos. This is launch-health and controller-wiring evidence, not long-run regulation evidence.

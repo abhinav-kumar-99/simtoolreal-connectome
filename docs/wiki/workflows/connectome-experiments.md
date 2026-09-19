@@ -6,6 +6,8 @@ Last updated: 2026-09-18
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
 
+For source-derived skeleton geometry and recorded recurrent-state videos at four times the rollout FPS, see [Anatomical activation videos](anatomical-activity-videos.md). This optional YAML path supports saved-case replay and future ordinary/milestone evaluations.
+
 ## Recovery checkpoint contract
 
 Full PPO recovery checkpoints now preserve three separate central-critic layers:
@@ -387,6 +389,76 @@ minibatches. `scripts/run_connectome_suite.py` prepares the 1,952-neuron graph,
 composes the Hydra train profile, writes the resolved contract, and launches
 the trainer; the builder constructs the three independently sized interface
 MLPs. This gate has not been launched as a training job.
+
+The CUDA-1 long-run counterpart of the live all-neuron no-auxiliary policy is:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_mlp128x32x32_100b.yaml
+```
+
+Its `gpu_assignments: [1]` selects physical CUDA 1.  It retains the live
+policy's 1,952-cell prepared graph, all-neuron readout, four recurrent updates,
+seed 42, environment/batch geometry, clipped-Gaussian SAPG/LF objective,
+privileged central critic, disabled actor-side auxiliary value loss, task
+randomization, checkpoint cadence, and fresh 100B-frame budget.  The only
+model change is the selected train profile's sensory/descending/readout MLP
+hidden sizes of `128/32/32` rather than the inherited `256/256/256`; output and
+experiment names are necessarily distinct to prevent artifact collision.
+
+The superseding synchronized two-GPU small-MLP contract uses the original
+12,288-environment population on **each** rank:
+
+```bash
+# Two-rank, two-epoch integration and reload gate.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_noaux_mlp128x32x32_ddp_15360_smoke.yaml
+
+# Fresh two-rank 100B-frame run on physical GPUs 0 and 1.
+.venv/bin/python scripts/run_connectome_suite.py --config configs/connectome/suites/ppo_1952_noaux_mlp128x32x32_ddp_12288_logical49152_micro24576_100b.yaml
+
+# Paper-tolerance and exact checkpoint-training-tolerance videos.
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py --config configs/connectome/evaluation/ppo_1952_noaux_mlp128x32x32_ddp_12288_logical49152_micro24576_100b_milestones.yaml
+```
+
+`training.distributed: true` makes the suite entrypoint launch one synchronized
+policy with two `torchrun` ranks over `gpu_assignments: [0, 1]`; it does not
+launch two independent policies. Each rank owns 12,288 simulator environments,
+for 24,576 simultaneous environments in total. Each rank retains six SAPG
+blocks (`sapg_block_size: 2048`). The
+logical actor and critic minibatches remain 49,152 samples per rank, while
+`actor_microbatch_size` and `central_critic_microbatch_size` are halved to
+24,576 physical samples per rank. Each ordinary logical update therefore
+accumulates two physical forward/backward chunks before the synchronized DDP
+optimizer step; its nominal global gradient population is 98,304 samples.
+
+LF adds a seventh block, so the local 229,376-sample training set produces four
+logical optimizer steps per mini-epoch: three 49,152-sample local batches and
+one 81,920-sample local remainder batch. Two unchanged PPO mini-epochs produce
+eight actor updates and eight separate critic updates per training epoch. One
+global epoch represents 393,216 fresh frames, and 254,313 complete epochs
+produce 99,999,940,608 frames under the 100B cap. This yields 2,034,504
+synchronized actor updates over the full budget, with the same count for the
+critic. The earlier 15,360-environment and other DDP launches are preserved as
+stopped pilots rather than mixed into this fresh run.
+
+The production output lives below
+`train_dir/connectome/adaptation_100b_gains_update_timing`, the log root already
+served by TensorBoard port 6008.
+
+The policy still uses the 1,952-cell all-neuron no-auxiliary clipped-Gaussian
+contract and the `128/32/32` sensory/descending/readout interface MLPs. The
+milestone watcher polls rank-0 inference checkpoints every 250M global frames.
+For each checkpoint it renders all three standard deterministic cases twice:
+`paper_task_progress` uses base tolerance 0.02, while
+`checkpoint_training_tolerance` requires the exact contemporaneous
+`scalars/success_tolerance/frame` value. All checkpoint, action-selection,
+coefficient-ID, trajectory, camera, and episode settings remain shared between
+the two metric sets.
+
+The suite helper now exposes both physical GPUs to `torchrun`, maps each rank's
+Isaac Gym simulator and policy to its local CUDA device, initializes NCCL from
+the launcher rendezvous, and counts both ranks when validating the global frame
+cap. The two-epoch smoke completed and reload-verified a two-rank checkpoint;
+this is an integration check, not evidence of learning.
 
 The active full-size adapters-only MLP replacement uses a single-policy gate and long-run contract:
 

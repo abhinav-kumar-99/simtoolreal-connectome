@@ -3,7 +3,7 @@ import math
 import pytest
 import torch
 
-from rl_games.algos_torch.torch_ext import policy_kl
+from rl_games.algos_torch.torch_ext import policy_kl, same_conditioned_kl_stats
 from rl_games.common.schedulers import AdaptiveScheduler
 
 
@@ -32,6 +32,27 @@ def test_identical_distributions_zero_and_close_distributions_positive():
     assert policy_kl(m, s, m, s).item() == 0.0
     close = policy_kl(m, s, m, s * (1 + 1e-6))
     assert 0 < close.item() < 1e-9
+
+
+def test_scheduler_kl_excludes_lf_relabelled_and_masked_samples():
+    kl = torch.tensor([1.0, 100.0, 3.0, 5.0])
+    off_policy = torch.tensor([False, True, False, False])
+    rnn_masks = torch.tensor([1.0, 1.0, 0.0, 1.0])
+
+    kl_sum, count = same_conditioned_kl_stats(kl, off_policy, rnn_masks)
+
+    torch.testing.assert_close(kl_sum, torch.tensor(6.0))
+    torch.testing.assert_close(count, torch.tensor(2.0))
+
+
+def test_scheduler_kl_preserves_invalid_selected_sample():
+    kl = torch.tensor([float('inf'), 100.0])
+    off_policy = torch.tensor([False, True])
+
+    kl_sum, count = same_conditioned_kl_stats(kl, off_policy)
+
+    assert torch.isinf(kl_sum)
+    torch.testing.assert_close(count, torch.tensor(1.0))
 
 
 @pytest.mark.parametrize('invalid', [0.0, -1.0, float('nan'), float('inf')])

@@ -2,7 +2,7 @@
 
 The compact fly control is a standard one-update LSTM matched to the current all-neuron actor's instantiated coefficient count.
 
-Last updated: 2026-09-18
+Last updated: 2026-09-19
 
 Related: [Connectome actor](../concepts/connectome-actor.md), [Experiment workflow](../workflows/connectome-experiments.md), [Compact training](compact-1952-training.md)
 
@@ -217,6 +217,180 @@ It evaluates marker, eraser and spatula at exact 250M-frame targets. The
 predeclared all-24-task comparison resolves both policies' exact 5B target
 checkpoints from their suite identities, avoiding hard-coded actual-frame
 filenames:
+
+## Fresh asymmetric matched-pair contract
+
+The current paired contract returns the 323-unit coefficient-matched LSTM to
+physical GPU 0 and runs the 1,952-neuron all-neuron fly actor on physical GPU
+1. Both use `SimToolRealLSTMAsymmetric`, so the privileged critic is the same
+`[1024, 1024, 512, 512]` MLP; `use_experimental_cv: false` disables the actor's
+auxiliary value objective in both policies. The actor comparison remains
+733,790 instantiated LSTM coefficients versus 733,796 fly coefficients.
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_100b.yaml
+
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_100b_milestones.yaml
+```
+
+The suite assigns the first profile to CUDA 0 and the second to CUDA 1 through
+`gpu_assignments: [0, 1]` and `max_parallel: 2`. Each independent single-GPU
+trainer uses 12,288 environments, six 2,048-environment SAPG blocks, 49,152
+actor/critic logical and physical minibatches, two PPO mini-epochs, LF/1.0,
+seed 42 and the same perturbation and 100B-frame budget. The evaluator produces
+both paper-tolerance and exact checkpoint-training-tolerance videos for the
+three deterministic sentinel tasks at every 250M-frame checkpoint.
+
+The first pair launched fresh on 2026-09-18 in tmux
+`connectome-asymmetric-matched-pair-100b`: the LSTM trainer is PID 671749 on
+physical CUDA 0 and the fly trainer is PID 671748 on physical CUDA 1. The
+coordinator is PID 671476. Both emitted finite frame progress on the expected
+196,608-frame epoch grid and report four logical minibatches per PPO mini-epoch.
+The dual-tolerance watcher is PID 671483 in
+`connectome-asymmetric-matched-pair-100b-eval`. A symlink exposes both summary
+streams to the existing TensorBoard server on port 6008. These observations
+establish placement and launch health, not comparative learning performance.
+
+That first pair and its watcher were stopped on 2026-09-19 with artifacts
+preserved when the KL scheduler defect below was confirmed. It is historical;
+the rollout-KL replacement is the active matched pair.
+
+### Small-MLP fly scheduler equivalence
+
+A direct comparison of the saved resolved YAML for the current asymmetric
+`128/32/32` fly and the earlier no-auxiliary all-neuron run confirms an
+identical actor adaptive-KL learning-rate contract: `lr_schedule: adaptive`,
+`schedule_type: standard`, initial LR `1e-4`, bounds `[1e-6, 1e-3]`, KL target
+`.004`, two PPO mini-epochs, 49,152-sample minibatches, and LF reuse ratio 1.
+Both are independent single-GPU jobs with four logical minibatches per mini-
+epoch. The scheduler therefore receives the same LF-weighted KL population and
+makes one decision after each mini-epoch: multiply LR by 1.5 below KL `.002`,
+divide it by 1.5 above `.008` or for invalid KL, and otherwise leave it
+unchanged, subject to the configured bounds.
+
+This is scheduler equivalence, not trajectory equivalence. The smaller
+interface MLP changes policy weights, gradients and rollouts, so its measured
+KL values and resulting LR history can differ from the earlier actor even
+though the controller, cadence and sample geometry are the same. The KL is a
+feedback signal for adaptive LR rather than a separately weighted KL penalty in
+the PPO objective.
+
+### Live small-MLP scheduler dynamics
+
+A raw TensorBoard scalar snapshot on 2026-09-19, through frame 1,186,725,888,
+confirms that the small-MLP fly's aggregate KL is growing while its LR remains
+approximately stationary. Median `info/kl` in consecutive 200M-frame bands was
+`.00549`, `.01315`, `.02079`, `.02494`, `.03333`, and `.04040`. This is not a
+TensorBoard smoothing artifact.
+
+The scheduler is responding, but its two decisions per PPO epoch usually
+oppose each other. Mini-epoch-0 median KL rose from `.00905` in the first 200M
+frames to `.07920` in the 1.0--1.2B band, while mini-epoch-1 median KL remained
+near `.0016`--`.0019`, usually below the `.002` LR-increase threshold. In 120
+of the latest 200 epochs, mini-epoch 0 divided LR by 1.5 and mini-epoch 1
+immediately multiplied it by 1.5, producing no net change. For example, at
+frame 1,181,810,688, KL `.06401` changed LR from `.000197531` to `.000131687`,
+then KL `.001217` restored it to `.000197531`. The correct end-of-epoch scalar,
+`info/scheduler/mini_epoch_1/lr_after`, was `.000197531` at both ends of the
+latest 200-epoch window.
+
+Two implementation details explain the display and feedback behavior. First,
+`info/kl` averages both mini-epoch KLs, whereas each scheduler call acts only on
+its own mini-epoch value. Second, `info/last_lr` records the LR returned by the
+last actor minibatch, before the mini-epoch-1 scheduler decision; it is the
+mini-epoch-1 input LR, not necessarily the final LR for the epoch. The explicit
+per-mini-epoch `lr_before` and `lr_after` tags are authoritative.
+
+The dataset also overwrites stored means and scales after every minibatch.
+Consequently, mini-epoch 1 compares against refreshed distribution parameters,
+not the immutable rollout policy. With LF enabled, the scheduler average also
+includes relabeled cross-member samples. The observed KL is therefore local,
+reference-refreshing feedback rather than a cumulative trust-region bound. A
+single epoch-level scheduler decision using a stable, same-conditioned rollout
+reference would avoid the current within-epoch cancellation; this diagnosis did
+not change the running process or configuration.
+
+### PPO and bug boundary
+
+Standard PPO collects a rollout with a behavior policy, freezes that policy's
+action likelihoods for the entire multi-epoch update, and optimizes the clipped
+importance ratio against that fixed reference. Adaptive learning-rate control
+from KL is an implementation extension rather than a required part of PPO. A
+target-KL variant should measure the current policy against a stable,
+same-conditioned behavior policy and then reduce LR or stop further epochs when
+the target is exceeded.
+
+This repository preserves the core clipped-PPO invariant: `old_logp_actions`
+is populated from rollout data and remains the reference passed to
+`actor_loss_func` throughout both mini-epochs. `update_mu_sigma` changes only
+the separate `mu` and `sigma` tensors used by `policy_kl`; it does not overwrite
+the old log probabilities used by the PPO ratio. The actor optimization is
+therefore still clipped PPO, not an accidentally moving-ratio objective.
+
+The KL controller is nevertheless defective for the present LF contract. The
+per-mini-epoch scheduler and `mu`/`sigma` refresh are inherited RL-Games
+behavior, but LF additionally changes a copied sample's policy identifier while
+retaining its source-conditioned distribution parameters. Mini-epoch-0 KL can
+therefore measure a conditioning mismatch rather than an optimizer-induced
+policy change. Refreshing those parameters makes mini-epoch-1 KL small, and the
+second symmetric scheduler decision can undo the first. Thus the code executes
+its configured rules, but its input does not have the target-KL semantics that
+the control intends. This is an LF/scheduler integration bug or control-design
+bug, not a failure of the clipped PPO ratio itself. Separately,
+`info/last_lr` is a telemetry bug because it can omit the final scheduler
+decision.
+
+### Rollout-KL replacement
+
+The replacement preserves LF training exactly: `use_others_experience: lf`,
+`off_policy_ratio: 1.0`, all seven resulting SAPG blocks, the PPO loss and the
+four logical optimizer updates per mini-epoch remain unchanged. Only the
+adaptive-LR measurement and timing change under `schedule_type: rollout`:
+
+- rollout-time Gaussian means and scales remain immutable across both PPO
+  mini-epochs;
+- LF-relabeled samples are excluded only from scheduler KL because their stored
+  distributions have different policy conditioning;
+- the final mini-epoch's same-conditioned KL against the rollout reference
+  drives exactly one LR decision after both mini-epochs; and
+- `info/last_lr` now reports the post-decision LR.
+
+The per-mini-epoch `same_conditioned_rollout_kl` tags are diagnostics only.
+`info/scheduler/rollout/{kl,lr_before,lr_after,invalid_kl,decision_count}` is the
+authoritative controller telemetry. Existing `standard` and `legacy` schedule
+types retain their prior behavior.
+
+The fresh production and watcher commands are:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b.yaml
+
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_milestones.yaml
+```
+
+The suite YAML owns the two profiles, CUDA assignments, LF setting, rollout-KL
+mode, batch geometry and 100B cap. The evaluation YAML owns the exact 250M
+checkpoint cadence and both paper- and checkpoint-tolerance videos. The suite
+runner composes and launches the two independent trainers; the milestone helper
+only watches completed checkpoints and launches deterministic evaluation
+workers.
+
+The replacement launched fresh on 2026-09-19 in tmux
+`connectome-asymmetric-matched-pair-rollout-kl-100b`: coordinator PID 1720057,
+LSTM PID 1720325 on physical CUDA 0 and fly PID 1720327 on physical CUDA 1.
+Watcher PID 1720062 runs in the matching `-eval` tmux session. Saved resolved
+YAMLs confirm `schedule_type: rollout`, LF/1.0, two mini-epochs and 49,152-sample
+minibatches for both policies. Initial event streams showed one rollout decision
+per frame step, no legacy per-mini-epoch LR tags, and equality between
+`info/last_lr` and rollout `lr_after`. At frame 3,342,336 the fly scheduler KL
+was `.0028484` with LR `.000759375`; at frame 4,325,376 the LSTM scheduler KL
+was `.0027223` with LR `.00015`. Both runs are exposed through TensorBoard port
+6008. This verifies launch and controller wiring, not long-run KL regulation or
+comparative learning.
 
 ```bash
 .venv/bin/python scripts/run_connectome_evaluation.py \

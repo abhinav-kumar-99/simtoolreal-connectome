@@ -18,6 +18,7 @@ import torch
 from deployment.isaac.isaac_env import create_env
 from deployment.rl_player import RlPlayer
 from isaacgymenvs.utils.rendering import render_camera_sensors_for_current_step
+from simtoolreal_shared.activity_trace import ActivityRecorder, circuit_settings, recording_options, repository_path, sha256
 
 TABLE_Z = 0.38
 
@@ -54,6 +55,9 @@ def run(config: dict) -> dict:
         )
     if bool(config["record_video"]) and not deterministic_actions:
         raise ValueError("Video capture requires deterministic mean actions")
+    circuit = circuit_settings(config.get("circuit"))
+    if circuit["enabled"] and not bool(config["record_video"]):
+        raise ValueError("Circuit recording requires record_video: true")
     config_path = Path(config["policy_config_path"])
     checkpoint_path = Path(config["checkpoint_path"])
     output_path = Path(config["output_path"])
@@ -127,6 +131,14 @@ def run(config: dict) -> dict:
         num_envs=1,
     )
 
+    recorder = None
+    if circuit["enabled"]:
+        graph_config = policy.cfg["train"]["params"]["network"].get("connectome")
+        if graph_config is None:
+            raise ValueError("Circuit recording requires a connectome policy")
+        artifact_path = repository_path(graph_config["artifact_path"])
+        recorder = ActivityRecorder(policy.player.model.a2c_network, artifact_path)
+
     episode_results = []
     all_video_frames = []
     zero_action = torch.zeros((1, num_actions), device=device)
@@ -134,6 +146,8 @@ def run(config: dict) -> dict:
     max_steps = int(config.get("max_steps", env.cfg["env"]["episodeLength"] + 1))
     for episode in range(int(config["num_episodes"])):
         policy.reset()
+        if recorder is not None:
+            recorder.start_episode(episode, policy.player.states[0])
         if episode:
             obs = env.step(zero_action)[0]["obs"]
         episode_reward = 0.0
@@ -145,10 +159,16 @@ def run(config: dict) -> dict:
                 config["video_frame_interval"]
             ) == 0:
                 frames.append(_capture_frame(env))
+                if recorder is not None:
+                    recorder.video_frame(steps)
+            if recorder is not None:
+                recorder.start_step(steps)
             action = policy.get_normalized_action(
                 obs,
                 deterministic_actions=deterministic_actions,
             )
+            if recorder is not None:
+                recorder.finish_step()
             obs_dict, reward, dones, _ = env.step(action)
             obs = obs_dict["obs"]
             episode_reward += float(reward[0].item())
@@ -178,8 +198,31 @@ def run(config: dict) -> dict:
             video_path,
             all_video_frames,
             fps=int(config["video_fps"]),
+            quality=int(config.get("video_quality", 5)),
             macro_block_size=2,
         )
+
+    activity_path = None
+    if recorder is not None:
+        recorder.close()
+        activity_path = output_path.parent / "activity.npz"
+        recorder.save(activity_path, {
+            "policy": config["policy"], "metric": config["metric"],
+            "object_name": config["object_name"], "task_name": config["task_name"],
+            "checkpoint_path": str(checkpoint_path.resolve()),
+            "checkpoint_sha256": sha256(checkpoint_path),
+            "policy_config_path": str(config_path.resolve()),
+            "policy_config_sha256": sha256(config_path),
+            "artifact_path": str(artifact_path), "artifact_sha256": sha256(artifact_path),
+            "edge_count": int(policy.player.model.a2c_network.edge_count),
+            "readout_feature_population": policy.player.model.a2c_network.readout_feature_population,
+            "control_dt_seconds": float(env.control_dt),
+            "video_fps": int(config["video_fps"]),
+            "video_frame_interval": int(config["video_frame_interval"]),
+            "recording_case": recording_options(config),
+            "rollout_sha256": sha256(video_path),
+            "episode_results": episode_results,
+        })
 
     result = {
         "policy": config["policy"],
@@ -199,6 +242,8 @@ def run(config: dict) -> dict:
             np.mean([x["task_progress_pct"] for x in episode_results])
         ),
         "video_path": str(video_path) if video_path else None,
+        "activity_path": str(activity_path) if activity_path else None,
+        "checkpoint_path": str(checkpoint_path.resolve()),
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")

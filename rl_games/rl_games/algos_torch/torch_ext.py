@@ -56,6 +56,27 @@ def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma, reduce=True):
     else:
         return kl
 
+
+def same_conditioned_kl_stats(kl, off_policy_mask=None, rnn_masks=None):
+    """Return KL sum/count for valid, non-relabelled rollout samples.
+
+    ``off_policy_mask`` marks LF-relabeled samples whose stored distribution
+    parameters belong to a different policy conditioning.  Those samples are
+    valid PPO training data for the configured LF objective, but they are not a
+    meaningful behavior-policy reference for adaptive target-KL control.
+    """
+    values = kl.reshape(-1)
+    weights = torch.ones_like(values)
+    if rnn_masks is not None:
+        weights = weights * rnn_masks.reshape(-1).to(weights.dtype)
+    if off_policy_mask is not None:
+        weights = weights * (~off_policy_mask.reshape(-1).bool()).to(weights.dtype)
+    if weights.numel() != values.numel():
+        raise ValueError("KL values and scheduler masks must have equal size")
+    selected = weights > 0
+    weighted_values = torch.where(selected, values, torch.zeros_like(values)) * weights
+    return weighted_values.sum(), weights.sum()
+
 def beta_policy_kl(alpha0, beta0, alpha1, beta1, reduce=True):
     """KL(Beta0 || Beta1); shared affine action scaling cancels exactly."""
     shapes = [x.double() for x in (alpha0, beta0, alpha1, beta1)]

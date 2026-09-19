@@ -1229,6 +1229,198 @@ def test_active_gaussian_watchers_generate_fixed_and_checkpoint_tolerance_videos
         assert len(evaluation["eval_cases"]) == 3
 
 
+def test_ddp_small_mlp_uses_half_physical_batches_and_five_logical_updates() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/suites/"
+            "ppo_1952_noaux_mlp128x32x32_ddp_15360_"
+            "logical49152_micro24576_100b.yaml"
+        ).read_text()
+    )
+    training = suite["training"]
+    assert training["distributed"] is True
+    assert training["gpu_assignments"] == [0, 1]
+    assert training["num_envs"] == 15_360
+    assert training["sapg_block_size"] == 2_560
+    assert training["minibatch_size"] == 49_152
+    assert training["central_critic_minibatch_size"] == 49_152
+    assert training["actor_microbatch_size"] == 24_576
+    assert training["central_critic_microbatch_size"] == 24_576
+    assert training["rollout_accumulation_steps"] == 1
+    assert training["epochs"] == 203_450
+
+    local_fresh_samples = training["num_envs"] * 16
+    local_lf_samples = training["sapg_block_size"] * 16
+    local_training_samples = local_fresh_samples + local_lf_samples
+    assert local_training_samples == 286_720
+    assert local_training_samples // training["minibatch_size"] == 5
+    assert 2 * local_fresh_samples * training["epochs"] == 99_999_744_000
+
+    evaluation = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/evaluation/"
+            "ppo_1952_noaux_mlp128x32x32_ddp_15360_"
+            "logical49152_micro24576_100b_milestones.yaml"
+        ).read_text()
+    )
+    assert evaluation["training_suite_name"] == suite["name"]
+    assert evaluation["training_suite_directory"] == suite["output_directory"]
+    assert evaluation["evaluation"]["videos"]["metrics"] == [
+        "paper_task_progress",
+        "checkpoint_training_tolerance",
+    ]
+
+
+def test_ddp_small_mlp_original_env_count_keeps_half_physical_batches() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/suites/"
+            "ppo_1952_noaux_mlp128x32x32_ddp_12288_"
+            "logical49152_micro24576_100b.yaml"
+        ).read_text()
+    )
+    training = suite["training"]
+    assert training["distributed"] is True
+    assert training["gpu_assignments"] == [0, 1]
+    assert training["num_envs"] == 12_288
+    assert training["sapg_block_size"] == 2_048
+    assert training["minibatch_size"] == 49_152
+    assert training["central_critic_minibatch_size"] == 49_152
+    assert training["actor_microbatch_size"] == 24_576
+    assert training["central_critic_microbatch_size"] == 24_576
+    assert training["rollout_accumulation_steps"] == 1
+    assert training["epochs"] == 254_313
+
+    local_fresh_samples = training["num_envs"] * 16
+    local_lf_samples = training["sapg_block_size"] * 16
+    local_training_samples = local_fresh_samples + local_lf_samples
+    assert local_training_samples == 229_376
+    assert local_training_samples // training["minibatch_size"] == 4
+    assert 2 * local_fresh_samples * training["epochs"] == 99_999_940_608
+
+    evaluation = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/evaluation/"
+            "ppo_1952_noaux_mlp128x32x32_ddp_12288_"
+            "logical49152_micro24576_100b_milestones.yaml"
+        ).read_text()
+    )
+    assert evaluation["training_suite_name"] == suite["name"]
+    assert evaluation["training_suite_directory"] == suite["output_directory"]
+    assert evaluation["evaluation"]["videos"]["metrics"] == [
+        "paper_task_progress",
+        "checkpoint_training_tolerance",
+    ]
+
+
+def test_matched_lstm_fly_pair_uses_identical_asymmetric_critic_contract() -> None:
+    from scripts.run_connectome_suite import _compose_resolved, _training_overrides
+
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/suites/"
+            "ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_100b.yaml"
+        ).read_text()
+    )
+    training = suite["training"]
+    assert training["task_profile"] == "SimToolRealLSTMAsymmetric"
+    assert training["gpu_assignments"] == [0, 1]
+    assert training["max_parallel"] == 2
+    assert training["num_envs"] == 12_288
+    assert training["sapg_block_size"] == 2_048
+    assert training["minibatch_size"] == 49_152
+    assert training["central_critic_minibatch_size"] == 49_152
+    assert training["actor_microbatch_size"] == 49_152
+    assert training["central_critic_microbatch_size"] == 49_152
+    assert training["epochs"] == 508_626
+    assert training["max_frames"] == 100_000_000_000
+
+    resolved = []
+    for entry in training["train_profiles"]:
+        case_training = dict(training)
+        case_training["overrides"] = {
+            **training["overrides"],
+            **entry.get("overrides", {}),
+        }
+        overrides = _training_overrides(
+            case_training,
+            entry["train_profile"],
+            42,
+            entry["name"],
+            repository_root / "test-output" / entry["name"],
+        )
+        resolved.append(_compose_resolved(overrides))
+
+    lstm, fly = resolved
+    assert lstm.train.params.network.rnn.units == 323
+    assert list(lstm.train.params.network.mlp.units) == [256]
+    fly_interfaces = fly.train.params.network.connectome.interface_projections
+    assert fly_interfaces.hidden_size == 256
+    assert fly_interfaces.sensory_hidden_size == 128
+    assert fly_interfaces.descending_hidden_size == 32
+    assert fly_interfaces.readout_hidden_size == 32
+    assert (
+        list(lstm.train.params.config.central_value_config.network.mlp.units)
+        == list(fly.train.params.config.central_value_config.network.mlp.units)
+        == [1024, 1024, 512, 512]
+    )
+    assert lstm.train.params.config.use_experimental_cv is False
+    assert fly.train.params.config.use_experimental_cv is False
+
+    evaluation = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/evaluation/"
+            "ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_100b_"
+            "milestones.yaml"
+        ).read_text()
+    )
+    assert [policy["gpu"] for policy in evaluation["policies"]] == [0, 1]
+    assert evaluation["evaluation"]["videos"]["metrics"] == [
+        "paper_task_progress",
+        "checkpoint_training_tolerance",
+    ]
+
+
+def test_noaux_7b_dual_tolerance_anatomical_hd_contract_is_matched() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    config = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/evaluation/"
+            "ppo_1952_7b_noaux_dual_tolerance_anatomical_hd.yaml"
+        ).read_text()
+    )
+    assert list(config["policy_sources"]) == [
+        "gaussian_lf_entropy1x_sigma3_all_neurons_noaux"
+    ]
+    assert config["action_selection"] == "mean"
+    assert config["metrics"]["paper_task_progress"] == {
+        "success_tolerance_m": 0.02
+    }
+    assert config["metrics"]["checkpoint_training_tolerance"] == {
+        "success_tolerance_m": 0.039858076721429825,
+        "resolved_from_checkpoint_frame": 7000031232,
+        "resolved_from_tensorboard_tag": "scalars/success_tolerance/frame",
+    }
+    assert config["videos"]["metrics"] == [
+        "paper_task_progress",
+        "checkpoint_training_tolerance",
+    ]
+    assert config["videos"]["camera_resolution_reduction_factor"] == 1
+    assert config["videos"]["video_quality"] == 9
+    assert config["videos"]["circuit"]["resolution"] == [1920, 1080]
+    assert len(config["eval_cases"]) == 3
+
+
 def test_compact_adapters_replacement_owns_matched_training_and_evaluation() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     suite = yaml.safe_load(

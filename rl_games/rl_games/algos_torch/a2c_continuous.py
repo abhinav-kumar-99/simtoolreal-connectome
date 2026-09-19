@@ -245,11 +245,23 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             )
 
         with torch.no_grad():
-            reduce_kl = rnn_masks is None
             policy_kl = getattr(self.model, 'policy_kl', torch_ext.policy_kl)
-            kl_dist = policy_kl(mu.detach(), sigma.detach(), old_mu_batch, old_sigma_batch, reduce_kl)
+            kl_per_sample = policy_kl(
+                mu.detach(), sigma.detach(), old_mu_batch, old_sigma_batch, False
+            )
             if rnn_masks is not None:
-                kl_dist = (kl_dist * rnn_masks).sum() / rnn_masks.numel()  #/ sum_mask
+                kl_dist = (
+                    kl_per_sample * rnn_masks.reshape(-1)
+                ).sum() / rnn_masks.numel()  # / sum_mask
+            else:
+                kl_dist = kl_per_sample.mean()
+            scheduler_kl_sum, scheduler_kl_count = (
+                torch_ext.same_conditioned_kl_stats(
+                    kl_per_sample,
+                    input_dict.get('off_policy_mask'),
+                    rnn_masks,
+                )
+            )
 
         self.diagnostics.mini_batch(self,
         {
@@ -282,6 +294,8 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
                 "on_policy_grads" : all_grads.detach().cpu(),
                 "off_policy_grads" : torch.zeros_like(all_grads).cpu(),
             }     
+        extras["scheduler_kl_sum"] = scheduler_kl_sum
+        extras["scheduler_kl_count"] = scheduler_kl_count
         if self.expl_type.startswith('mixed_expl'):
             bl_ids = self.intr_reward_coef_embd[::self.intr_coef_block_size, 0].reshape(-1,1)
             bl_idxs = torch.argmax((obs_batch[:,-self.intr_reward_coef_embd.shape[1]] == bl_ids).float(), dim=0)
