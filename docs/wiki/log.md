@@ -986,4 +986,5 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 
 - Stopped the active LSTM-versus-K=4 fly suite and its matching milestone watcher, preserving their existing output tree and checkpoints.
 - Added fresh YAML-owned K=4 and K=2 1,952-cell fly cases on physical GPUs 0 and 1. The fixed actor and central-critic LR is `1e-4`; the actor uses the identity scheduler through `lr_schedule: constant`.
-- Added the companion dual-tolerance milestone contract. The new suite and watcher are separate from the stopped pair's artifacts and must be verified after launch.
+- Added the companion dual-tolerance milestone contract. The new suite and watcher are separate from the stopped pair's artifacts.
+- Verified both workers after initial optimization: K=4 is bound to GPU 0 and K=2 to GPU 1, each wrote a resolved configuration and reached epoch 9 / 1,572,864 frames. TensorBoard `info/last_lr` and the rollout scheduler's emitted LR remained exactly `1e-4` for both sampled runs; initial total throughput was about 88.0k frames/s for K=4 and 106.8k for K=2.
