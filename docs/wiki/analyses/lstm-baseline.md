@@ -243,6 +243,16 @@ seed 42 and the same perturbation and 100B-frame budget. The evaluator produces
 both paper-tolerance and exact checkpoint-training-tolerance videos for the
 three deterministic sentinel tasks at every 250M-frame checkpoint.
 
+The pair launched fresh on 2026-09-18 in tmux
+`connectome-asymmetric-matched-pair-100b`: the LSTM trainer is PID 671749 on
+physical CUDA 0 and the fly trainer is PID 671748 on physical CUDA 1. The
+coordinator is PID 671476. Both emitted finite frame progress on the expected
+196,608-frame epoch grid and report four logical minibatches per PPO mini-epoch.
+The dual-tolerance watcher is PID 671483 in
+`connectome-asymmetric-matched-pair-100b-eval`. A symlink exposes both summary
+streams to the existing TensorBoard server on port 6008. These observations
+establish placement and launch health, not comparative learning performance.
+
 ```bash
 .venv/bin/python scripts/run_connectome_evaluation.py \
   --config configs/connectome/evaluation/ppo_1952_fly_lstm_matched_5b_all_tasks.yaml
