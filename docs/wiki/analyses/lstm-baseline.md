@@ -433,6 +433,27 @@ The analysis helper writes `summary.json`, `common_milestones.csv` and a task
 progress plot. It rejects an empty common cohort and never substitutes nearby
 checkpoints.
 
+## Resume-checkpoint completeness
+
+The matched fly run's rolling recovery file `last/model.pth` is a full training
+checkpoint, not an inference export. A direct load at epoch 12,600/frame
+2,477,260,800 found finite actor and asymmetric-central-critic tensors,
+serialized actor and critic Adam states, AMP scaler state, rollout/LR state
+(the actor optimizer's current LR), running normalizers, reward trackers,
+environment tensors, current observations/rewards/lengths, dones, and the
+fly recurrent hidden state. The resolved YAML is retained beside the run, so
+it supplies the remaining static contract. `set_full_state_weights` restores
+the actor, critic, both optimizers, epoch/frame, and the actor LR from that
+payload; there is no separate adaptive-scheduler history beyond this LR and
+the configured bounds.
+
+Do not use `milestone_target_*.pth` to resume: those roughly 1 MB files are
+deployment/evaluation exports with only model, epoch, and frame. Use a complete
+`last/model.pth` (or a timestamped full `last_*.pth`) after the trainer has
+stopped or otherwise finished writing it. If resuming under changed LR bounds,
+explicitly clamp/override the restored actor LR when the saved LR lies outside
+the new interval.
+
 ## Evidence boundary
 
 The configured comparison uses only training seed 42. Task-wise differences
