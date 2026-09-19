@@ -606,6 +606,26 @@ The evaluation contract reports both configured-base definitions found in the so
 
 ## Entry points
 
+### Matched K=4/K=2 fixed-LR fly ablation
+
+`configs/connectome/suites/ppo_fly1952_k4_k2_fixed_lr1e4_100b.yaml` launches two independent 1,952-cell all-neuron-readout fly actors at seed 42: K=4 on physical GPU 0 and K=2 on physical GPU 1. Both retain the stopped fly profile's 140-value learned adapter map, frozen recurrent graph, rollout-reference timing, 12,288 environments, SAPG/LF population, no auxiliary actor value loss, task contract and 100B-frame cap. `train.params.config.lr_schedule: constant` replaces only the adaptive actor scheduler with the identity scheduler, keeping actor LR at `1e-4`; the central critic remains at its inherited fixed `1e-4`. `neural_updates` is the sole actor-architecture variable.
+
+Run the suite from the repository root:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/ppo_fly1952_k4_k2_fixed_lr1e4_100b.yaml
+```
+
+Start the companion watcher in a separate process:
+
+```bash
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/ppo_fly1952_k4_k2_fixed_lr1e4_100b_milestones.yaml
+```
+
+The suite script owns artifact preparation, GPU assignment, resolved configuration capture, process supervision and checkpoint verification. The milestone helper waits for each 250M-frame inference checkpoint, resolves the checkpoint-time training tolerance, and exports matched mean-action videos. Do not point either entry point at the stopped LSTM/fly pair's output directory.
+
 The legacy Isaac Gym stack is Python 3.8. A local ignored virtual environment can reuse the installed `diffusion` conda environment while supplying the two missing mesh packages:
 
 ```bash

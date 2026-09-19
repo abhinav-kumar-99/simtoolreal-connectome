@@ -981,3 +981,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Recomputed directed shortest paths and strongly connected components from the pinned 1,952-cell `biological.npz`, using nonzero weights and the stored source/target orientation. Population-level sensory-to-reachable-motor coverage needs four updates; all-to-all communication is impossible in this filtered graph, and individual input-to-motor paths can be longer or absent.
 - Traced the current matched 140-value learned-adapter/all-neuron-readout profile and the distinct structured/fixed alternatives through suite YAML and `connectome_network_builder.py`. Recorded the direct input-to-action shortcut, SAPG routing, tactile-channel mismatch, and unbounded adapter-drive caveat in `analyses/fly-cycles-and-input-routing.md`.
 - Updated `concepts/connectome-actor.md` to reflect that YAML-owned inner updates are now implemented, clarified the fixed reservoir's population-level K=4 claim, and linked the new analysis in `index.md`.
+
+## [2026-09-19] launch | Replace matched LSTM/fly pair with K=4/K=2 fly ablation
+
+- Stopped the active LSTM-versus-K=4 fly suite and its matching milestone watcher, preserving their existing output tree and checkpoints.
+- Added fresh YAML-owned K=4 and K=2 1,952-cell fly cases on physical GPUs 0 and 1. The fixed actor and central-critic LR is `1e-4`; the actor uses the identity scheduler through `lr_schedule: constant`.
+- Added the companion dual-tolerance milestone contract. The new suite and watcher are separate from the stopped pair's artifacts and must be verified after launch.
