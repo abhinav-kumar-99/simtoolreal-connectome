@@ -1622,6 +1622,8 @@ class ContinuousA2CBase(A2CBase):
 
         for mini_ep in range(0, self.mini_epochs_num):
             ep_kls = []
+            scheduler_kl_sum = None
+            scheduler_kl_count = None
             logical_a_loss = 0
             logical_c_loss = 0
             logical_entropy = 0
@@ -1641,6 +1643,16 @@ class ContinuousA2CBase(A2CBase):
                 extra_infos['off_policy_grads'].append(extras['off_policy_grads'])
                 if 'entropies' in extras:
                     extra_infos['entropies'].append(extras['entropies'])
+                if scheduler_kl_sum is None:
+                    scheduler_kl_sum = extras['scheduler_kl_sum']
+                    scheduler_kl_count = extras['scheduler_kl_count']
+                else:
+                    scheduler_kl_sum = (
+                        scheduler_kl_sum + extras['scheduler_kl_sum']
+                    )
+                    scheduler_kl_count = (
+                        scheduler_kl_count + extras['scheduler_kl_count']
+                    )
                 loss_scale = self.dataset.last_loss_scale
                 logical_a_loss = logical_a_loss + a_loss * loss_scale
                 logical_c_loss = logical_c_loss + c_loss * loss_scale
@@ -1648,7 +1660,8 @@ class ContinuousA2CBase(A2CBase):
                 logical_kl = logical_kl + kl * loss_scale
                 logical_b_loss = logical_b_loss + b_loss * loss_scale
 
-                self.dataset.update_mu_sigma(cmu, csigma)
+                if self.schedule_type != 'rollout':
+                    self.dataset.update_mu_sigma(cmu, csigma)
                 if self.dataset.last_optimizer_step:
                     a_losses.append(logical_a_loss)
                     c_losses.append(logical_c_loss)
@@ -1687,10 +1700,52 @@ class ContinuousA2CBase(A2CBase):
                     invalid_kl = not math.isfinite(kl_value) or kl_value < 0
                     self.writer.add_scalar(prefix + '/invalid_kl', float(invalid_kl), log_frame)
 
+            if self.schedule_type == 'rollout':
+                if self.multi_gpu:
+                    dist.all_reduce(scheduler_kl_sum, op=dist.ReduceOp.SUM)
+                    dist.all_reduce(scheduler_kl_count, op=dist.ReduceOp.SUM)
+                scheduler_kl = torch.where(
+                    scheduler_kl_count > 0,
+                    scheduler_kl_sum / scheduler_kl_count,
+                    torch.full_like(scheduler_kl_sum, float('inf')),
+                )
+                if self.global_rank == 0:
+                    log_frame = self.frame // self.num_agents
+                    self.writer.add_scalar(
+                        f'info/scheduler/mini_epoch_{mini_ep}/same_conditioned_rollout_kl',
+                        scheduler_kl.item(),
+                        log_frame,
+                    )
+                if mini_ep == self.mini_epochs_num - 1:
+                    rollout_scheduler_kl = scheduler_kl
+
             kls.append(av_kls)
             self.diagnostics.mini_epoch(self, mini_ep)
             if self.normalize_input:
                 self.model.running_mean_std.eval() # don't need to update statstics more than one miniepoch
+
+        if self.schedule_type == 'rollout':
+            kl_value = rollout_scheduler_kl.item()
+            lr_before = self.last_lr
+            self.last_lr, self.entropy_coef = self.scheduler.update(
+                self.last_lr,
+                self.entropy_coef,
+                self.epoch_num,
+                0,
+                kl_value,
+            )
+            self.update_lr(self.last_lr)
+            if self.global_rank == 0:
+                log_frame = self.frame // self.num_agents
+                prefix = 'info/scheduler/rollout'
+                self.writer.add_scalar(prefix + '/kl', kl_value, log_frame)
+                self.writer.add_scalar(prefix + '/lr_before', lr_before, log_frame)
+                self.writer.add_scalar(prefix + '/lr_after', self.last_lr, log_frame)
+                invalid_kl = not math.isfinite(kl_value) or kl_value < 0
+                self.writer.add_scalar(
+                    prefix + '/invalid_kl', float(invalid_kl), log_frame
+                )
+                self.writer.add_scalar(prefix + '/decision_count', 1.0, log_frame)
 
         update_time_end = time.time()
         play_time = play_time_end - play_time_start
@@ -1702,7 +1757,7 @@ class ContinuousA2CBase(A2CBase):
         print(f"  Update time             : {update_time:.{DECIMALS}f} s")
         print(f"  Time to train epoch     : {total_time:.{DECIMALS}f} s\n")
 
-        return batch_dict['step_time'], play_time, update_time, total_time, a_losses, c_losses, b_losses, entropies, kls, last_lr, lr_mul, extra_infos
+        return batch_dict['step_time'], play_time, update_time, total_time, a_losses, c_losses, b_losses, entropies, kls, self.last_lr, lr_mul, extra_infos
 
     @staticmethod
     def _concatenate_optional_tensors(values, dim=0):

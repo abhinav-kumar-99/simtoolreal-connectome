@@ -137,6 +137,29 @@ def test_official_lstm_fly_environment_match_retains_six_sapg_blocks() -> None:
     ] is True
 
 
+def test_rollout_kl_matched_pair_retains_lf_and_one_scheduler_decision() -> None:
+    suite_path = (
+        REPOSITORY_ROOT
+        / "configs/connectome/suites/"
+        "ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b.yaml"
+    )
+    with suite_path.open() as stream:
+        suite = yaml.safe_load(stream)
+
+    training = suite["training"]
+    assert training["gpu_assignments"] == [0, 1]
+    assert training["max_parallel"] == 2
+    assert training["num_envs"] == 12288
+    assert training["minibatch_size"] == 49152
+    assert training["actor_microbatch_size"] == 49152
+    assert training["overrides"]["train.params.config.schedule_type"] == "rollout"
+    assert training["overrides"]["train.params.config.use_others_experience"] == "lf"
+    assert training["overrides"]["train.params.config.off_policy_ratio"] == 1.0
+    assert training["overrides"][
+        "++train.params.config.use_experimental_cv"
+    ] is False
+
+
 def test_forward_is_one_lstm_transition_per_environment_timestep() -> None:
     torch.manual_seed(12)
     num_seqs, sequence_length = 2, 4
