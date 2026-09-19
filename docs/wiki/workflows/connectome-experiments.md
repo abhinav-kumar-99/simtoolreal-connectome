@@ -606,9 +606,9 @@ The evaluation contract reports both configured-base definitions found in the so
 
 ## Entry points
 
-### Matched K=4/K=2 fixed-LR fly ablation
+### Matched K=1/K=2 fixed-LR fly ablation
 
-`configs/connectome/suites/ppo_fly1952_k4_k2_fixed_lr1e4_100b.yaml` launches two independent 1,952-cell all-neuron-readout fly actors at seed 42: K=4 on physical GPU 0 and K=2 on physical GPU 1. Both retain the stopped fly profile's 140-value learned adapter map, frozen recurrent graph, rollout-reference timing, 12,288 environments, SAPG/LF population, no auxiliary actor value loss, task contract and 100B-frame cap. `train.params.config.lr_schedule: constant` replaces only the adaptive actor scheduler with the identity scheduler, keeping actor LR at `1e-4`; the central critic remains at its inherited fixed `1e-4`. `neural_updates` is the sole actor-architecture variable.
+The original YAML launched independent K=4 and K=2 1,952-cell all-neuron-readout fly actors at seed 42. On 2026-09-19, K=4 was stopped at final visible TensorBoard frame 767,754,240 and replaced by a fresh K=1 run; its 250M, 500M and 750M checkpoints and completed dual-tolerance evaluations remain preserved. K=2 continues unchanged on physical GPU 1, while K=1 uses physical GPU 0. Both current jobs retain the 140-value learned adapter map, frozen recurrent graph, rollout-reference timing, 12,288 environments, SAPG/LF population, no auxiliary actor value loss, task contract and 100B-frame cap. `train.params.config.lr_schedule: constant` keeps both actor and central-critic LR at `1e-4`; `neural_updates` is the intended actor-architecture difference.
 
 The resolved actor fields still contain `min_lr: 1e-6`, `max_lr: 1e-3`,
 `kl_threshold: .004` and `schedule_type: rollout`, but the constant schedule
@@ -645,21 +645,25 @@ from-scratch uncapped optimization trajectory. Adam can partly normalize a
 common gradient rescaling, while the nonlinear Jacobian and finite reachable
 scale still change longer-run dynamics.
 
-Run the suite from the repository root:
+Launch the fresh K=1 replacement from the repository root:
 
 ```bash
 .venv/bin/python scripts/run_connectome_suite.py \
-  --config configs/connectome/suites/ppo_fly1952_k4_k2_fixed_lr1e4_100b.yaml
+  --config configs/connectome/suites/ppo_fly1952_k1_fixed_lr1e4_100b.yaml
 ```
 
-Start the companion watcher in a separate process:
+Start the K=1 watcher and the surviving K=2 watcher as separate processes:
 
 ```bash
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py \
-  --config configs/connectome/evaluation/ppo_fly1952_k4_k2_fixed_lr1e4_100b_milestones.yaml
+  --config configs/connectome/evaluation/ppo_fly1952_k1_fixed_lr1e4_100b_milestones.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/ppo_fly1952_k2_fixed_lr1e4_100b_milestones.yaml
 ```
 
-The suite script owns artifact preparation, GPU assignment, resolved configuration capture, process supervision and checkpoint verification. The milestone helper waits for each 250M-frame inference checkpoint, resolves the checkpoint-time training tolerance, and exports matched mean-action videos. Do not point either entry point at the stopped LSTM/fly pair's output directory.
+The suite YAML owns K=1, seed 42, GPU 0, both fixed learning rates, batch geometry, LF reuse, entropy scale, Sigma-3 policy and the 100B budget. The suite script owns artifact preparation, resolved configuration capture, process supervision and checkpoint verification. The milestone helpers wait for each 250M-frame inference checkpoint, resolve the exact checkpoint-time training tolerance, and export fixed-paper-tolerance plus checkpoint-tolerance mean-action videos. The K=2-only watcher deliberately reuses the original K=4/K=2 output/status tree so completed K=2 milestones are not regenerated; the K=1 watcher has a separate fresh output tree. Their helper `run_connectome_evaluation.py` generates case YAMLs, and `dextoolbench/eval_worker_isaacgym.py` executes each simulator case; neither helper is normally launched directly.
+
+The replacement trainer is PID 386701 in tmux `connectome-k1-fixed-lr`; its watcher is PID 386395 in `connectome-k1-fixed-lr-eval`. Initial health at frame 1,769,472 showed actor LR `1e-4`, raw Gaussian entropy 41.1574 and finite KL .0005458. The surviving K=2 trainer remains PID 3843064, and its replacement watcher is PID 386401 in `connectome-k2-fixed-lr-eval`. TensorBoard port 6008 exposes both as `fly1952_k1_fixed_lr1e4` and `fly1952_k2_fixed_lr1e4`.
 
 The legacy Isaac Gym stack is Python 3.8. A local ignored virtual environment can reuse the installed `diffusion` conda environment while supplying the two missing mesh packages:
 

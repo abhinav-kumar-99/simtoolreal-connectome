@@ -1017,3 +1017,10 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Recorded the dormant adaptive rule: invalid/negative KL or KL above `.008` divides LR by 1.5, KL below `.002` multiplies it by 1.5, and the inclusive middle band holds it. Rollout scheduling makes one same-conditioned decision after both mini-epochs.
 - Confirmed the privileged critic is independently fixed at `1e-4`; its `.016` KL field does not control its identity scheduler. A uniformly lower fresh run must lower both actor and critic learning-rate fields.
 - `resume_training_state` restores actor optimizer LR and central-critic optimizer/training LR from the checkpoint, overriding lower constructor values. Preserving optimizer history while lowering continuation LR therefore requires an explicit post-restore override rather than only editing the suite YAML. No live process or configuration was changed.
+
+## [2026-09-19] launch | Replace K=4 with fresh K=1 fly run
+
+- Preserved the K=4 run through final visible TensorBoard frame 767,754,240 plus completed 250M, 500M and 750M dual-tolerance milestones, then stopped only trainer PID 3843063 and the obsolete dual watcher. K=2 trainer PID 3843064 remained live and unchanged on physical GPU 1.
+- Added a standalone YAML-owned K=1 suite on physical GPU 0. It matches K=2 in actor/critic LR `1e-4`, constant scheduler, 12,288 environments, batch geometry, LF/1.0, entropy scale `.005`, Sigma-3 policy, no auxiliary actor value loss, seed 42, task settings and 100B budget; only fresh experiment identity and `neural_updates: 1` differ.
+- Added separate K=1 milestone monitoring and a K=2-only continuation watcher that reuses the original milestone status/output tree. This preserves completed K=2 evaluations without leaving the watcher blocked on future stopped-K=4 checkpoints.
+- Launched K=1 trainer PID 386701 and watchers PIDs 386395/386401. At frame 1,769,472, K=1 reported actor LR `1e-4`, entropy 41.1574 and finite KL .0005458. GPU UUID placement confirms K=1 on physical GPU 0 and K=2 on physical GPU 1; TensorBoard port 6008 discovered the new K=1 alias.
