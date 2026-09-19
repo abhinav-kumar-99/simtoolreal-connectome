@@ -246,7 +246,7 @@ Traced and documented the exact 140-dimensional policy-observation layout, learn
 
 ## [2026-09-13] query | Trainable parameters and sparse backends
 
-Accounted for all 109,796 primary-actor parameters and 2,037,769 asymmetric-critic parameters against the implementation and successful checkpoint. Recorded current official sparse-backend constraints and a benchmark-first optimization order. JAX's experimental sparse module is not the preferred performance migration; native PyTorch tuning, a `torch-sparse` comparison, and a fixed-weight cuSPARSE autograd operator are the prioritized options.
+Accounted for all 109,796 primary-actor parameters and 2,037,441 trainable asymmetric-critic parameters against the implementation and successful checkpoint. Recorded current official sparse-backend constraints and a benchmark-first optimization order. JAX's experimental sparse module is not the preferred performance migration; native PyTorch tuning, a `torch-sparse` comparison, and a fixed-weight cuSPARSE autograd operator are the prioritized options.
 
 ## [2026-09-13] profile | Connectome adaptation and recurrent backends
 
@@ -722,11 +722,15 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added explicit central-value training metadata save/restore, legacy inference from actor counters plus critic optimizer LR, fresh-rollout handling that does not restore critic RNN state, and suite verification of the complete critic resume contract.
 - Existing trainers were not interrupted and continue writing the old schema until restarted; those checkpoints remain resumable through the compatibility path.
 
+## [2026-09-19] correction | Asymmetric critic trainable count
+
+- Loaded the live K=4 epoch-800 checkpoint and separated tensors in `assymetric_vf_nets` by role. The `194 -> 1024 -> 1024 -> 512 -> 512 -> 1` critic MLP has 2,037,249 weight/bias scalars; its six 32-dimensional SAPG embeddings add 192, for **2,037,441 trainable scalars**. The prior 2,037,769 figure included 328 `RunningMeanStd` buffer values (162-dimensional observation mean/variance/count plus scalar value mean/variance/count), which are checkpoint state but not optimizer parameters.
+
 ## [2026-09-17] query | Current all-neuron parameter and edge count
 
 - Verified the live all-neuron MLP actor from its recovery checkpoint shapes: 692,268 declared trainable scalars, versus 7,811,468 for the original SimToolReal LSTM/SAPG actor.
 - Distinguished the GPU-0 no-auxiliary job's 690,315 actively gradient-receiving actor scalars from its still-declared 1,953-scalar unused value head; the GPU-1 auxiliary-loss job updates all 692,268.
-- Recorded the unchanged separate 2,037,769-scalar asymmetric critic and the current compact MaleCNS graph's 33,720 fixed directed connections, including the no-fly-circuit boundary for the original LSTM.
+- Recorded the unchanged separate 2,037,441-trainable-scalar asymmetric critic (its state dict has an additional 328 normalization-buffer scalars) and the current compact MaleCNS graph's 33,720 fixed directed connections, including the no-fly-circuit boundary for the original LSTM.
 
 ## [2026-09-17] query | Learned interface MLP bottleneck limits
 

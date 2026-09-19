@@ -26,8 +26,7 @@ used by the actor, while excluding structural integer indices:
 
 The LSTM has six fewer total coefficients, but every LSTM coefficient is
 trainable. It is therefore a deliberately strong learned alternative rather
-than an equal trainable-degrees-of-freedom control. The unchanged 2,037,769
-parameter privileged central critic is excluded from both sides of the match.
+than an equal trainable-degrees-of-freedom control. The unchanged 2,037,441-trainable-parameter privileged central critic is excluded from both sides of the match.
 
 ### What the coefficient match does not isolate
 

@@ -151,10 +151,7 @@ auxiliary value head as a parameter, but its loss is disabled, so only
 **690,315** actor scalars receive an optimization gradient. The GPU-1 true job
 optimizes all 692,268. Neither count includes the frozen `33,720` edge values,
 CSR indices, masks, or the four frozen 1,952-cell dynamics vectors. The
-asymmetric critic is separate and unchanged at 2,037,769 scalars: total
-optimization capacity is 2,730,037 for the true job and 2,728,084 actively
-updated scalars for the false job. The equivalent original LSTM-plus-critic
-training system has 9,849,237 scalars.
+asymmetric critic has **2,037,441 trainable scalars** (plus 328 normalization-buffer scalars): total optimization capacity is 2,729,709 for the true job and 2,727,756 actively updated scalars for the false job. The equivalent original LSTM-plus-critic training system has 9,848,909 trainable scalars.
 
 The original LSTM actor count is exact for its SAPG configuration: a 172-input
 single-layer 1,024-unit LSTM (140 observations plus a learned 32-value SAPG
@@ -209,8 +206,8 @@ An even smaller proposed nonlinear profile, sensory/descending/action widths
 descending, 63,453 action, 1,953 auxiliary value-head, and 366 SAPG
 embedding/log-standard-deviation parameters. The no-auxiliary run would
 actively update 142,219 of them. This is 4.80x smaller than the live 692,268
-actor, although adding the unchanged 2,037,769-scalar central critic gives a
-2,181,941-scalar training system.
+actor, although adding the unchanged 2,037,441-trainable-scalar central critic gives a
+2,181,613-trainable-scalar training system.
 
 The implemented
 `SimToolRealConnectome1952AdaptersMLP128x32x32AllNeuronReadoutGaussianSigma3SAPG`
@@ -257,7 +254,7 @@ The gains-plus-dynamics SAPG control (previous primary actor) has 109,796 traina
 
 The 118,920 biological weights, CSR row/column indices, and population masks are fixed checkpoint buffers, not optimizer parameters. In the frozen-core ablation the gain, leak, and recurrent-bias vectors are also frozen, leaving 92,556 trainable actor scalars. Biological, rewired, and random neuron-gain actors have the same parameter count.
 
-The unchanged asymmetric central critic is separate. It has 2,037,769 trainable scalars: a 194-dimensional input (162 privileged state values plus a 32-dimensional SAPG embedding), the `1024, 1024, 512, 512` MLP, its scalar value output, and six learned SAPG embeddings. The actor-side value head is still optimized because this repository defaults `use_experimental_cv` to true while also training the central critic.
+The unchanged asymmetric central critic is separate. It has **2,037,441 trainable scalars**: 2,037,249 in its 194-dimensional-input `1024, 1024, 512, 512` MLP and scalar value head, plus 192 in six learned 32-dimensional SAPG embeddings. Its checkpoint also stores 328 non-trainable normalization-buffer scalars, yielding 2,037,769 state-dict scalars. The actor-side value head is still optimized when `use_experimental_cv` is true while the central critic is trained.
 
 ## Adaptation versus LoRA
 
@@ -290,7 +287,7 @@ The current gains actors preserve these source-derived quantities exactly in sto
 
 They do not execute those base magnitudes unchanged. Runtime recurrence is `diag(g_in) W diag(g_out)`, so every edge magnitude is altered by two learned positive cell-wide factors. This preserves support, direction, and sign and is much more constrained than edgewise fine-tuning, but it can substantially change pathway balance, recurrent spectrum, saturation, and closed-loop computation. The fixed leak of 0.5, zero recurrent bias, `tanh`, synchronous discrete updates, and recurrent scale 0.9 are engineering choices rather than measured MaleCNS physiology.
 
-The cross-species interfaces are wholly learned. Robot features are densely mixed into selected biological populations; the 32-dimensional SAPG coefficient embedding is injected with goal features into descending cells; and a learned dense matrix maps motor-cell activity to 29 robot commands. There is no fly sensor-to-robot sensor or fly muscle-to-robot joint homology. The privileged 2,037,769-parameter asymmetric critic is also non-biological: it shapes learning but is absent from the deployed action path.
+The cross-species interfaces are wholly learned. Robot features are densely mixed into selected biological populations; the 32-dimensional SAPG coefficient embedding is injected with goal features into descending cells; and a learned dense matrix maps motor-cell activity to 29 robot commands. There is no fly sensor-to-robot sensor or fly muscle-to-robot joint homology. The privileged 2,037,441-trainable-parameter asymmetric critic is also non-biological: it shapes learning but is absent from the deployed action path.
 
 | Graph | Fixed base edges | Trainable actor | Learned input adapters | Learned gains | Learned action-mean head |
 | --- | ---: | ---: | ---: | ---: | ---: |
