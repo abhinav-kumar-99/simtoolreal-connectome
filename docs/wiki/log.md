@@ -994,3 +994,8 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added the companion dual-tolerance milestone contract. The new suite and watcher are separate from the stopped pair's artifacts.
 - Verified both workers after initial optimization: K=4 is bound to GPU 0 and K=2 to GPU 1, each wrote a resolved configuration and reached epoch 9 / 1,572,864 frames. TensorBoard `info/last_lr` and the rollout scheduler's emitted LR remained exactly `1e-4` for both sampled runs; initial total throughput was about 88.0k frames/s for K=4 and 106.8k for K=2.
 - Linked both live summaries into the existing TensorBoard 6008 root as `fly1952_k4_fixed_lr1e4` and `fly1952_k2_fixed_lr1e4`. The server's runs and scalar-tag APIs confirm both aliases, including `rewards/step` and `info/last_lr`.
+
+## [2026-09-19] query | Compare stopped and replacement K=4 fly contracts
+
+- Recursively compared the stopped fly's saved resolved configuration with the live replacement K=4 resolved configuration. The only training-semantic difference is `train.params.config.lr_schedule`: `adaptive` became `constant`; both retain K=4, `schedule_type: rollout`, base actor LR `1e-4`, actor/critic batch geometry, central-critic LR `1e-4`, LF/SAPG, all-neuron readout, frozen graph, seed and task settings.
+- The remaining resolved-config differences are run name, artifact/Hydra directories, and W&B group/name/tags. They do not alter optimization or simulator behavior. The stopped run's final TensorBoard actor LR was `5.0625e-4` at frame 2,522,873,856 after adaptive scheduling; the current actor is held at `1e-4`.
