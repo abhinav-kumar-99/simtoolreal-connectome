@@ -975,3 +975,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 
 - Compared the active fly and LSTM port-6008 scalars in the same 2.0--2.3B-frame window. Sampled medians: fly `info/kl` `.391`, scheduler KL `.00308`, LR `.00050625`; LSTM `info/kl` `.161`, scheduler KL `.00276`, LR `.0001`.
 - Confirmed from the live code that `info/kl` includes LF-relabeled samples and both mini-epochs, while the rollout scheduler excludes relabeled samples and uses the final mini-epoch's same-conditioned KL. Both median scheduler KLs are within the `[.002, .008]` hold band. Each trainer's LR is its own accumulated state, not a cross-model inverse-KL mapping. No process, configuration, or training code changed.
+
+## [2026-09-19] query | Audit fly cycles and input routing
+
+- Recomputed directed shortest paths and strongly connected components from the pinned 1,952-cell `biological.npz`, using nonzero weights and the stored source/target orientation. Population-level sensory-to-reachable-motor coverage needs four updates; all-to-all communication is impossible in this filtered graph, and individual input-to-motor paths can be longer or absent.
+- Traced the current matched 140-value learned-adapter/all-neuron-readout profile and the distinct structured/fixed alternatives through suite YAML and `connectome_network_builder.py`. Recorded the direct input-to-action shortcut, SAPG routing, tactile-channel mismatch, and unbounded adapter-drive caveat in `analyses/fly-cycles-and-input-routing.md`.
+- Updated `concepts/connectome-actor.md` to reflect that YAML-owned inner updates are now implemented, clarified the fixed reservoir's population-level K=4 claim, and linked the new analysis in `index.md`.

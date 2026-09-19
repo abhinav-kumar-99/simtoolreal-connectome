@@ -2,9 +2,9 @@
 
 The fixed-reservoir policy runs the fly-derived circuit during rollout but never differentiates through it. PPO trains only a robot-action readout and the SAPG conditioning table.
 
-Last updated: 2026-09-16
+Last updated: 2026-09-19
 
-Related: [Connectome actor](connectome-actor.md), [Experiment workflow](../workflows/connectome-experiments.md), [MaleCNS source boundary](../sources/summaries/malecns-front-leg-circuit.md)
+Related: [Connectome actor](connectome-actor.md), [Experiment workflow](../workflows/connectome-experiments.md), [MaleCNS source boundary](../sources/summaries/malecns-front-leg-circuit.md), [Cycles and inputs](../analyses/fly-cycles-and-input-routing.md)
 
 ## Execution boundary
 
@@ -78,7 +78,7 @@ The reservoir trainer used about 6.2 GiB on physical GPU 1 during initialization
 
 ## Is K=4 enough?
 
-Four updates are structurally sufficient for fresh values from every currently mapped input class to reach every motor cell that is reachable from that class within the same robot-control decision. They are not yet empirically established as sufficient for useful nonlinear computation.
+Four updates are structurally sufficient for fresh values from at least one cell in each currently mapped input class to reach every motor cell reachable from that class within the same robot-control decision. This population-level statement does not say every individual input cell reaches every motor. They are not yet empirically established as sufficient for useful nonlinear computation; see the [full directed-graph audit](../analyses/fly-cycles-and-input-routing.md).
 
 The recurrent matrix convention is `W[target, source]`, and current input is injected into its target population after the recurrent multiply has read the old hidden state. A directed input-to-motor path with `L` recurrent edges therefore first affects the motor state on update `L+1`. An exact breadth-first search over `biological.npz` gives:
 

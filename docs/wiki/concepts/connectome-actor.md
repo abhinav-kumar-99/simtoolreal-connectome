@@ -2,9 +2,9 @@
 
 The actor is a sparse rate RNN whose recurrent support and base weights come from MaleCNS.
 
-Last updated: 2026-09-17
+Last updated: 2026-09-19
 
-Related: [Overview](../overview.md), [Source](../sources/summaries/malecns-front-leg-circuit.md), [Workflow](../workflows/connectome-experiments.md), [Fixed reservoir](fixed-reservoir-controller.md), [Sparse backends](../analyses/sparse-backends.md), [Matched LSTM baseline](../analyses/lstm-baseline.md)
+Related: [Overview](../overview.md), [Source](../sources/summaries/malecns-front-leg-circuit.md), [Workflow](../workflows/connectome-experiments.md), [Fixed reservoir](fixed-reservoir-controller.md), [Sparse backends](../analyses/sparse-backends.md), [Matched LSTM baseline](../analyses/lstm-baseline.md), [Cycles and inputs](../analyses/fly-cycles-and-input-routing.md)
 
 ## Plain-language overview of the current 1,952-cell circuit
 
@@ -82,7 +82,7 @@ Both architectures therefore train their actor-side SAPG embedding through the a
 
 The same audit verifies that disjoint input/motor ports and one synchronous update impose an exact current-observation-to-current-action-mean delay. It finds severe sensory/descending preactivation saturation in both tanh-policy checkpoints. Frozen weights therefore do not imply a preserved functional operating regime. Source-derived adjacency, signed scalar tanh dynamics and the upstream physiological rate model must also be distinguished; the current actor does not reproduce the upstream executable simulation merely by importing its graph.
 
-The audit's [timing proposal](../analyses/system-audit-2026-09-15.md#neural-timing-and-body-interface) tests four/eight internal updates with one held observation per control decision, matching substep leak to the original passive decay. This is not a sequence-length increase or an implemented runtime option. It also distinguishes output-action squashing from internal-neuron saturation: consistent bounded-action entropy addresses the former distribution objective, while calibrated input drives and functional sensitivity checks address the latter operating regime.
+The earlier audit's [timing proposal](../analyses/system-audit-2026-09-15.md#neural-timing-and-body-interface) has since been implemented as YAML-owned `dynamics.neural_updates`. Current matched 1,952-cell cases set `K=4`, hold input drive through the internal updates, and match passive decay with a substep leak; the current matched actor reads all 1,952 states. See the [directed reachability and input-routing audit](../analyses/fly-cycles-and-input-routing.md) for what four cycles do and do not guarantee. Output-action squashing and internal-neuron saturation remain separate issues.
 
 ## Interface projection architectures
 

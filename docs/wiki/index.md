@@ -21,8 +21,8 @@ Related: [Overview](overview.md), [Log](log.md)
 
 - [Camera-driven MaleCNS reservoir](concepts/visual-reservoir.md) — All 165,122 traced neurons, 64x36 multirate L1/L2 camera input, fresh proprioception, and motor, descending, or compressed all-neuron readout tradeoffs. Last updated 2026-09-16.
 
-- [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics, independently sized interface MLPs, structured sensory routing and 6D orientation, exact central-critic inputs, connectome-versus-LSTM auxiliary value gradients, propagation delay and saturation boundaries. Last updated 2026-09-17.
-- [Fixed-input reservoir controller](concepts/fixed-reservoir-controller.md) — Parameter-free robot-to-MaleCNS population coding, cached motor features, no-BPTT PPO boundary, optional hard-spiking LIF dynamics, exact channel map and smoke evidence. Last updated 2026-09-16.
+- [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics, independently sized interface MLPs, structured sensory routing and 6D orientation, exact central-critic inputs, connectome-versus-LSTM auxiliary value gradients, propagation delay and saturation boundaries. Last updated 2026-09-19.
+- [Fixed-input reservoir controller](concepts/fixed-reservoir-controller.md) — Parameter-free robot-to-MaleCNS population coding, cached motor features, no-BPTT PPO boundary, optional hard-spiking LIF dynamics, exact channel map and smoke evidence. Last updated 2026-09-19.
 - [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, adapters-only default, and GPU implementation. Last updated 2026-09-14.
 - [Training and evaluation success metrics](concepts/success-metrics.md) — TensorBoard populations, tolerance scaling, policy-ID mismatch, milestone Task Progress, and dual fixed/checkpoint-tolerance videos. Last updated 2026-09-18.
 
@@ -35,6 +35,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Analyses
 
+- [Fly cycles and input routing](analyses/fly-cycles-and-input-routing.md) — Exact directed reachability, current all-neuron shortcut, four-cycle boundary, and input-routing alternatives. Last updated 2026-09-19.
 - [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — The 323-unit coefficient match, exact sparsity-control boundary, official 1,024-unit history, diagnosed scheduler cancellation, and active LF rollout-KL matched pair. Last updated 2026-09-19.
 - [Visual reservoir performance](analyses/visual-reservoir-performance.md) — Frozen inference, full-CNS capacity sweep, video-worker memory limits and 2,304-environment continuation. Last updated 2026-09-16.
 - [End-to-end system audit](analyses/system-audit-2026-09-15.md) — All 71 event histories, raw-source reproduction, cross-member KL, saturation, proposed Beta parameters and multi-rate neural timing. Last updated 2026-09-15.
