@@ -392,6 +392,31 @@ was `.0027223` with LR `.00015`. Both runs are exposed through TensorBoard port
 6008. This verifies launch and controller wiring, not long-run KL regulation or
 comparative learning.
 
+### Why the fly can show higher KL and higher LR
+
+A 2026-09-19 port-6008 scalar snapshot compared both active jobs over the same
+2.0--2.3B-frame window. Median `info/kl` was about `.391` for the fly and
+`.161` for the LSTM, but median `info/scheduler/rollout/kl` was only `.00308`
+versus `.00276`; median post-decision LR was `.00050625` versus `.0001`. These
+are medians of TensorBoard's sampled points, not exact all-event aggregates.
+The jobs had advanced to different latest frames, so matched-frame windows are
+more meaningful than comparing their respective rightmost chart points.
+
+`info/kl` averages the unfiltered training-data KL across both mini-epochs,
+including LF-relabeled cross-conditioned samples. It is not the scheduler's
+input. `info/scheduler/rollout/kl` measures only original,
+same-conditioned samples against their immutable rollout distribution in the
+final mini-epoch. Both median scheduler values above lie inside the adaptive
+controller's hold band `[.002, .008]`, so neither instructs a decrease. Each
+job has its own LR state: it increases only below `.002`, decreases only above
+`.008` (or for invalid KL), and otherwise keeps its previous value. The fly
+reached a higher LR earlier and can retain it while its scheduler KL remains in
+the hold band. A given LR need not produce the same KL in architectures with
+different policy sensitivities; the snapshot does not establish a specific
+architectural cause for that sensitivity difference. Compare
+`info/scheduler/rollout/kl` with `info/scheduler/rollout/lr_after` at matched
+frame steps when auditing the controller.
+
 ```bash
 .venv/bin/python scripts/run_connectome_evaluation.py \
   --config configs/connectome/evaluation/ppo_1952_fly_lstm_matched_5b_all_tasks.yaml

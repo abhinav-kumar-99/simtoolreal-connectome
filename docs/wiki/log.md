@@ -970,3 +970,8 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added fresh YAML-owned 100B matched-pair and dual-tolerance milestone contracts. Fifty-four focused KL, configuration, recurrent-baseline and accumulation tests passed.
 - Stopped the original matched-pair trainer group and its in-progress watcher with artifacts preserved. Launched the fresh replacement as coordinator PID 1720057, LSTM PID 1720325 on CUDA 0, fly PID 1720327 on CUDA 1 and watcher PID 1720062. Resolved YAMLs retain LF, two mini-epochs and 49,152-sample batches.
 - Initial TensorBoard streams contain exactly one rollout decision per frame step, both diagnostic mini-epoch rollout-reference KLs, no legacy per-mini-epoch LR decisions, and corrected final LR telemetry. Port 6008 discovered both fresh streams; the watcher retains paper- and checkpoint-tolerance videos. This is launch-health and controller-wiring evidence, not long-run regulation evidence.
+
+## [2026-09-19] query | Explain matched-pair fly KL and LR ordering
+
+- Compared the active fly and LSTM port-6008 scalars in the same 2.0--2.3B-frame window. Sampled medians: fly `info/kl` `.391`, scheduler KL `.00308`, LR `.00050625`; LSTM `info/kl` `.161`, scheduler KL `.00276`, LR `.0001`.
+- Confirmed from the live code that `info/kl` includes LF-relabeled samples and both mini-epochs, while the rollout scheduler excludes relabeled samples and uses the final mini-epoch's same-conditioned KL. Both median scheduler KLs are within the `[.002, .008]` hold band. Each trainer's LR is its own accumulated state, not a cross-model inverse-KL mapping. No process, configuration, or training code changed.
