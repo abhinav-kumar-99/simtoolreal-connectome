@@ -243,7 +243,7 @@ seed 42 and the same perturbation and 100B-frame budget. The evaluator produces
 both paper-tolerance and exact checkpoint-training-tolerance videos for the
 three deterministic sentinel tasks at every 250M-frame checkpoint.
 
-The pair launched fresh on 2026-09-18 in tmux
+The first pair launched fresh on 2026-09-18 in tmux
 `connectome-asymmetric-matched-pair-100b`: the LSTM trainer is PID 671749 on
 physical CUDA 0 and the fly trainer is PID 671748 on physical CUDA 1. The
 coordinator is PID 671476. Both emitted finite frame progress on the expected
@@ -252,6 +252,10 @@ The dual-tolerance watcher is PID 671483 in
 `connectome-asymmetric-matched-pair-100b-eval`. A symlink exposes both summary
 streams to the existing TensorBoard server on port 6008. These observations
 establish placement and launch health, not comparative learning performance.
+
+That first pair and its watcher were stopped on 2026-09-19 with artifacts
+preserved when the KL scheduler defect below was confirmed. It is historical;
+the rollout-KL replacement is the active matched pair.
 
 ### Small-MLP fly scheduler equivalence
 
@@ -337,6 +341,56 @@ the control intends. This is an LF/scheduler integration bug or control-design
 bug, not a failure of the clipped PPO ratio itself. Separately,
 `info/last_lr` is a telemetry bug because it can omit the final scheduler
 decision.
+
+### Rollout-KL replacement
+
+The replacement preserves LF training exactly: `use_others_experience: lf`,
+`off_policy_ratio: 1.0`, all seven resulting SAPG blocks, the PPO loss and the
+four logical optimizer updates per mini-epoch remain unchanged. Only the
+adaptive-LR measurement and timing change under `schedule_type: rollout`:
+
+- rollout-time Gaussian means and scales remain immutable across both PPO
+  mini-epochs;
+- LF-relabeled samples are excluded only from scheduler KL because their stored
+  distributions have different policy conditioning;
+- the final mini-epoch's same-conditioned KL against the rollout reference
+  drives exactly one LR decision after both mini-epochs; and
+- `info/last_lr` now reports the post-decision LR.
+
+The per-mini-epoch `same_conditioned_rollout_kl` tags are diagnostics only.
+`info/scheduler/rollout/{kl,lr_before,lr_after,invalid_kl,decision_count}` is the
+authoritative controller telemetry. Existing `standard` and `legacy` schedule
+types retain their prior behavior.
+
+The fresh production and watcher commands are:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b.yaml
+
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_milestones.yaml
+```
+
+The suite YAML owns the two profiles, CUDA assignments, LF setting, rollout-KL
+mode, batch geometry and 100B cap. The evaluation YAML owns the exact 250M
+checkpoint cadence and both paper- and checkpoint-tolerance videos. The suite
+runner composes and launches the two independent trainers; the milestone helper
+only watches completed checkpoints and launches deterministic evaluation
+workers.
+
+The replacement launched fresh on 2026-09-19 in tmux
+`connectome-asymmetric-matched-pair-rollout-kl-100b`: coordinator PID 1720057,
+LSTM PID 1720325 on physical CUDA 0 and fly PID 1720327 on physical CUDA 1.
+Watcher PID 1720062 runs in the matching `-eval` tmux session. Saved resolved
+YAMLs confirm `schedule_type: rollout`, LF/1.0, two mini-epochs and 49,152-sample
+minibatches for both policies. Initial event streams showed one rollout decision
+per frame step, no legacy per-mini-epoch LR tags, and equality between
+`info/last_lr` and rollout `lr_after`. At frame 3,342,336 the fly scheduler KL
+was `.0028484` with LR `.000759375`; at frame 4,325,376 the LSTM scheduler KL
+was `.0027223` with LR `.00015`. Both runs are exposed through TensorBoard port
+6008. This verifies launch and controller wiring, not long-run KL regulation or
+comparative learning.
 
 ```bash
 .venv/bin/python scripts/run_connectome_evaluation.py \
