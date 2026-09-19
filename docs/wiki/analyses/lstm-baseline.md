@@ -308,6 +308,36 @@ single epoch-level scheduler decision using a stable, same-conditioned rollout
 reference would avoid the current within-epoch cancellation; this diagnosis did
 not change the running process or configuration.
 
+### PPO and bug boundary
+
+Standard PPO collects a rollout with a behavior policy, freezes that policy's
+action likelihoods for the entire multi-epoch update, and optimizes the clipped
+importance ratio against that fixed reference. Adaptive learning-rate control
+from KL is an implementation extension rather than a required part of PPO. A
+target-KL variant should measure the current policy against a stable,
+same-conditioned behavior policy and then reduce LR or stop further epochs when
+the target is exceeded.
+
+This repository preserves the core clipped-PPO invariant: `old_logp_actions`
+is populated from rollout data and remains the reference passed to
+`actor_loss_func` throughout both mini-epochs. `update_mu_sigma` changes only
+the separate `mu` and `sigma` tensors used by `policy_kl`; it does not overwrite
+the old log probabilities used by the PPO ratio. The actor optimization is
+therefore still clipped PPO, not an accidentally moving-ratio objective.
+
+The KL controller is nevertheless defective for the present LF contract. The
+per-mini-epoch scheduler and `mu`/`sigma` refresh are inherited RL-Games
+behavior, but LF additionally changes a copied sample's policy identifier while
+retaining its source-conditioned distribution parameters. Mini-epoch-0 KL can
+therefore measure a conditioning mismatch rather than an optimizer-induced
+policy change. Refreshing those parameters makes mini-epoch-1 KL small, and the
+second symmetric scheduler decision can undo the first. Thus the code executes
+its configured rules, but its input does not have the target-KL semantics that
+the control intends. This is an LF/scheduler integration bug or control-design
+bug, not a failure of the clipped PPO ratio itself. Separately,
+`info/last_lr` is a telemetry bug because it can omit the final scheduler
+decision.
+
 ```bash
 .venv/bin/python scripts/run_connectome_evaluation.py \
   --config configs/connectome/evaluation/ppo_1952_fly_lstm_matched_5b_all_tasks.yaml
