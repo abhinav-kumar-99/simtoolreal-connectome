@@ -1319,6 +1319,77 @@ def test_ddp_small_mlp_original_env_count_keeps_half_physical_batches() -> None:
     ]
 
 
+def test_matched_lstm_fly_pair_uses_identical_asymmetric_critic_contract() -> None:
+    from scripts.run_connectome_suite import _compose_resolved, _training_overrides
+
+    repository_root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/suites/"
+            "ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_100b.yaml"
+        ).read_text()
+    )
+    training = suite["training"]
+    assert training["task_profile"] == "SimToolRealLSTMAsymmetric"
+    assert training["gpu_assignments"] == [0, 1]
+    assert training["max_parallel"] == 2
+    assert training["num_envs"] == 12_288
+    assert training["sapg_block_size"] == 2_048
+    assert training["minibatch_size"] == 49_152
+    assert training["central_critic_minibatch_size"] == 49_152
+    assert training["actor_microbatch_size"] == 49_152
+    assert training["central_critic_microbatch_size"] == 49_152
+    assert training["epochs"] == 508_626
+    assert training["max_frames"] == 100_000_000_000
+
+    resolved = []
+    for entry in training["train_profiles"]:
+        case_training = dict(training)
+        case_training["overrides"] = {
+            **training["overrides"],
+            **entry.get("overrides", {}),
+        }
+        overrides = _training_overrides(
+            case_training,
+            entry["train_profile"],
+            42,
+            entry["name"],
+            repository_root / "test-output" / entry["name"],
+        )
+        resolved.append(_compose_resolved(overrides))
+
+    lstm, fly = resolved
+    assert lstm.train.params.network.rnn.units == 323
+    assert list(lstm.train.params.network.mlp.units) == [256]
+    fly_interfaces = fly.train.params.network.connectome.interface_projections
+    assert fly_interfaces.hidden_size == 256
+    assert fly_interfaces.sensory_hidden_size == 128
+    assert fly_interfaces.descending_hidden_size == 32
+    assert fly_interfaces.readout_hidden_size == 32
+    assert (
+        list(lstm.train.params.config.central_value_config.network.mlp.units)
+        == list(fly.train.params.config.central_value_config.network.mlp.units)
+        == [1024, 1024, 512, 512]
+    )
+    assert lstm.train.params.config.use_experimental_cv is False
+    assert fly.train.params.config.use_experimental_cv is False
+
+    evaluation = yaml.safe_load(
+        (
+            repository_root
+            / "configs/connectome/evaluation/"
+            "ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_100b_"
+            "milestones.yaml"
+        ).read_text()
+    )
+    assert [policy["gpu"] for policy in evaluation["policies"]] == [0, 1]
+    assert evaluation["evaluation"]["videos"]["metrics"] == [
+        "paper_task_progress",
+        "checkpoint_training_tolerance",
+    ]
+
+
 def test_noaux_7b_dual_tolerance_anatomical_hd_contract_is_matched() -> None:
     repository_root = Path(__file__).resolve().parents[2]
     config = yaml.safe_load(

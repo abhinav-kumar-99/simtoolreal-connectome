@@ -35,7 +35,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Analyses
 
-- [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — Historical 323-unit coefficient match, exact sparsity-control boundary, and the active official 1,024-unit repository-method replacement. Last updated 2026-09-18.
+- [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — The 323-unit coefficient match, exact sparsity-control boundary, official 1,024-unit history, and fresh asymmetric matched-pair contract. Last updated 2026-09-18.
 - [Visual reservoir performance](analyses/visual-reservoir-performance.md) — Frozen inference, full-CNS capacity sweep, video-worker memory limits and 2,304-environment continuation. Last updated 2026-09-16.
 - [End-to-end system audit](analyses/system-audit-2026-09-15.md) — All 71 event histories, raw-source reproduction, cross-member KL, saturation, proposed Beta parameters and multi-rate neural timing. Last updated 2026-09-15.
 - [Minimal dexterity circuits](analyses/minimal-dexterity-circuit.md) — Exact 86/262/408-cell candidates, threshold rationale, and 262 training evidence weakening its full-task recommendation. Last updated 2026-09-15.

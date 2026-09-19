@@ -218,6 +218,31 @@ predeclared all-24-task comparison resolves both policies' exact 5B target
 checkpoints from their suite identities, avoiding hard-coded actual-frame
 filenames:
 
+## Fresh asymmetric matched-pair contract
+
+The current paired contract returns the 323-unit coefficient-matched LSTM to
+physical GPU 0 and runs the 1,952-neuron all-neuron fly actor on physical GPU
+1. Both use `SimToolRealLSTMAsymmetric`, so the privileged critic is the same
+`[1024, 1024, 512, 512]` MLP; `use_experimental_cv: false` disables the actor's
+auxiliary value objective in both policies. The actor comparison remains
+733,790 instantiated LSTM coefficients versus 733,796 fly coefficients.
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_100b.yaml
+
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_100b_milestones.yaml
+```
+
+The suite assigns the first profile to CUDA 0 and the second to CUDA 1 through
+`gpu_assignments: [0, 1]` and `max_parallel: 2`. Each independent single-GPU
+trainer uses 12,288 environments, six 2,048-environment SAPG blocks, 49,152
+actor/critic logical and physical minibatches, two PPO mini-epochs, LF/1.0,
+seed 42 and the same perturbation and 100B-frame budget. The evaluator produces
+both paper-tolerance and exact checkpoint-training-tolerance videos for the
+three deterministic sentinel tasks at every 250M-frame checkpoint.
+
 ```bash
 .venv/bin/python scripts/run_connectome_evaluation.py \
   --config configs/connectome/evaluation/ppo_1952_fly_lstm_matched_5b_all_tasks.yaml
