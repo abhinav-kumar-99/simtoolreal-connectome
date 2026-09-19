@@ -951,3 +951,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Compared the current asymmetric `128/32/32` fly's saved resolved YAML with the specified earlier no-auxiliary all-neuron run. Both use the same adaptive/standard actor LR scheduler, initial LR `1e-4`, bounds `[1e-6, 1e-3]`, KL target `.004`, two mini-epochs, 49,152-sample minibatches and LF/1.0 population.
 - Both independent single-GPU runs have four logical minibatches per mini-epoch and one scheduler decision after each mini-epoch. The controller multiplies LR by 1.5 below KL `.002`, divides by 1.5 above `.008` or on invalid KL, and otherwise leaves it unchanged.
 - Recorded that identical scheduler semantics do not imply identical KL/LR trajectories because the smaller interface MLP changes the learned policy, gradients and collected rollouts. No process or training configuration was changed.
+
+## [2026-09-19] diagnose | Explain growing fly KL without LR decay
+
+- Read the current small-MLP fly's raw port-6008 scalars through frame 1,186,725,888. Median aggregate KL increased monotonically across six 200M-frame bands from `.00549` to `.04040`; this is not a smoothing artifact.
+- Mini-epoch-0 median KL rose from `.00905` to `.07920`, while mini-epoch 1 stayed near `.0016`--`.0019`. In 120 of the latest 200 epochs, the first scheduler decision divided LR by 1.5 and the second multiplied it by 1.5, exactly canceling. The authoritative end-of-epoch LR was `.000197531` at both window endpoints.
+- Traced `info/last_lr` to the final actor minibatch return: it precedes the mini-epoch-1 scheduler call and is not necessarily the epoch's final LR. The explicit per-mini-epoch tags show the real transitions. Dataset means/scales are refreshed after each minibatch, and LF KL includes relabeled cross-member samples, so the feedback is local rather than a cumulative trust-region bound. No process or configuration was changed.

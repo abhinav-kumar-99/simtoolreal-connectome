@@ -273,6 +273,41 @@ though the controller, cadence and sample geometry are the same. The KL is a
 feedback signal for adaptive LR rather than a separately weighted KL penalty in
 the PPO objective.
 
+### Live small-MLP scheduler dynamics
+
+A raw TensorBoard scalar snapshot on 2026-09-19, through frame 1,186,725,888,
+confirms that the small-MLP fly's aggregate KL is growing while its LR remains
+approximately stationary. Median `info/kl` in consecutive 200M-frame bands was
+`.00549`, `.01315`, `.02079`, `.02494`, `.03333`, and `.04040`. This is not a
+TensorBoard smoothing artifact.
+
+The scheduler is responding, but its two decisions per PPO epoch usually
+oppose each other. Mini-epoch-0 median KL rose from `.00905` in the first 200M
+frames to `.07920` in the 1.0--1.2B band, while mini-epoch-1 median KL remained
+near `.0016`--`.0019`, usually below the `.002` LR-increase threshold. In 120
+of the latest 200 epochs, mini-epoch 0 divided LR by 1.5 and mini-epoch 1
+immediately multiplied it by 1.5, producing no net change. For example, at
+frame 1,181,810,688, KL `.06401` changed LR from `.000197531` to `.000131687`,
+then KL `.001217` restored it to `.000197531`. The correct end-of-epoch scalar,
+`info/scheduler/mini_epoch_1/lr_after`, was `.000197531` at both ends of the
+latest 200-epoch window.
+
+Two implementation details explain the display and feedback behavior. First,
+`info/kl` averages both mini-epoch KLs, whereas each scheduler call acts only on
+its own mini-epoch value. Second, `info/last_lr` records the LR returned by the
+last actor minibatch, before the mini-epoch-1 scheduler decision; it is the
+mini-epoch-1 input LR, not necessarily the final LR for the epoch. The explicit
+per-mini-epoch `lr_before` and `lr_after` tags are authoritative.
+
+The dataset also overwrites stored means and scales after every minibatch.
+Consequently, mini-epoch 1 compares against refreshed distribution parameters,
+not the immutable rollout policy. With LF enabled, the scheduler average also
+includes relabeled cross-member samples. The observed KL is therefore local,
+reference-refreshing feedback rather than a cumulative trust-region bound. A
+single epoch-level scheduler decision using a stable, same-conditioned rollout
+reference would avoid the current within-epoch cancellation; this diagnosis did
+not change the running process or configuration.
+
 ```bash
 .venv/bin/python scripts/run_connectome_evaluation.py \
   --config configs/connectome/evaluation/ppo_1952_fly_lstm_matched_5b_all_tasks.yaml
