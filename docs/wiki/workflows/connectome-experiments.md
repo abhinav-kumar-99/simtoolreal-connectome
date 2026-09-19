@@ -606,21 +606,20 @@ The evaluation contract reports both configured-base definitions found in the so
 
 ## Entry points
 
-### K=2 adaptive-versus-constant LR comparison
+### Matched K=2/K=4 adaptive-LR comparison
 
-The original YAML launched independent K=4 and K=2 1,952-cell all-neuron-readout fly actors at seed 42. K=4 was stopped at final visible TensorBoard frame 767,754,240 and replaced by fresh K=1; K=1 was then stopped at frame 280,559,616 after completing its 250M dual-tolerance milestone. Those checkpoints and evaluations remain preserved. The current GPU-0 replacement is fresh K=2 with adaptive actor LR, while the original fixed-`1e-4` K=2 continues unchanged on physical GPU 1. Both current actors retain the same 140-value learned adapter map, frozen recurrent graph, K=2 update count, 12,288 environments, batch geometry, SAPG/LF population, entropy scale, no auxiliary actor value loss, task contract and 100B-frame cap. The scheduler is the intended training-contract difference, although their unequal start times mean live same-wall-time points are not matched-frame comparisons.
+The original fixed-LR sequence ran K=4, K=2 and K=1 controls; their artifacts remain preserved. The final fixed K=2 reached visible TensorBoard frame 1,317,666,816 and completed dual-tolerance milestones through 1.25B before it was stopped. The current pair is fresh adaptive K=2 on physical GPU 0 and fresh adaptive K=4 on physical GPU 1. Both retain the same 140-value learned adapter map, frozen recurrent graph, 12,288 environments, batch geometry, SAPG/LF population, entropy scale, no auxiliary actor value loss, task contract and 100B-frame cap. Their intended training-contract difference is only `neural_updates` two versus four; their start times differ, so compare matched frame windows rather than wall-clock time.
 
-The adaptive K=2 starts at actor LR `1e-4` with `min_lr` equal to
+Both adaptive actors start at LR `1e-4` with `min_lr` equal to
 `1e-6/3 = 3.333333333e-7` and `max_lr` equal to
-`1e-3/3 = 3.333333333e-4`. Its `.004` KL target and `schedule_type: rollout`
+`1e-3/3 = 3.333333333e-4`. Their `.004` KL target and `schedule_type: rollout`
 make one same-conditioned decision after both PPO mini-epochs: invalid or
 negative KL, or KL above `.008`, divides LR by 1.5; KL below `.002` multiplies
 LR by 1.5; the inclusive `.002--.008` band holds LR. By frame 1,769,472 the
-actor had reached the new maximum; the latest scheduler KL was .0017586 and
-the logged decision count was exactly one. The GPU-1 control's constant
-scheduler ignores its configured bounds and KL for LR control. Both privileged
-central critics remain independently fixed at `1e-4`; the central-value
-trainer does not use the actor's adaptive bounds.
+K=2 and K=4 actors had each reached the new maximum. K=4's scheduler KL was
+.0018239, aggregate KL .0010507 and logged decision count exactly one. Both
+privileged central critics remain independently fixed at `1e-4`; the
+central-value trainer does not use the actor's adaptive bounds.
 
 All of these Gaussian cases use the shifted soft Sigma-3 ceiling. For raw log-scale `r`, the
 emitted standard deviation is `sigma=3/(1+2 exp(-r))`, so the distribution's
@@ -640,25 +639,27 @@ from-scratch uncapped optimization trajectory. Adam can partly normalize a
 common gradient rescaling, while the nonlinear Jacobian and finite reachable
 scale still change longer-run dynamics.
 
-Launch the fresh adaptive K=2 replacement from the repository root:
+Launch the matched adaptive runs from the repository root:
 
 ```bash
 .venv/bin/python scripts/run_connectome_suite.py \
   --config configs/connectome/suites/ppo_fly1952_k2_adaptive_lr_third_bounds_100b.yaml
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/ppo_fly1952_k4_adaptive_lr_third_bounds_100b.yaml
 ```
 
-Start the adaptive and constant K=2 watchers as separate processes:
+Start their milestone watchers as separate processes:
 
 ```bash
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py \
   --config configs/connectome/evaluation/ppo_fly1952_k2_adaptive_lr_third_bounds_100b_milestones.yaml
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py \
-  --config configs/connectome/evaluation/ppo_fly1952_k2_fixed_lr1e4_100b_milestones.yaml
+  --config configs/connectome/evaluation/ppo_fly1952_k4_adaptive_lr_third_bounds_100b_milestones.yaml
 ```
 
-The adaptive suite YAML owns K=2, seed 42, GPU 0, initial LR, scaled bounds, rollout KL rule, batch geometry, LF reuse, entropy scale, Sigma-3 policy and the 100B budget. The suite script owns artifact preparation, resolved configuration capture, process supervision and checkpoint verification. The milestone helpers wait for each 250M-frame inference checkpoint, resolve the exact checkpoint-time training tolerance, and export fixed-paper-tolerance plus checkpoint-tolerance mean-action videos. The constant K=2 watcher reuses its original output/status tree so completed milestones are not regenerated; the adaptive watcher has a separate fresh output tree. Their helper `run_connectome_evaluation.py` generates case YAMLs, and `dextoolbench/eval_worker_isaacgym.py` executes each simulator case; neither helper is normally launched directly.
+The two suite YAMLs own K, physical GPU, seed 42, initial LR, scaled bounds, rollout KL rule, batch geometry, LF reuse, entropy scale, Sigma-3 policy and the 100B budget. The suite script owns artifact preparation, resolved configuration capture, process supervision and checkpoint verification. Each milestone helper waits for 250M-frame inference checkpoints, resolves the exact checkpoint-time training tolerance, and exports fixed-paper-tolerance plus checkpoint-tolerance mean-action videos to its own output tree. Their helper `run_connectome_evaluation.py` generates case YAMLs, and `dextoolbench/eval_worker_isaacgym.py` executes each simulator case; neither helper is normally launched directly.
 
-The adaptive trainer is PID 610456 in tmux `connectome-k2-adaptive-third-bounds`; its watcher runs in `connectome-k2-adaptive-third-bounds-eval`. Initial health at frame 1,769,472 showed actor LR `3.3333333e-4`, raw Gaussian entropy 41.1705 and finite aggregate/scheduler KL .0010221/.0017586. The constant K=2 trainer remains PID 3843064, and its watcher remains PID 386401 in `connectome-k2-fixed-lr-eval`. TensorBoard port 6008 exposes them as `fly1952_k2_adaptive_lr_third_bounds` and `fly1952_k2_fixed_lr1e4`.
+K=2 is PID 610456 in tmux `connectome-k2-adaptive-third-bounds`; K=4 is PID 698894 in `connectome-k4-adaptive-third-bounds`. Their watchers are PIDs 610177 and 698624. Initial K=4 health at frame 1,769,472 showed actor LR `3.3333333e-4`, raw Gaussian entropy 41.1736 and finite aggregate/scheduler KL .0010507/.0018239. TensorBoard port 6008 exposes them as `fly1952_k2_adaptive_lr_third_bounds` and `fly1952_k4_adaptive_lr_third_bounds`.
 
 The legacy Isaac Gym stack is Python 3.8. A local ignored virtual environment can reuse the installed `diffusion` conda environment while supplying the two missing mesh packages:
 
