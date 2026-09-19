@@ -36,6 +36,8 @@ This YAML fixes one no-auxiliary 7B checkpoint, deterministic mean actions, the 
 
 To force a fresh run on physical GPU 1, use `configs/connectome/evaluation/ppo_1952_7b_noaux_dual_tolerance_anatomical_hd_cuda1.yaml`. It keeps `gpu_assignments: [1]` and writes to a new `_cuda1` output directory, so the existing completed directory is not reused. The noaux configs include both blue-brush trajectories, `sweep_forward` and `sweep_right`, in addition to the original three cases.
 
+For the matched asymmetric fly actor, `configs/connectome/evaluation/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_fly_checkpoint_lowres.yaml` watches only `fly1952_asymmetric_mlp128x32x32`, uses only the checkpoint TensorBoard success tolerance, assigns physical GPU 1, and captures lower-resolution 400 × 225 source footage with 1280 × 720 circuit output. It processes the available 250M-frame milestones and continues watching the 100B run.
+
 For future ordinary or milestone evaluations, add this block to `videos` (under `evaluation.videos` in watcher configs):
 
 ```yaml

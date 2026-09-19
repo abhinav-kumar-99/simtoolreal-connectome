@@ -905,6 +905,11 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 
 - Added `blue_brush/sweep_forward` and `blue_brush/sweep_right` to both noaux dual-tolerance evaluation YAMLs. Existing marker, eraser and spatula cases remain unchanged; rerunning reuses their complete artifacts and schedules only the new brush cases.
 
+## [2026-09-19] launch | Start fly1952 checkpoint-threshold video watcher
+
+- Added `configs/connectome/evaluation/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_fly_checkpoint_lowres.yaml` for the requested asymmetric fly actor. It selects only the fly policy, resolves only `scalars/success_tolerance/frame` at each checkpoint, uses physical GPU 1, and captures 400 × 225 source footage with 1280 × 720 anatomical output.
+- The watcher preserves the existing matched-pair milestone outputs and writes to a separate low-resolution destination. GPU 0 and GPU 1 already had unrelated cycle-ablation trainers, so they were left running; the watcher log records any resource contention without stopping them.
+
 ## [2026-09-18] configure | Launch CUDA-1 small-MLP all-neuron fly control
 
 - Added `configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_mlp128x32x32_100b.yaml` as the CUDA-1 counterpart to the live no-auxiliary all-neuron fly run.
