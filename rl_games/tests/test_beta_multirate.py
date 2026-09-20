@@ -48,7 +48,10 @@ def test_passive_retention_and_manual_step(artifact_path, updates):
     drive = drive.index_add(1, net.descending_indices, net.descending_adapter(goal))
     ref = h
     for _ in range(updates):
-        pre = .9 * net.incoming_gains() * net._recurrent_multiply(ref) + drive + net.recurrent_bias
+        pre = (
+            .9 * net.incoming_gains() * net._recurrent_multiply(ref) + drive
+        )
+        pre = net.intrinsic_gains() * pre + net.recurrent_bias
         ref = (1-net.substep_leaks())*ref + net.substep_leaks()*pre.tanh()
     torch.testing.assert_close(actual, ref)
     ga = torch.autograd.grad(actual.square().sum(), obs, retain_graph=True)[0]
@@ -111,6 +114,7 @@ def test_beta_sampling_likelihood_entropy_and_learning(artifact_path):
     for module in [net.mu, net.beta_head, net.sensory_adapter, net.descending_adapter, net.value]:
         assert any(p.grad is not None and torch.isfinite(p.grad).all() and p.grad.abs().sum()>0 for p in module.parameters())
     assert not net.leak_raw.requires_grad and not net.recurrent_values.requires_grad
+    assert not net.log_intrinsic_gain.requires_grad
     restored = policy(artifact_path)
     restored.load_state_dict(model.state_dict())
     with torch.no_grad():

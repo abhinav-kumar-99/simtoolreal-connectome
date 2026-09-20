@@ -27,6 +27,7 @@ def _sparse_step(
     GI,
     GO,
     LEAK,
+    A,
     BIAS,
     S,
     D,
@@ -35,6 +36,7 @@ def _sparse_step(
     OUT,
     REC,
     Z,
+    PRE_DRIVE,
     B: tl.constexpr,
     BETA: tl.constexpr,
     FUSED: tl.constexpr,
@@ -66,7 +68,9 @@ def _sparse_step(
         di = tl.load(DMAP + row)
         drive = tl.load(S + si * B + b, (si >= 0) & (b < B), 0)
         drive += tl.load(D + di * B + b, (di >= 0) & (b < B), 0)
-        pre = BETA * tl.load(GI + row) * acc + drive + tl.load(BIAS + row)
+        pre_drive = BETA * tl.load(GI + row) * acc + drive
+        a = tl.load(A + row)
+        pre = a * pre_drive + tl.load(BIAS + row)
         z = 2.0 / (1.0 + tl.exp(2.0 * -pre)) - 1.0
         leak = tl.load(LEAK + row)
         h0 = tl.load(H + row * B + b, b < B, 0)
@@ -74,6 +78,7 @@ def _sparse_step(
         if SAVE_BACKWARD:
             tl.store(REC + row * B + b, acc, b < B)
             tl.store(Z + row * B + b, z, b < B)
+            tl.store(PRE_DRIVE + row * B + b, pre_drive, b < B)
     else:
         out = acc
     tl.store(OUT + row * B + b, out, b < B)
@@ -163,13 +168,16 @@ def _point_backward(
     H,
     Z,
     REC,
+    PRE_DRIVE,
     GI,
     LEAK,
+    A,
     DP,
     DR,
     DIRECT,
     DGI,
     DL,
+    DA,
     DB,
     B: tl.constexpr,
     BETA: tl.constexpr,
@@ -182,13 +190,17 @@ def _point_backward(
     z = tl.load(Z + offset, b < B, 0)
     h = tl.load(H + offset, b < B, 0)
     rec = tl.load(REC + offset, b < B, 0)
+    pre_drive = tl.load(PRE_DRIVE + offset, b < B, 0)
     leak = tl.load(LEAK + row)
+    a = tl.load(A + row)
     dp = dy * leak * (1.0 - z * z)
-    tl.store(DP + offset, dp, b < B)
-    tl.store(DR + offset, dp * BETA * tl.load(GI + row), b < B)
+    d_pre_drive = dp * a
+    tl.store(DP + offset, d_pre_drive, b < B)
+    tl.store(DR + offset, d_pre_drive * BETA * tl.load(GI + row), b < B)
     tl.store(DIRECT + offset, dy * (1.0 - leak), b < B)
-    tl.store(DGI + row, tl.sum(dp * BETA * rec, 0))
+    tl.store(DGI + row, tl.sum(d_pre_drive * BETA * rec, 0))
     tl.store(DL + row, tl.sum(dy * (z - h), 0))
+    tl.store(DA + row, tl.sum(dp * pre_drive, 0))
     tl.store(DB + row, tl.sum(dp, 0))
 
 
@@ -224,6 +236,7 @@ class _Step(torch.autograd.Function):
         gi,
         go,
         leak,
+        intrinsic,
         bias,
         sensory,
         descending,
@@ -236,7 +249,17 @@ class _Step(torch.autograd.Function):
             raise RuntimeError("operator_backend: triton_fused requires CUDA")
         if any(
             t.dtype != torch.float32
-            for t in (values, hidden, gi, go, leak, bias, sensory, descending)
+            for t in (
+                values,
+                hidden,
+                gi,
+                go,
+                leak,
+                intrinsic,
+                bias,
+                sensory,
+                descending,
+            )
         ):
             raise ValueError("Triton recurrence requires FP32")
         h, s, d = (x.t().contiguous() for x in (hidden, sensory, descending))
@@ -250,7 +273,7 @@ class _Step(torch.autograd.Function):
                 maps.append(mapping)
             graph.population_maps[key] = maps
         smap, dmap = graph.population_maps[key]
-        out, rec, z = (torch.empty_like(h) for _ in range(3))
+        out, rec, z, pre_drive = (torch.empty_like(h) for _ in range(4))
         _sparse_step[(n, triton.cdiv(b, 32))](
             graph.crow,
             graph.col,
@@ -259,6 +282,7 @@ class _Step(torch.autograd.Function):
             gi,
             go,
             leak,
+            intrinsic,
             bias,
             s,
             d,
@@ -267,36 +291,52 @@ class _Step(torch.autograd.Function):
             out,
             rec,
             z,
+            pre_drive,
             b,
             beta,
             True,
         )
         ctx.graph, ctx.beta = graph, beta
         ctx.save_for_backward(
-            values, h, gi, go, leak, rec, z, sensory_indices, descending_indices
+            values,
+            h,
+            gi,
+            go,
+            leak,
+            intrinsic,
+            rec,
+            z,
+            pre_drive,
+            sensory_indices,
+            descending_indices,
         )
         return out.t()
 
     @staticmethod
     def backward(ctx, grad):
-        values, h, gi, go, leak, rec, z, si, di = ctx.saved_tensors
+        values, h, gi, go, leak, intrinsic, rec, z, pre_drive, si, di = (
+            ctx.saved_tensors
+        )
         graph = ctx.graph
         dy = grad.t().contiguous()
         n, b = h.shape
         dp, dr, direct = (torch.empty_like(h) for _ in range(3))
-        dgi, dl, db = (torch.empty_like(gi) for _ in range(3))
+        dgi, dl, da, db = (torch.empty_like(gi) for _ in range(4))
         _point_backward[(n,)](
             dy,
             h,
             z,
             rec,
+            pre_drive,
             gi,
             leak,
+            intrinsic,
             dp,
             dr,
             direct,
             dgi,
             dl,
+            da,
             db,
             b,
             ctx.beta,
@@ -306,6 +346,8 @@ class _Step(torch.autograd.Function):
         if ctx.needs_input_grad[1] or ctx.needs_input_grad[3]:
             dscaled = torch.empty_like(h)
             tv = values[graph.permutation]
+            # Transpose SpMM path: FUSED=False returns only the sparse product.
+            # Dummy A/BIAS/PRE_DRIVE pointers satisfy the kernel signature.
             _sparse_step[(n, triton.cdiv(b, 32))](
                 graph.tcrow,
                 graph.tcol,
@@ -314,6 +356,7 @@ class _Step(torch.autograd.Function):
                 gi,
                 go,
                 leak,
+                intrinsic,
                 gi,
                 h,
                 h,
@@ -322,6 +365,7 @@ class _Step(torch.autograd.Function):
                 dscaled,
                 rec,
                 z,
+                pre_drive,
                 b,
                 ctx.beta,
                 False,
@@ -343,7 +387,8 @@ class _Step(torch.autograd.Function):
             dgi if ctx.needs_input_grad[2] else None,
             dgo,
             dl if ctx.needs_input_grad[4] else None,
-            db if ctx.needs_input_grad[5] else None,
+            da if ctx.needs_input_grad[5] else None,
+            db if ctx.needs_input_grad[6] else None,
             dp[si].t(),
             dp[di].t(),
             None,
@@ -360,10 +405,11 @@ class FrozenTanhRunner:
     CUDA graph capture covers only the neural passes, not simulation or inputs.
     """
 
-    def __init__(self, graph, values, hidden, gi, go, leak, bias,
+    def __init__(self, graph, values, hidden, gi, go, leak, intrinsic, bias,
                  sensory, descending, si, di, beta, updates, capture=False):
         self.graph, self.values = graph, values
-        self.gi, self.go, self.leak, self.bias = gi, go, leak, bias
+        self.gi, self.go, self.leak = gi, go, leak
+        self.intrinsic, self.bias = intrinsic, bias
         self.beta, self.updates = beta, updates
         self.h = torch.empty_like(hidden.t(), memory_format=torch.contiguous_format)
         self.other = torch.empty_like(self.h)
@@ -394,9 +440,9 @@ class FrozenTanhRunner:
         for _ in range(self.updates):
             _sparse_step[(n, triton.cdiv(b, 32))](
                 self.graph.crow, self.graph.col, self.values, source,
-                self.gi, self.go, self.leak, self.bias, self.s, self.d,
-                self.maps[0], self.maps[1], dest, dest, dest,
-                b, self.beta, True, SAVE_BACKWARD=False,
+                self.gi, self.go, self.leak, self.intrinsic, self.bias,
+                self.s, self.d, self.maps[0], self.maps[1], dest, dest, dest,
+                dest, b, self.beta, True, SAVE_BACKWARD=False,
             )
             source, dest = dest, source
         self.output = source
@@ -421,6 +467,7 @@ def fused_step(
     gi,
     go,
     leak,
+    intrinsic,
     bias,
     sensory,
     descending,
@@ -435,6 +482,7 @@ def fused_step(
             gi,
             go,
             leak,
+            intrinsic,
             bias,
             sensory,
             descending,

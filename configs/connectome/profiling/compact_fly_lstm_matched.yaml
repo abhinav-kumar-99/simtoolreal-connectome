@@ -15,7 +15,7 @@ sapg_coefficient_ids: [50, 40, 30, 20, 10, 0]
 actors:
   - name: fly_all_neuron
     train_profile: SimToolRealConnectome1952AdaptersMLPAllNeuronReadoutGaussianSigma3SAPG
-    expected_instantiated_actor_coefficients: 733796
+    expected_instantiated_actor_coefficients: 735748
   - name: lstm_323
     train_profile: SimToolRealLSTM323MatchedGaussianSigma3SAPG
     expected_instantiated_actor_coefficients: 733790

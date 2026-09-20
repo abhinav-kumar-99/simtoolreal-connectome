@@ -860,6 +860,10 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     dtype=torch.float32,
                 )
             )
+            # log_a = 0 => a = 1, matching the previous tanh dynamics at init.
+            self.log_intrinsic_gain = nn.Parameter(
+                torch.zeros(self.neuron_count, dtype=torch.float32)
+            )
 
             if (
                 self.dynamics_activation == "lif"
@@ -974,7 +978,11 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self._initialize_linear_layers()
             for parameter in (self.incoming_gain_raw, self.outgoing_gain_raw):
                 parameter.requires_grad_(self.weight_mode == "neuron_gains")
-            for parameter in (self.leak_raw, self.recurrent_bias):
+            for parameter in (
+                self.leak_raw,
+                self.recurrent_bias,
+                self.log_intrinsic_gain,
+            ):
                 parameter.requires_grad_(self.learn_dynamics)
             if self.weight_mode == "low_rank":
                 self.edge_u = nn.Parameter(
@@ -1013,11 +1021,32 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             delta = self.edge_log_min + span * torch.sigmoid(score + offset)
             return self.recurrent_values * delta.exp()
 
-        def _load_from_state_dict(self, *args, **kwargs):
+        def _load_from_state_dict(
+            self,
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        ):
             self._frozen_tanh_runner = None
             self._cached_recurrent_operator = None
             self._backend_graph = None
-            return super()._load_from_state_dict(*args, **kwargs)
+            # Older checkpoints predate intrinsic gain; default a_i = 1.
+            key = prefix + "log_intrinsic_gain"
+            if key not in state_dict:
+                state_dict[key] = self.log_intrinsic_gain.detach().clone()
+            return super()._load_from_state_dict(
+                state_dict,
+                prefix,
+                local_metadata,
+                strict,
+                missing_keys,
+                unexpected_keys,
+                error_msgs,
+            )
 
         def _initialize_linear_layers(self) -> None:
             for module in (self.sensory_adapter, self.descending_adapter, self.value):
@@ -1060,6 +1089,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
 
         def leaks(self) -> torch.Tensor:
             return torch.sigmoid(self.leak_raw)
+
+        def intrinsic_gains(self) -> torch.Tensor:
+            return torch.exp(self.log_intrinsic_gain)
 
         def substep_leaks(self) -> torch.Tensor:
             if self.neural_updates == 1:
@@ -1318,19 +1350,21 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                         if runner is None or runner.h.shape != hidden.t().shape or runner.h.device != hidden.device:
                             runner = FrozenTanhRunner(
                                 graph, step_values, hidden, incoming, outgoing, leak,
-                                self.recurrent_bias, sensory_drive, descending_drive,
+                                self.intrinsic_gains(), self.recurrent_bias,
+                                sensory_drive, descending_drive,
                                 self.sensory_indices, self.descending_indices,
                                 self.recurrent_gain, self.neural_updates,
                                 capture=bool(self.backend_options.get('cuda_graph', False)),
                             )
                             self._frozen_tanh_runner = runner
                         return runner(hidden, sensory_drive, descending_drive)
+                    intrinsic = self.intrinsic_gains()
                     for _ in range(self.neural_updates):
                         hidden = fused_step(
                             graph, step_values, hidden, incoming, outgoing, leak,
-                            self.recurrent_bias, sensory_drive, descending_drive,
-                            self.sensory_indices, self.descending_indices,
-                            self.recurrent_gain,
+                            intrinsic, self.recurrent_bias, sensory_drive,
+                            descending_drive, self.sensory_indices,
+                            self.descending_indices, self.recurrent_gain,
                         )
                         if observer is not None:
                             observer(hidden)
@@ -1338,9 +1372,13 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 drive = hidden.new_zeros(hidden.shape)
                 drive = drive.index_add(1, self.sensory_indices, sensory_drive)
                 drive = drive.index_add(1, self.descending_indices, descending_drive)
+                intrinsic = self.intrinsic_gains()
                 for _ in range(self.neural_updates):
                     recurrent = self._recurrent_multiply(hidden, operator, values)
-                    preactivation = self.recurrent_gain * incoming * recurrent + drive + self.recurrent_bias
+                    drive_term = (
+                        self.recurrent_gain * incoming * recurrent + drive
+                    )
+                    preactivation = intrinsic * drive_term + self.recurrent_bias
                     hidden = (1.0 - leak) * hidden + leak * torch.tanh(preactivation)
                     if observer is not None:
                         observer(hidden)

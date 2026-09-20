@@ -20,13 +20,16 @@ used by the actor, while excluding structural integer indices:
 | Actor component | Fly | LSTM |
 | --- | ---: | ---: |
 | Trainable interface, policy and auxiliary-value parameters | 692,268 | 733,790 |
-| Frozen gain, leak and recurrent-bias vectors | 7,808 | 0 |
+| Frozen gain, leak, bias and intrinsic-gain vectors | 9,760 | 0 |
 | Fixed recurrent edge values | 33,720 | 0 |
-| **Instantiated actor coefficients** | **733,796** | **733,790** |
+| **Instantiated actor coefficients** | **735,748** | **733,790** |
 
-The LSTM has six fewer total coefficients, but every LSTM coefficient is
-trainable. It is therefore a deliberately strong learned alternative rather
-than an equal trainable-degrees-of-freedom control. The unchanged 2,037,441-trainable-parameter privileged central critic is excluded from both sides of the match.
+The LSTM has 1,958 fewer total coefficients, but every LSTM coefficient is
+trainable. It remains a deliberately strong learned alternative rather
+than an equal trainable-degrees-of-freedom control. The fifth frozen dynamics
+vector is per-neuron intrinsic gain \(a_i=\exp(\log a_i)\), initialized at one
+so frozen-core behavior is unchanged; older checkpoints without that key reload
+with \(a=1\). The unchanged 2,037,441-trainable-parameter privileged central critic is excluded from both sides of the match.
 
 ### What the coefficient match does not isolate
 
@@ -106,7 +109,7 @@ Audit parameter counts and compute without starting Isaac Gym training:
 ```
 
 The profiling YAML owns device, AMP, seed, rollout/training tensor shapes and
-the expected 733,796/733,790 counts. The helper reports trainable and frozen
+the expected 735,748/733,790 counts. The helper reports trainable and frozen
 parameters, fixed edge values, excluded index buffers, hypothetical dense size,
 latency, throughput and memory.
 
@@ -224,7 +227,7 @@ physical GPU 0 and runs the 1,952-neuron all-neuron fly actor on physical GPU
 1. Both use `SimToolRealLSTMAsymmetric`, so the privileged critic is the same
 `[1024, 1024, 512, 512]` MLP; `use_experimental_cv: false` disables the actor's
 auxiliary value objective in both policies. The actor comparison remains
-733,790 instantiated LSTM coefficients versus 733,796 fly coefficients.
+733,790 instantiated LSTM coefficients versus 735,748 fly coefficients.
 
 ```bash
 .venv/bin/python scripts/run_connectome_suite.py \

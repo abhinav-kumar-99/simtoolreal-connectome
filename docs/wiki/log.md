@@ -2,9 +2,17 @@
 
 Append-only record of durable repository work.
 
-Last updated: 2026-09-19
+Last updated: 2026-09-20
 
 Related: [Index](index.md), [Overview](overview.md)
+
+## [2026-09-20] implement | Add intrinsic neuronal plasticity gain a_i
+
+- Added per-neuron intrinsic gain `a_i = exp(log_intrinsic_gain)` to tanh dynamics in eager and Triton fused backends: `h ← (1-λ)h + λ tanh(a ⊙ (β g_in ⊙ W(g_out ⊙ h) + u) + b)`.
+- `log_intrinsic_gain` initializes at zero (`a=1`) and trains with leak/bias under `adaptation.learn_dynamics`; older checkpoints without the key reload with `a=1`.
+- Added suite/milestones YAMLs `ppo_fly1952_k2_adaptive_lr_third_bounds_intrinsic_plasticity_100b` cloning the third-bounds K=2 adapters-only experiment with `learn_dynamics: true` (5,856 trainable dynamics parameters on 1,952 cells).
+- Updated adaptation/actor/workflow/lstm-baseline wiki pages; focused connectome tests passed.
+- Provenance: `connectome_network_builder.py`, `connectome_triton.py`, suite YAMLs, and unit tests.
 
 ## [2026-09-17] analysis | Add parameter-matched LSTM baseline contract
 

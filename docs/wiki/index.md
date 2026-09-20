@@ -21,22 +21,22 @@ Related: [Overview](overview.md), [Log](log.md)
 
 - [Camera-driven MaleCNS reservoir](concepts/visual-reservoir.md) — All 165,122 traced neurons, 64x36 multirate L1/L2 camera input, fresh proprioception, and motor, descending, or compressed all-neuron readout tradeoffs. Last updated 2026-09-16.
 
-- [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics, independently sized interface MLPs, structured sensory routing and 6D orientation, exact central-critic inputs, connectome-versus-LSTM auxiliary value gradients, propagation delay and saturation boundaries. Last updated 2026-09-19.
+- [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics with intrinsic gain, independently sized interface MLPs, structured sensory routing and 6D orientation, exact central-critic inputs, connectome-versus-LSTM auxiliary value gradients, propagation delay and saturation boundaries. Last updated 2026-09-20.
 - [Fixed-input reservoir controller](concepts/fixed-reservoir-controller.md) — Parameter-free robot-to-MaleCNS population coding, cached motor features, no-BPTT PPO boundary, optional hard-spiking LIF dynamics, exact channel map and smoke evidence. Last updated 2026-09-19.
-- [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, adapters-only default, and GPU implementation. Last updated 2026-09-14.
+- [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, adapters-only default, learn_dynamics leak/bias/intrinsic-gain, and GPU implementation. Last updated 2026-09-20.
 - [Training and evaluation success metrics](concepts/success-metrics.md) — TensorBoard populations, tolerance scaling, policy-ID mismatch, milestone Task Progress, and dual fixed/checkpoint-tolerance videos. Last updated 2026-09-18.
 
 ## Workflows
 
 - [Anatomical activation videos](workflows/anatomical-activity-videos.md) — Actual compact-circuit skeletons, enlarged CNS overview, cropped HD robot footage, population labels/bars, 4× FPS and YAML usage. Last updated 2026-09-18.
 
-- [Experiment workflow](workflows/connectome-experiments.md) — Current no-auxiliary fly continuations, historical LSTM continuation, fixed-reservoir suites, milestone videos, LF entropy runs, and staged handoffs. Last updated 2026-09-20.
+- [Experiment workflow](workflows/connectome-experiments.md) — Current no-auxiliary fly continuations, intrinsic-plasticity K=2 suite, historical LSTM continuation, fixed-reservoir suites, milestone videos, LF entropy runs, and staged handoffs. Last updated 2026-09-20.
 - [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, early gain audit, and stopped-run status. Last updated 2026-09-14.
 
 ## Analyses
 
 - [Fly cycles and input routing](analyses/fly-cycles-and-input-routing.md) — Exact directed reachability, current all-neuron shortcut, four-cycle boundary, and input-routing alternatives. Last updated 2026-09-19.
-- [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — The 323-unit coefficient match, exact sparsity-control boundary, official 1,024-unit history, diagnosed scheduler cancellation, and resumed LF rollout-KL training. Last updated 2026-09-20.
+- [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — The 323-unit coefficient match (735,748 fly vs 733,790 LSTM after intrinsic gain), exact sparsity-control boundary, official 1,024-unit history, diagnosed scheduler cancellation, and resumed LF rollout-KL training. Last updated 2026-09-20.
 - [Visual reservoir performance](analyses/visual-reservoir-performance.md) — Frozen inference, full-CNS capacity sweep, video-worker memory limits and 2,304-environment continuation. Last updated 2026-09-16.
 - [End-to-end system audit](analyses/system-audit-2026-09-15.md) — All 71 event histories, raw-source reproduction, cross-member KL, saturation, proposed Beta parameters and multi-rate neural timing. Last updated 2026-09-15.
 - [Minimal dexterity circuits](analyses/minimal-dexterity-circuit.md) — Exact 86/262/408-cell candidates, threshold rationale, and 262 training evidence weakening its full-task recommendation. Last updated 2026-09-15.

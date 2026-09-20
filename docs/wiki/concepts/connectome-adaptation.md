@@ -2,7 +2,7 @@
 
 The default actor learns robot adapters and heads; recurrent weight adaptation and learned neuron dynamics are independent choices.
 
-Last updated: 2026-09-14
+Last updated: 2026-09-20
 
 Related: [Actor](connectome-actor.md), [Backend analysis](../analyses/sparse-backends.md), [Workflow](../workflows/connectome-experiments.md)
 
@@ -23,7 +23,7 @@ interface_projections:
 operator_backend: triton_fused
 ```
 
-All modes train input adapters, motor action and actor-value heads, SAPG embeddings and action log standard deviations. Interface architecture is orthogonal to recurrent adaptation: `linear` preserves the original projections, while `mlp` replaces both input projections and the action-mean projection with one 256-unit hidden layer. The central critic is unchanged. `learn_dynamics` independently enables neuron leaks and recurrent biases (8,620 additional parameters); the default holds leaks at 0.5 and biases at zero.
+All modes train input adapters, motor action and actor-value heads, SAPG embeddings and action log standard deviations. Interface architecture is orthogonal to recurrent adaptation: `linear` preserves the original projections, while `mlp` replaces both input projections and the action-mean projection with one 256-unit hidden layer. The central critic is unchanged. `learn_dynamics` independently enables per-neuron leak \(\lambda_i\), recurrent bias \(b_i\), and intrinsic input-output gain \(a_i=\exp(\texttt{log\_intrinsic\_gain})\) (5,856 additional parameters on the 1,952-cell graph; 12,930 on the historical 4,310-cell graph). Intrinsic gain initializes at \(\texttt{log\_a}=0\) so \(a_i=1\) and the forward pass matches the previous dynamics at initialization. The default holds leaks at 0.5, biases at zero, and intrinsic gains at one.
 
 | Mode | Recurrent parameters | Actor total with frozen dynamics | Meaning |
 | --- | ---: | ---: | --- |
@@ -64,7 +64,7 @@ Legacy saved configurations containing only `plasticity_mode` retain their meani
 
 `connectome_ops.py` owns transient CSR/transpose structure, per-stream/shape cuSPARSE plans and autograd. `connectome_cusparse.cpp` uses generic SpMM with reusable preprocessing and SDDMM for edge gradients. First use compiles a C++ extension into PyTorch's external cache; matching CUDA headers/libraries, a compiler and ninja are required.
 
-`connectome_triton.py` fuses tiled CSR accumulation with population drives, gains, tanh and leak interpolation. Backward computes pointwise derivatives, transposed sparse propagation and sampled edge reductions. Linear and MLP interface projections stay as ordinary PyTorch dense operations outside the custom recurrent kernel. Selecting an MLP therefore does not change Triton/cuSPARSE correctness or recurrent-kernel coverage, but it adds interface compute and reduces the fraction of total actor time that recurrence can accelerate. Benchmark end-to-end actor steps when comparing architectures. Recurrence stays FP32 under AMP. These helpers have no CLI; select them through `operator_backend`.
+`connectome_triton.py` fuses tiled CSR accumulation with population drives, gains, intrinsic gain, tanh and leak interpolation. Backward computes pointwise derivatives, transposed sparse propagation and sampled edge reductions. Linear and MLP interface projections stay as ordinary PyTorch dense operations outside the custom recurrent kernel. Selecting an MLP therefore does not change Triton/cuSPARSE correctness or recurrent-kernel coverage, but it adds interface compute and reduces the fraction of total actor time that recurrence can accelerate. Benchmark end-to-end actor steps when comparing architectures. Recurrence stays FP32 under AMP. These helpers have no CLI; select them through `operator_backend`.
 
 Frozen weights still require hidden-state derivatives to train input adapters. Shared trainable edge values add edge-gradient reductions but retain the shared graph. Values are formed once per sequence forward, reused across timesteps, and never cached detached across optimizer updates. Backend caches are absent from checkpoints and invalidated on model moves and state loads.
 

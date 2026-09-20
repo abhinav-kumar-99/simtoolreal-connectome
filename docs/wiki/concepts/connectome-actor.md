@@ -2,7 +2,7 @@
 
 The actor is a sparse rate RNN whose recurrent support and base weights come from MaleCNS.
 
-Last updated: 2026-09-19
+Last updated: 2026-09-20
 
 Related: [Overview](../overview.md), [Source](../sources/summaries/malecns-front-leg-circuit.md), [Workflow](../workflows/connectome-experiments.md), [Fixed reservoir](fixed-reservoir-controller.md), [Sparse backends](../analyses/sparse-backends.md), [Matched LSTM baseline](../analyses/lstm-baseline.md), [Cycles and inputs](../analyses/fly-cycles-and-input-routing.md)
 
@@ -116,10 +116,10 @@ Defensible without further evaluation: the policy uses a fixed fly-derived recur
 For each environment step the actor applies
 
 \[
-h_{t+1}=(1-\alpha)\odot h_t+\alpha\odot\tanh\left(0.9e^p\odot\left[W(e^q\odot h_t)\right]+B_sx_t^{sens}+B_gx_t^{goal}+b\right).
+h_{t+1}=(1-\alpha)\odot h_t+\alpha\odot\tanh\Bigl(a\odot\bigl(0.9e^p\odot\left[W(e^q\odot h_t)\right]+B_sx_t^{sens}+B_gx_t^{goal}\bigr)+b\Bigr).
 \]
 
-`W` is the fixed destination-by-source CSR operator normalized to spectral radius one. Incoming and outgoing gains use a bounded log-space parameterization in `[0.25, 4]` and initialize at one. Leak is sigmoid-parameterized and initializes at `0.5`; recurrent bias initializes at zero. Sparse recurrence is always FP32, including under mixed-precision PPO.
+`W` is the fixed destination-by-source CSR operator normalized to spectral radius one. Incoming and outgoing gains use a bounded log-space parameterization in `[0.25, 4]` and initialize at one. Leak is sigmoid-parameterized and initializes at `0.5`; recurrent bias initializes at zero. Intrinsic gain is \(a=\exp(\texttt{log\_intrinsic\_gain})\), initializes at one (`log_a=0`), and is trainable with leak/bias when `adaptation.learn_dynamics: true`. Sparse recurrence is always FP32, including under mixed-precision PPO.
 
 ### Interpreting neuron gains
 
@@ -150,7 +150,7 @@ The GPU-0 `use_experimental_cv: false` job still declares the 1,953-scalar
 auxiliary value head as a parameter, but its loss is disabled, so only
 **690,315** actor scalars receive an optimization gradient. The GPU-1 true job
 optimizes all 692,268. Neither count includes the frozen `33,720` edge values,
-CSR indices, masks, or the four frozen 1,952-cell dynamics vectors. The
+CSR indices, masks, or the five frozen 1,952-cell dynamics vectors. The
 asymmetric critic has **2,037,441 trainable scalars** (plus 328 normalization-buffer scalars): total optimization capacity is 2,729,709 for the true job and 2,727,756 actively updated scalars for the false job. The equivalent original LSTM-plus-critic training system has 9,848,909 trainable scalars.
 
 The original LSTM actor count is exact for its SAPG configuration: a 172-input
@@ -162,8 +162,8 @@ original actor has no fly circuit.
 The implemented matched baseline uses a standard one-update 323-unit LSTM,
 LayerNorm and one 256-unit ELU trunk. It declares 733,790 trainable actor
 scalars. The comparison target is not only the fly actor's 692,268 trainable
-interface/head scalars: it also includes four frozen 1,952-cell dynamics vectors
-and 33,720 fixed edge values, giving 733,796 instantiated coefficients. CSR
+interface/head scalars: it also includes five frozen 1,952-cell dynamics vectors
+and 33,720 fixed edge values, giving 735,748 instantiated coefficients. CSR
 indices and the hypothetical 1,952-by-1,952 dense zeros are excluded. See the
 [baseline analysis](../analyses/lstm-baseline.md) for the exact contract and
 interpretation boundary.

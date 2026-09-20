@@ -531,6 +531,7 @@ def test_fixed_reservoir_encodes_inputs_and_trains_only_cached_readout(
         network.outgoing_gain_raw,
         network.leak_raw,
         network.recurrent_bias,
+        network.log_intrinsic_gain,
     ):
         assert not parameter.requires_grad and parameter.grad is None
     assert any(
@@ -635,6 +636,7 @@ def test_fixed_reservoir_lif_uses_rate_codes_and_three_persistent_states(
             network.outgoing_gain_raw,
             network.leak_raw,
             network.recurrent_bias,
+            network.log_intrinsic_gain,
         )
     )
 
@@ -745,8 +747,11 @@ def test_sparse_step_matches_dense_reference(artifact_path) -> None:
     ).T
     leak = network.leaks()
     dense_result = (1.0 - leak) * hidden + leak * torch.tanh(
-        network.recurrent_gain * network.incoming_gains() * recurrent
-        + drive
+        network.intrinsic_gains()
+        * (
+            network.recurrent_gain * network.incoming_gains() * recurrent
+            + drive
+        )
         + network.recurrent_bias
     )
     torch.testing.assert_close(sparse_result, dense_result, rtol=1e-6, atol=1e-6)
@@ -881,6 +886,68 @@ def test_adaptation_backends_training(artifact_path, mode, dynamics, backend):
     assert torch.equal(base.sign(), effective.sign())
     assert torch.all(effective / base >= 0.0625)
     assert torch.all(effective / base <= 16.0)
+
+
+def test_intrinsic_gain_identity_trainability_and_checkpoint(artifact_path):
+    torch.manual_seed(17)
+    reference = _build(
+        artifact_path,
+        adaptation={"weight_mode": "adapters_only", "learn_dynamics": False},
+    )
+    plastic = _build(
+        artifact_path,
+        adaptation={"weight_mode": "adapters_only", "learn_dynamics": True},
+    )
+    plastic.load_state_dict(reference.state_dict())
+    assert torch.allclose(plastic.intrinsic_gains(), torch.ones(7))
+    assert torch.equal(plastic.log_intrinsic_gain, torch.zeros(7))
+    for name in ("leak_raw", "recurrent_bias", "log_intrinsic_gain"):
+        assert dict(plastic.named_parameters())[name].requires_grad
+    for name in ("incoming_gain_raw", "outgoing_gain_raw"):
+        assert not dict(plastic.named_parameters())[name].requires_grad
+    assert not plastic.recurrent_values.requires_grad
+
+    observations = _observations(4)
+    initial = (torch.randn(1, 2, 7),)
+    payload = {
+        "obs": observations,
+        "rnn_states": tuple(state.clone() for state in initial),
+        "seq_length": 2,
+    }
+    with torch.no_grad():
+        expected = reference(payload)
+        actual = plastic(
+            {
+                "obs": observations,
+                "rnn_states": tuple(state.clone() for state in initial),
+                "seq_length": 2,
+            }
+        )
+    for left, right in zip(expected[:3], actual[:3]):
+        torch.testing.assert_close(left, right, rtol=0, atol=0)
+    torch.testing.assert_close(expected[3][0], actual[3][0], rtol=0, atol=0)
+
+    # Older checkpoints without log_intrinsic_gain reload with a=1.
+    checkpoint = reference.state_dict()
+    del checkpoint["log_intrinsic_gain"]
+    restored = _build(
+        artifact_path,
+        adaptation={"weight_mode": "adapters_only", "learn_dynamics": True},
+    )
+    restored.load_state_dict(checkpoint)
+    torch.testing.assert_close(
+        restored.log_intrinsic_gain, torch.zeros(7), rtol=0, atol=0
+    )
+    with torch.no_grad():
+        reloaded = restored(
+            {
+                "obs": observations,
+                "rnn_states": tuple(state.clone() for state in initial),
+                "seq_length": 2,
+            }
+        )
+    for left, right in zip(expected[:3], reloaded[:3]):
+        torch.testing.assert_close(left, right, rtol=0, atol=0)
 
 
 def test_adapters_default_and_low_rank_initial_gradient(artifact_path):
@@ -1118,6 +1185,7 @@ def test_sapg_embedding_sigma_and_gradients(artifact_path) -> None:
         "outgoing_gain_raw",
         "leak_raw",
         "recurrent_bias",
+        "log_intrinsic_gain",
         "extra_params",
     ):
         gradient = dict(network.named_parameters())[name].grad
@@ -1126,6 +1194,7 @@ def test_sapg_embedding_sigma_and_gradients(artifact_path) -> None:
     assert torch.allclose(network.incoming_gains(), torch.ones(7))
     assert torch.allclose(network.outgoing_gains(), torch.ones(7))
     assert torch.allclose(network.leaks(), torch.full((7,), 0.5))
+    assert torch.allclose(network.intrinsic_gains(), torch.ones(7))
 
 
 def test_frozen_core_and_global_builder_checkpoint_round_trip(
@@ -1137,6 +1206,7 @@ def test_frozen_core_and_global_builder_checkpoint_round_trip(
         "outgoing_gain_raw",
         "leak_raw",
         "recurrent_bias",
+        "log_intrinsic_gain",
     ):
         assert not dict(frozen.named_parameters())[name].requires_grad
     assert frozen.sensory_adapter.weight.requires_grad

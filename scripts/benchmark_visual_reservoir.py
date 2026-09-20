@@ -61,13 +61,21 @@ def kernel_bench(cfg, output):
             d = torch.randn(batch, len(di), device=device) * .1
             def baseline():
                 state = h
+                intrinsic = torch.ones(n, device=device)
                 for _ in range(9):
-                    state = fused_step(graph, values, state, gi, go, leak, bias, s, d, si, di, .9)
+                    state = fused_step(
+                        graph, values, state, gi, go, leak, intrinsic, bias,
+                        s, d, si, di, .9,
+                    )
                 return state
             reference = baseline()
             rows.append(dict(batch=batch, variant='baseline', milliseconds=timed(baseline)))
             for capture in (False, True):
-                runner = FrozenTanhRunner(graph, values, h, gi, go, leak, bias, s, d, si, di, .9, 9, capture)
+                intrinsic = torch.ones(n, device=device)
+                runner = FrozenTanhRunner(
+                    graph, values, h, gi, go, leak, intrinsic, bias,
+                    s, d, si, di, .9, 9, capture,
+                )
                 actual = runner(h, s, d)
                 torch.testing.assert_close(actual, reference, atol=2e-6, rtol=2e-5)
                 saved = actual.clone()
