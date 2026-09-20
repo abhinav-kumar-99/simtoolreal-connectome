@@ -6,6 +6,11 @@ Last updated: 2026-09-20
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-20] implement | Add K=4 noaux intrinsic-plasticity suite
+
+- Cloned `ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_100b` into an intrinsic-plasticity suite/milestones pair with `learn_dynamics: true` and otherwise identical settings (K=4, noaux, LF, Sigma-3).
+- Provenance: original noaux suite YAML and the intrinsic-gain actor change from the same day.
+
 ## [2026-09-20] implement | Add intrinsic neuronal plasticity gain a_i
 
 - Added per-neuron intrinsic gain `a_i = exp(log_intrinsic_gain)` to tanh dynamics in eager and Triton fused backends: `h ← (1-λ)h + λ tanh(a ⊙ (β g_in ⊙ W(g_out ⊙ h) + u) + b)`.
