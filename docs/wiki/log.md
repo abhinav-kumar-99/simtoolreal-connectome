@@ -1052,3 +1052,9 @@ Updated [Visual reservoir performance](analyses/visual-reservoir-performance.md)
 - Added a YAML-owned single-policy continuation on physical GPU 1 for the previously stopped 323-unit matched LSTM. It uses `resume_training_state` from the complete epoch-15,000/frame-2,949,120,000 `last/model.pth` and retains the original rollout-KL, LF/1.0, batch, task, critic and 100B-frame contract.
 - The artifact target reuses the original experiment name and `rl_runs` directory. The resumed summary writer created a second event file beside the original one, and TensorBoard port 6008 exposes the appended scalars under the existing run identity.
 - Trainer PID 906066 is live in tmux `connectome-lstm323-rollout-kl-resume`. The runtime log confirms all 12 actor optimizer-state entries restored and a fresh simulator rollout; it advanced beyond frame 2.95B with finite scheduler KL and one rollout decision. The focused scheduler suite passed all 37 tests.
+
+## [2026-09-20] launch | Add resumed LSTM-only milestone watcher
+
+- Added a one-policy watcher contract for the resumed LSTM on physical GPU 1. It retains the original rollout-KL suite/checkpoint identity and reuses the existing evaluation output/status tree, while excluding the stopped fly policy so polling cannot block on missing fly checkpoints.
+- Validated that the existing status records eleven complete LSTM targets through 2.75B and that the available 3.0B inference checkpoint is the next missing target. All 37 focused scheduler tests passed.
+- Launched watcher PID 999563 in tmux `connectome-lstm323-rollout-kl-resume-eval`. It did not regenerate completed videos, then completed target 3.0B at actual frame 3,000,041,472 with six mean-action MP4s and no failures.

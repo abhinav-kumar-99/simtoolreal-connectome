@@ -401,6 +401,11 @@ second event file is appended under the existing summaries directory rather
 than creating a separate TensorBoard run. The resumed trainer is PID 906066 in
 tmux `connectome-lstm323-rollout-kl-resume`; initial post-resume telemetry
 advanced beyond frame 2.95B with finite scheduler KL and one rollout decision.
+Its LSTM-only watcher runs in `connectome-lstm323-rollout-kl-resume-eval` and
+uses the original milestone output/status tree without waiting for the stopped
+fly policy. It retained the eleven completed LSTM targets through 2.75B and
+completed the resumed 3.0B target with six mean-action videos: three tasks at
+each paper and checkpoint-training tolerance.
 
 ### Why the fly can show higher KL and higher LR
 

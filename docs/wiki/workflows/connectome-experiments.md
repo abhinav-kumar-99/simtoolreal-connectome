@@ -647,16 +647,18 @@ Launch the current jobs from the repository root:
   --config configs/connectome/suites/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_lstm_resume.yaml
 ```
 
-The live K=2 milestone watcher is a separate process:
+Run the separate milestone watchers with:
 
 ```bash
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py \
   --config configs/connectome/evaluation/ppo_fly1952_k2_adaptive_lr_third_bounds_100b_milestones.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_lstm_resume_milestones.yaml
 ```
 
 The suite YAMLs own physical GPU, seed 42, LR/scheduler rules, batch geometry, LF reuse, entropy scale, Sigma-3 policy and the 100B budget. The LSTM continuation YAML additionally selects `resume_training_state`, its full checkpoint, and an `artifact_target` pointing to the original experiment name and `rl_runs` directory. The suite script composes the resolved configuration, supervises training, and verifies the terminal checkpoint. The artifact target makes the resumed summary writer create a new event file beside the original event file, so TensorBoard port 6008 presents one continuous run identity. The watcher waits for 250M-frame inference checkpoints, resolves checkpoint-time tolerance, and launches `run_connectome_evaluation.py`; that helper generates case YAMLs consumed by `dextoolbench/eval_worker_isaacgym.py`.
 
-The one-third-bounds K=2 is PID 610456 in tmux `connectome-k2-adaptive-third-bounds`, with watcher PID 610177. The resumed LSTM is PID 906066 in `connectome-lstm323-rollout-kl-resume`. Its log confirms all 12 actor optimizer-state entries restored at epoch 15,000/frame 2,949,120,000 with a fresh simulator rollout. It advanced beyond frame 2.95B with finite rollout KL and one scheduler decision, and its original summary directory now contains two event files discovered by TensorBoard port 6008.
+The one-third-bounds K=2 is PID 610456 in tmux `connectome-k2-adaptive-third-bounds`, with watcher PID 610177. The resumed LSTM is PID 906066 in `connectome-lstm323-rollout-kl-resume`; its LSTM-only watcher is PID 999563 in `connectome-lstm323-rollout-kl-resume-eval`. Its log confirms all 12 actor optimizer-state entries restored at epoch 15,000/frame 2,949,120,000 with a fresh simulator rollout. It advanced beyond frame 2.95B with finite rollout KL and one scheduler decision, and its original summary directory now contains two event files discovered by TensorBoard port 6008. The LSTM-only watcher reuses the existing milestone status/tree, retained the 11 completed targets through 2.75B, and completed the resumed 3.0B target with six new videos.
 
 The legacy Isaac Gym stack is Python 3.8. A local ignored virtual environment can reuse the installed `diffusion` conda environment while supplying the two missing mesh packages:
 
