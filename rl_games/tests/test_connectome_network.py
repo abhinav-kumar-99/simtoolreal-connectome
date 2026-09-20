@@ -95,6 +95,7 @@ def _build(
     operator_backend="native_csr",
     adaptation=None,
     interface_projections=None,
+    spectral_monitoring=None,
 ):
     builder = ConnectomeBuilder()
     params = _network_params(
@@ -106,6 +107,8 @@ def _build(
     if adaptation is not None:
         params["connectome"].pop("plasticity_mode")
         params["connectome"]["adaptation"] = adaptation
+    if spectral_monitoring is not None:
+        params["connectome"]["spectral_monitoring"] = spectral_monitoring
     builder.load(params)
     return builder.build(
         "connectome",
@@ -884,8 +887,16 @@ def test_adaptation_backends_training(artifact_path, mode, dynamics, backend):
             * candidate.outgoing_gains()[graph.col]
         )
     assert torch.equal(base.sign(), effective.sign())
-    assert torch.all(effective / base >= 0.0625)
-    assert torch.all(effective / base <= 16.0)
+    if mode in {"neuron_gains", "edgewise"}:
+        assert torch.all(effective / base >= 0.0625)
+        assert torch.all(effective / base <= 16.0)
+    elif mode == "low_rank":
+        # Log-fold gains are unbounded (aside from a numerical clamp).
+        gain = effective / base
+        assert torch.all(gain > 0)
+        torch.testing.assert_close(
+            effective, base * candidate.low_rank_delta().clamp(-20, 20).exp()
+        )
 
 
 def test_intrinsic_gain_identity_trainability_and_checkpoint(artifact_path):
@@ -970,6 +981,144 @@ def test_adapters_default_and_low_rank_initial_gradient(artifact_path):
     torch.testing.assert_close(model.effective_values(), model.recurrent_values)
     model.effective_values().sum().backward()
     assert model.edge_v.grad.abs().sum() > 0
+
+
+def test_low_rank_log_fold_gains_and_regularizer(artifact_path):
+    torch.manual_seed(11)
+    model = _build(
+        artifact_path,
+        adaptation={
+            "weight_mode": "low_rank",
+            "learn_dynamics": False,
+            "rank": 4,
+            "synaptic_plasticity_reg": 1.0e-4,
+        },
+    )
+    assert model.synaptic_plasticity_reg == pytest.approx(1.0e-4)
+    assert not model.incoming_gain_raw.requires_grad
+    assert not model.outgoing_gain_raw.requires_grad
+    for name in ("leak_raw", "recurrent_bias", "log_intrinsic_gain"):
+        assert not dict(model.named_parameters())[name].requires_grad
+    assert model.edge_u.requires_grad and model.edge_v.requires_grad
+    assert isinstance(model.recurrent_gain, float)
+
+    delta = model.low_rank_delta()
+    assert delta.shape == (model.edge_count,)
+    torch.testing.assert_close(delta, torch.zeros_like(delta))
+    torch.testing.assert_close(model.effective_values(), model.recurrent_values)
+
+    with torch.no_grad():
+        model.edge_v.normal_(std=0.5)
+        # Drive an existing edge (dst=2, src=0 in the fixture graph) past the
+        # old [1/16, 16] sigmoid bounds.
+        model.edge_u[2].fill_(4.0)
+        model.edge_v[0].fill_(4.0)
+    delta = model.low_rank_delta()
+    assert delta.shape == (model.edge_count,)
+    expected = model.recurrent_values * delta.clamp(-20.0, 20.0).exp()
+    torch.testing.assert_close(model.effective_values(), expected)
+    gains = model.effective_values() / model.recurrent_values
+    assert torch.all(gains > 0)
+    assert bool((gains > 16.0).any() or (gains < 0.0625).any())
+    assert torch.equal(model.recurrent_values.sign(), model.effective_values().sign())
+
+    mean_sq, stats = model.synaptic_plasticity_penalty()
+    torch.testing.assert_close(mean_sq, delta.square().mean())
+    assert set(stats) == {
+        "synaptic_delta_mean",
+        "synaptic_delta_rms",
+        "synaptic_delta_std",
+        "synaptic_gain_min",
+        "synaptic_gain_max",
+    }
+    assert stats["synaptic_delta_rms"] == pytest.approx(
+        float(delta.square().mean().sqrt().item())
+    )
+
+
+def test_edgewise_still_uses_bounded_sigmoid_gains(artifact_path):
+    torch.manual_seed(5)
+    model = _build(
+        artifact_path,
+        adaptation={"weight_mode": "edgewise", "learn_dynamics": False},
+    )
+    with torch.no_grad():
+        model.edge_raw.fill_(20.0)
+    gains = model.effective_values() / model.recurrent_values
+    assert torch.all(gains <= 16.0 + 1.0e-5)
+    assert torch.all(gains >= 0.0625 - 1.0e-5)
+    with torch.no_grad():
+        model.edge_raw.zero_()
+    torch.testing.assert_close(model.effective_values(), model.recurrent_values)
+
+
+def test_spectral_monitoring_activation_and_init_identity(artifact_path):
+    spectral = {"enabled": True, "interval": 10, "top_k": 3}
+    adapters = _build(
+        artifact_path,
+        adaptation={"weight_mode": "adapters_only", "learn_dynamics": False},
+        spectral_monitoring=spectral,
+    )
+    intrinsic = _build(
+        artifact_path,
+        adaptation={"weight_mode": "adapters_only", "learn_dynamics": True},
+        spectral_monitoring=spectral,
+    )
+    low_rank = _build(
+        artifact_path,
+        adaptation={"weight_mode": "low_rank", "learn_dynamics": False, "rank": 2},
+        spectral_monitoring=spectral,
+    )
+    assert not adapters.synaptic_weights_trainable
+    assert not intrinsic.synaptic_weights_trainable
+    assert low_rank.synaptic_weights_trainable
+    assert adapters.compute_spectral_diagnostics() == {}
+    assert intrinsic.compute_spectral_diagnostics() == {}
+    assert not adapters.should_run_spectral_monitoring(10)
+    assert low_rank.should_run_spectral_monitoring(1)
+    assert low_rank.should_run_spectral_monitoring(10)
+    assert not low_rank.should_run_spectral_monitoring(11)
+
+    tags = low_rank.compute_spectral_diagnostics()
+    assert tags
+    assert all(key.startswith("spectral/") for key in tags)
+    assert tags["spectral/change/spectral_radius_ratio"] == pytest.approx(1.0, abs=1e-5)
+    assert tags["spectral/change/max_singular_value_ratio"] == pytest.approx(
+        1.0, abs=1e-5
+    )
+    assert tags["spectral/effective/spectral_radius"] == pytest.approx(
+        tags["spectral/baseline/spectral_radius"], abs=1e-5
+    )
+    assert tags["spectral/effective/max_singular_value"] == pytest.approx(
+        tags["spectral/baseline/max_singular_value"], abs=1e-5
+    )
+    assert tags["spectral/plasticity/delta_rms"] == pytest.approx(0.0, abs=1e-6)
+    assert tags["spectral/plasticity/gain_mean"] == pytest.approx(1.0, abs=1e-5)
+
+    # Analyzed values match forward effective_values / baseline buffer.
+    from rl_games.algos_torch.connectome_spectral import spectral_metrics
+
+    crow = low_rank.crow_indices.cpu().numpy()
+    col = low_rank.col_indices.cpu().numpy()
+    direct = spectral_metrics(
+        crow,
+        col,
+        low_rank.effective_values().detach().cpu().numpy(),
+        low_rank.neuron_count,
+        3,
+    )
+    assert tags["spectral/effective/spectral_radius"] == pytest.approx(
+        direct["spectral_radius"], abs=1e-5
+    )
+
+    with torch.no_grad():
+        low_rank.edge_v.normal_(std=0.2)
+    moved = low_rank.compute_spectral_diagnostics()
+    assert moved["spectral/plasticity/delta_rms"] > 0
+    # Baseline stays frozen at W0.
+    assert moved["spectral/baseline/spectral_radius"] == pytest.approx(
+        tags["spectral/baseline/spectral_radius"], abs=0
+    )
 
 
 @pytest.mark.parametrize("backend", ["cusparse", "triton_fused"])

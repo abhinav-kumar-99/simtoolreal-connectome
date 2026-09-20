@@ -16,6 +16,7 @@ adaptation:
   learn_dynamics: false
   rank: 4
   edge_scale_bounds: [0.0625, 16.0]
+  # synaptic_plasticity_reg: 1.0e-4   # low_rank only; 0 or omit => off
 interface_projections:
   architecture: linear  # or mlp
   hidden_size: 256
@@ -29,18 +30,47 @@ All modes train input adapters, motor action and actor-value heads, SAPG embeddi
 | --- | ---: | ---: | --- |
 | `adapters_only` | 0 | 92,556 | Fixed recurrent operator |
 | `neuron_gains` | 8,620 | 101,176 | Positive incoming/outgoing scaling |
-| `low_rank`, rank 1 | 8,620 | 101,176 | Factorized edge modulation |
-| `low_rank`, rank 4 | 34,480 | 127,036 | Factorized edge modulation |
-| `low_rank`, rank 8 | 68,960 | 161,516 | Factorized edge modulation |
+| `low_rank`, rank 1 | 8,620 | 101,176 | Factorized log-fold edge modulation |
+| `low_rank`, rank 4 | 34,480 | 127,036 | Factorized log-fold edge modulation |
+| `low_rank`, rank 8 | 68,960 | 161,516 | Factorized log-fold edge modulation |
 | `edgewise` | 118,920 | 211,476 | Independent edge magnitudes |
 
 These are alternative weight parameterizations. Low-rank/edgewise do not add trainable neuron gains. All keep the graph, direction, and extraction-derived sign of every edge. The sign convention is an extraction assumption, not a claim that anatomy fully determines synaptic physiology.
 
-Low-rank scores are `sum(U[dst] * V[src]) / sqrt(rank)`, evaluated only at existing edges. One factor initializes randomly and the other to zero: identity weights with nonzero learning gradients. Edgewise uses one zero-initialized score per edge. Both map scores through a shifted sigmoid into bounded log multipliers and multiply base values by their exponentials. Zero scores map to one, including asymmetric bounds. Neuron gain bounds are square roots of the edge-scale bounds, giving the same overall limits.
+Low-rank scores are \(\Delta_{ij}=\mathrm{sum}(U[i]\odot V[j])/\sqrt{r}\), evaluated only at existing edges. Effective weights use direct log-fold gains:
 
-The original `[0.25, 4]` neuron-gain interval was introduced as an engineering prior in the initial connectome implementation plan; it was not derived from MaleCNS physiology, the connectome data, or the SimToolReal paper. Its reciprocal endpoints are symmetric around identity in log space. Because incoming and outgoing gains multiply on each edge, it permits total edge scaling from `0.25^2 = 0.0625` through `4^2 = 16`. The later low-rank and edgewise modes inherited `[0.0625, 16]` only to make their allowed per-edge magnitude range comparable, not because that range has biological calibration.
+\[
+W^{\mathrm{eff}}_{ij}=W^0_{ij}\exp(\Delta_{ij}).
+\]
 
-This is a parameter-efficiency comparison, not a strictly nested hierarchy of functions. Nonlinear bounded low-rank modulation is not itself guaranteed to have rank r. Rank 16 would use more factors than independent edge weights. No adaptation penalty is added to SAPG; hard bounds limit weight drift, not dynamical instability. Activation saturation and effective log-weight drift are reported.
+One factor initializes randomly and the other to zero, so \(\Delta=0\) and \(W^{\mathrm{eff}}=W^0\) at start with nonzero learning gradients. There is no sigmoid map and no `edge_scale_bounds` constraint on `low_rank` gains. A clamp of \(\Delta\) to \([-20,20]\) exists only as an overflow safeguard before `exp`, not as a plasticity bound. Global recurrent `dynamics.beta` remains a fixed scalar; LoRA factors can absorb global scaling through a constant component of \(\Delta\).
+
+Edgewise still uses one zero-initialized score per edge mapped through a shifted sigmoid into `edge_scale_bounds` log multipliers, then `exp`. Neuron gains keep the same bounded map, with per-cell bounds equal to the square roots of the edge-scale bounds.
+
+Optional `adaptation.synaptic_plasticity_reg` (\(\lambda_{\mathrm{syn}}\), default `0`) adds
+
+\[
+L_{\mathrm{syn}}=\lambda_{\mathrm{syn}}\frac{1}{E}\sum_{e=1}^{E}\Delta_e^2
+\]
+
+to the continuous PPO/SAPG loss when `weight_mode: low_rank`. TensorBoard `losses/synaptic_plasticity_reg` logs the unscaled mean \(\Delta^2\) (pre-\(\lambda_{\mathrm{syn}}\)); update-level `adaptation/synaptic_delta_*` / `adaptation/synaptic_gain_*` stats are also recorded. Synaptic-only experiments use `weight_mode: low_rank` with `learn_dynamics: false` (trainable `U,V`; frozen intrinsic \(a,\lambda,b\) and neuron gains).
+
+### Spectral monitoring
+
+Diagnostic-only spectrum of the effective CSR operator \(W^{\mathrm{eff}}\) (same values as `effective_values()` / SpMM), not the tanh Jacobian. Active only when synaptic edge weights are trainable (`low_rank` or `edgewise`); ignored for `adapters_only` and intrinsic-only runs even if enabled. Config under `params.network.connectome`:
+
+```yaml
+spectral_monitoring:
+  enabled: true
+  interval: 100   # training epochs
+  top_k: 8
+```
+
+Default interval is every 100 epochs. Metrics are written exclusively under `spectral/` (`effective/*`, `baseline/*`, `change/*`, `plasticity/*`). Computation is detached (`torch.no_grad`); compact graphs (\(\le 2048\) neurons) use dense eig/SVD, larger graphs use ARPACK `eigs`/`svds`. Baseline \(\rho(W^0)\) and \(\sigma_{\max}(W^0)\) are cached once. Does not affect the loss.
+
+The original `[0.25, 4]` neuron-gain interval was introduced as an engineering prior in the initial connectome implementation plan; it was not derived from MaleCNS physiology, the connectome data, or the SimToolReal paper. Its reciprocal endpoints are symmetric around identity in log space. Because incoming and outgoing gains multiply on each edge, it permits total edge scaling from `0.25^2 = 0.0625` through `4^2 = 16`. Edgewise still uses `[0.0625, 16]` for comparability; low-rank no longer inherits that bound. Checkpoints trained under the previous sigmoid-bounded low-rank map are not semantically identical under the new formula.
+
+This is a parameter-efficiency comparison, not a strictly nested hierarchy of functions. Unbounded low-rank log-fold modulation is not itself guaranteed to have rank \(r\). Rank 16 would use more factors than independent edge weights. Activation saturation remains available as a diagnostic.
 
 ## Biological interpretation
 

@@ -1524,6 +1524,25 @@ class ContinuousA2CBase(A2CBase):
 
         return rescaled_actions
 
+    def _maybe_log_spectral_diagnostics(self, epoch_num, frame):
+        """Epoch-interval spectral diagnostics; no effect on loss or grads."""
+        if self.writer is None:
+            return
+        network = getattr(self.model, "a2c_network", None)
+        should_run = getattr(network, "should_run_spectral_monitoring", None)
+        compute = getattr(network, "compute_spectral_diagnostics", None)
+        if not callable(should_run) or not callable(compute):
+            return
+        if not should_run(epoch_num):
+            return
+        metrics = compute()
+        if not metrics:
+            return
+        for tag, value in metrics.items():
+            if not str(tag).startswith("spectral/"):
+                continue
+            self.writer.add_scalar(tag, float(value), frame)
+
     def init_tensors(self):
         A2CBase.init_tensors(self)
         self.update_list = ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']
@@ -1617,7 +1636,13 @@ class ContinuousA2CBase(A2CBase):
             'off_policy_grads' : [],
             'entropies' : [],
             'mb_intr_rewards' : ps_extras['mb_intr_rewards'],
-            'mb_extr_rewards' :ps_extras['rewards']
+            'mb_extr_rewards' :ps_extras['rewards'],
+            'synaptic_plasticity_reg' : [],
+            'synaptic_delta_mean' : [],
+            'synaptic_delta_rms' : [],
+            'synaptic_delta_std' : [],
+            'synaptic_gain_min' : [],
+            'synaptic_gain_max' : [],
         }
 
         for mini_ep in range(0, self.mini_epochs_num):
@@ -1643,6 +1668,19 @@ class ContinuousA2CBase(A2CBase):
                 extra_infos['off_policy_grads'].append(extras['off_policy_grads'])
                 if 'entropies' in extras:
                     extra_infos['entropies'].append(extras['entropies'])
+                for key in (
+                    'synaptic_plasticity_reg',
+                    'synaptic_delta_mean',
+                    'synaptic_delta_rms',
+                    'synaptic_delta_std',
+                    'synaptic_gain_min',
+                    'synaptic_gain_max',
+                ):
+                    if key in extras:
+                        value = extras[key]
+                        if torch.is_tensor(value):
+                            value = value.detach().item()
+                        extra_infos[key].append(value)
                 if scheduler_kl_sum is None:
                     scheduler_kl_sum = extras['scheduler_kl_sum']
                     scheduler_kl_count = extras['scheduler_kl_count']
@@ -1925,6 +1963,40 @@ class ContinuousA2CBase(A2CBase):
 
                 if len(b_losses) > 0:
                     self.writer.add_scalar('losses/bounds_loss', torch_ext.mean_list(b_losses).item(), frame)
+
+                if extra_infos.get('synaptic_plasticity_reg'):
+                    self.writer.add_scalar(
+                        'losses/synaptic_plasticity_reg',
+                        float(np.mean(extra_infos['synaptic_plasticity_reg'])),
+                        frame,
+                    )
+                    self.writer.add_scalar(
+                        'adaptation/synaptic_delta_mean',
+                        float(np.mean(extra_infos['synaptic_delta_mean'])),
+                        frame,
+                    )
+                    self.writer.add_scalar(
+                        'adaptation/synaptic_delta_rms',
+                        float(np.mean(extra_infos['synaptic_delta_rms'])),
+                        frame,
+                    )
+                    self.writer.add_scalar(
+                        'adaptation/synaptic_delta_std',
+                        float(np.mean(extra_infos['synaptic_delta_std'])),
+                        frame,
+                    )
+                    self.writer.add_scalar(
+                        'adaptation/synaptic_gain_min',
+                        float(np.mean(extra_infos['synaptic_gain_min'])),
+                        frame,
+                    )
+                    self.writer.add_scalar(
+                        'adaptation/synaptic_gain_max',
+                        float(np.mean(extra_infos['synaptic_gain_max'])),
+                        frame,
+                    )
+
+                self._maybe_log_spectral_diagnostics(epoch_num, frame)
 
                 if self.has_soft_aug:
                     self.writer.add_scalar('losses/aug_loss', np.mean(aug_losses), frame)

@@ -358,6 +358,33 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     "edge_scale_bounds must be finite positive bounds straddling one"
                 )
             self.edge_log_min, self.edge_log_max = map(math.log, bounds)
+            # Numerical overflow guard for exp(delta) in low_rank mode only.
+            # Not a plasticity constraint; far outside any expected training regime.
+            self.low_rank_delta_clamp = 20.0
+            plasticity_reg = adaptation.get("synaptic_plasticity_reg", 0.0)
+            if isinstance(plasticity_reg, bool) or not isinstance(
+                plasticity_reg, (int, float)
+            ):
+                raise TypeError("synaptic_plasticity_reg must be a number")
+            self.synaptic_plasticity_reg = float(plasticity_reg)
+            if (
+                not math.isfinite(self.synaptic_plasticity_reg)
+                or self.synaptic_plasticity_reg < 0.0
+            ):
+                raise ValueError(
+                    "synaptic_plasticity_reg must be finite and non-negative"
+                )
+            spectral = connectome.get("spectral_monitoring", {}) or {}
+            if not isinstance(spectral, Mapping):
+                raise TypeError("spectral_monitoring must be a YAML mapping")
+            self.spectral_monitoring_enabled = bool(spectral.get("enabled", False))
+            self.spectral_monitoring_interval = int(spectral.get("interval", 100))
+            self.spectral_monitoring_top_k = int(spectral.get("top_k", 8))
+            if self.spectral_monitoring_interval < 1:
+                raise ValueError("spectral_monitoring.interval must be >= 1")
+            if self.spectral_monitoring_top_k < 1:
+                raise ValueError("spectral_monitoring.top_k must be >= 1")
+            self._spectral_baseline = None
             self.backend_options = connectome.get("backend_options", {})
             self._frozen_tanh_runner = None
             if connectome.get("dtype", "float32") != "float32":
@@ -995,6 +1022,21 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             elif self.weight_mode == "edgewise":
                 self.edge_raw = nn.Parameter(torch.zeros(self.edge_count))
 
+        @property
+        def synaptic_weights_trainable(self) -> bool:
+            """True when anatomical edge weights are adapted (not neuron gains)."""
+            return self.weight_mode in {"low_rank", "edgewise"}
+
+        def should_run_spectral_monitoring(self, epoch_num: int) -> bool:
+            if not self.spectral_monitoring_enabled:
+                return False
+            if not self.synaptic_weights_trainable:
+                return False
+            epoch = int(epoch_num)
+            if epoch < 1:
+                return False
+            return epoch == 1 or epoch % self.spectral_monitoring_interval == 0
+
         def backend_graph(self):
             if self._backend_graph is None:
                 from rl_games.algos_torch.connectome_ops import Graph
@@ -1002,24 +1044,143 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 self._backend_graph = Graph(self.crow_indices, self.col_indices)
             return self._backend_graph
 
+        def low_rank_delta(self) -> torch.Tensor:
+            """Log fold-change scores on existing anatomical edges only.
+
+            For edge j -> i: Delta_ij = (U_i · V_j) / sqrt(r).
+            """
+            graph = self.backend_graph()
+            score = (self.edge_u[graph.rows] * self.edge_v[self.col_indices]).sum(-1)
+            return score / math.sqrt(self.adaptation_rank)
+
         def effective_values(self):
             if self.weight_mode == "low_rank":
-                graph = self.backend_graph()
-                score = (self.edge_u[graph.rows] * self.edge_v[self.col_indices]).sum(
-                    -1
+                # Direct log-fold gains: W_eff = W0 * exp(Delta). No sigmoid
+                # or edge_scale_bounds. Clamp is overflow protection only.
+                delta = self.low_rank_delta().clamp(
+                    -self.low_rank_delta_clamp, self.low_rank_delta_clamp
                 )
-                score = score / math.sqrt(self.adaptation_rank)
-            elif self.weight_mode == "edgewise":
+                return self.recurrent_values * delta.exp()
+            if self.weight_mode == "edgewise":
                 score = self.edge_raw
+                # Shift the logistic so zero scores are exactly the identity even
+                # for asymmetric bounds. Evaluate only the E existing connections.
+                span = self.edge_log_max - self.edge_log_min
+                fraction = -self.edge_log_min / span
+                offset = math.log(fraction / (1 - fraction))
+                delta = self.edge_log_min + span * torch.sigmoid(score + offset)
+                return self.recurrent_values * delta.exp()
+            return self.recurrent_values
+
+        def synaptic_plasticity_penalty(self):
+            """Mean-square log-gain penalty and update-level plasticity stats.
+
+            Returns (mean(delta^2), stats_dict) for low_rank mode; otherwise
+            (None, {}). The caller multiplies mean(delta^2) by
+            synaptic_plasticity_reg when forming the PPO/SAPG loss.
+            """
+            if self.weight_mode != "low_rank":
+                return None, {}
+            delta = self.low_rank_delta()
+            mean_sq = delta.square().mean()
+            with torch.no_grad():
+                # Clamp only for gain stats (overflow guard); mean_sq uses raw delta.
+                gain = delta.clamp(
+                    -self.low_rank_delta_clamp, self.low_rank_delta_clamp
+                ).exp()
+                stats = {
+                    "synaptic_delta_mean": float(delta.mean().item()),
+                    "synaptic_delta_rms": float(delta.square().mean().sqrt().item()),
+                    "synaptic_delta_std": float(delta.std(unbiased=False).item()),
+                    "synaptic_gain_min": float(gain.min().item()),
+                    "synaptic_gain_max": float(gain.max().item()),
+                }
+            return mean_sq, stats
+
+        def _edge_log_gains(self) -> torch.Tensor:
+            """Per-edge log gains for plasticity diagnostics (existing edges only)."""
+            if self.weight_mode == "low_rank":
+                return self.low_rank_delta().clamp(
+                    -self.low_rank_delta_clamp, self.low_rank_delta_clamp
+                )
+            if self.weight_mode == "edgewise":
+                span = self.edge_log_max - self.edge_log_min
+                fraction = -self.edge_log_min / span
+                offset = math.log(fraction / (1 - fraction))
+                return self.edge_log_min + span * torch.sigmoid(self.edge_raw + offset)
+            return torch.zeros_like(self.recurrent_values)
+
+        @torch.no_grad()
+        def compute_spectral_diagnostics(self) -> dict:
+            """Detached spectral / plasticity diagnostics for TensorBoard.
+
+            Analyzes the CSR operator whose values equal ``effective_values()``
+            (``W_eff``), matching the recurrent weights used by SpMM. Does not
+            include ``beta``, neuron gains, or the tanh Jacobian.
+            Returns an empty dict when synaptic weights are not trainable.
+            """
+            if not self.synaptic_weights_trainable:
+                return {}
+            from rl_games.algos_torch.connectome_spectral import (
+                flatten_spectral_tags,
+                spectral_metrics,
+            )
+
+            crow = self.crow_indices.detach().cpu().numpy()
+            col = self.col_indices.detach().cpu().numpy()
+            baseline_values = self.recurrent_values.detach().cpu().numpy()
+            effective = self.effective_values().detach()
+            effective_values = effective.cpu().numpy()
+            top_k = self.spectral_monitoring_top_k
+
+            if self._spectral_baseline is None:
+                self._spectral_baseline = spectral_metrics(
+                    crow, col, baseline_values, self.neuron_count, top_k
+                )
+            baseline = self._spectral_baseline
+            current = spectral_metrics(
+                crow, col, effective_values, self.neuron_count, top_k
+            )
+
+            tags = {}
+            tags.update(
+                flatten_spectral_tags("spectral/effective", current, include_top_lists=True)
+            )
+            tags["spectral/baseline/spectral_radius"] = float(baseline["spectral_radius"])
+            tags["spectral/baseline/max_singular_value"] = float(
+                baseline["max_singular_value"]
+            )
+            base_rho = float(baseline["spectral_radius"])
+            base_sigma = float(baseline["max_singular_value"])
+            cur_rho = float(current["spectral_radius"])
+            cur_sigma = float(current["max_singular_value"])
+            if base_rho > 0.0:
+                rho_ratio = cur_rho / base_rho
             else:
-                return self.recurrent_values
-            # Shift the logistic so zero scores are exactly the identity even
-            # for asymmetric bounds. Evaluate only the E existing connections.
-            span = self.edge_log_max - self.edge_log_min
-            fraction = -self.edge_log_min / span
-            offset = math.log(fraction / (1 - fraction))
-            delta = self.edge_log_min + span * torch.sigmoid(score + offset)
-            return self.recurrent_values * delta.exp()
+                rho_ratio = 1.0 if cur_rho == 0.0 else float("inf")
+            if base_sigma > 0.0:
+                sigma_ratio = cur_sigma / base_sigma
+            else:
+                sigma_ratio = 1.0 if cur_sigma == 0.0 else float("inf")
+            tags["spectral/change/spectral_radius_ratio"] = float(rho_ratio)
+            tags["spectral/change/max_singular_value_ratio"] = float(sigma_ratio)
+
+            delta = self._edge_log_gains().detach()
+            gain = delta.exp()
+            tags["spectral/plasticity/delta_mean"] = float(delta.mean().item())
+            tags["spectral/plasticity/delta_std"] = float(
+                delta.std(unbiased=False).item()
+            )
+            tags["spectral/plasticity/delta_rms"] = float(
+                delta.square().mean().sqrt().item()
+            )
+            tags["spectral/plasticity/gain_mean"] = float(gain.mean().item())
+            tags["spectral/plasticity/gain_std"] = float(
+                gain.std(unbiased=False).item()
+            )
+            tags["spectral/plasticity/gain_min"] = float(gain.min().item())
+            tags["spectral/plasticity/gain_max"] = float(gain.max().item())
+            return tags
 
         def _load_from_state_dict(
             self,
@@ -1034,6 +1195,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self._frozen_tanh_runner = None
             self._cached_recurrent_operator = None
             self._backend_graph = None
+            self._spectral_baseline = None
             # Older checkpoints predate intrinsic gain; default a_i = 1.
             key = prefix + "log_intrinsic_gain"
             if key not in state_dict:

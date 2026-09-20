@@ -8,5 +8,9 @@ params:
       adaptation:
         weight_mode: low_rank
         learn_dynamics: false
+      spectral_monitoring:
+        enabled: true
+        interval: 100
+        top_k: 8
   config:
     name: ${resolve_default:SimToolRealConnectomeLowRankSAPG,${....experiment}}

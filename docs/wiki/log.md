@@ -6,6 +6,19 @@ Last updated: 2026-09-20
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-20] implement | Spectral monitoring for synaptic plasticity
+
+- Added detached epoch-interval spectrum diagnostics of \(W^{\mathrm{eff}}\) (`effective_values` CSR) under TensorBoard `spectral/*`, active only for `low_rank`/`edgewise`.
+- Config: `connectome.spectral_monitoring.{enabled,interval,top_k}`; defaults off in base SAPG, on for LowRank/Edgewise profiles (interval 100, top_k 8).
+- Provenance: `connectome_spectral.py`, `connectome_network_builder.py`, `a2c_common.py`, unit test, `concepts/connectome-adaptation.md`.
+
+## [2026-09-20] implement | Low-rank log-fold synaptic plasticity
+
+- Replaced the bounded sigmoid gain map for `weight_mode: low_rank` with direct \(W^{\mathrm{eff}}=W^0\exp(\Delta)\), \(\Delta=U_i^\top V_j/\sqrt{r}\) on existing anatomical edges only.
+- Added optional `adaptation.synaptic_plasticity_reg` mean-square \(\Delta\) penalty into continuous PPO/SAPG (`a2c_continuous.calc_gradients`) with TensorBoard `losses/synaptic_plasticity_reg` and `adaptation/synaptic_*` stats.
+- `edgewise` / `neuron_gains` retain sigmoid bounds; `beta` and intrinsic \(a,\lambda,b\) unchanged; neuron gains stay frozen under low-rank.
+- Provenance: `connectome_network_builder.py`, `a2c_continuous.py`, `a2c_common.py`, focused unit tests, `concepts/connectome-adaptation.md`.
+
 ## [2026-09-20] implement | Add K=4 noaux intrinsic-plasticity suite
 
 - Cloned `ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_100b` into an intrinsic-plasticity suite/milestones pair with `learn_dynamics: true` and otherwise identical settings (K=4, noaux, LF, Sigma-3).

@@ -41,6 +41,10 @@ params:
         learn_dynamics: false
         rank: 4
         edge_scale_bounds: [0.0625, 16.0]
+      spectral_monitoring:
+        enabled: false
+        interval: 100
+        top_k: 8
 
   config:
     name: ${resolve_default:SimToolRealConnectomeSAPG,${....experiment}}

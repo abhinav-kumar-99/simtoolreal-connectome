@@ -180,6 +180,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             if self.zero_rnn_on_done:
                 batch_dict['dones'] = input_dict['dones']            
 
+        synaptic_extras = {}
         with torch.cuda.amp.autocast(enabled=self.mixed_precision):
             res_dict = self.model(batch_dict)
             action_log_probs = res_dict['prev_neglogp']
@@ -223,6 +224,19 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             a_loss, c_loss, entropy_loss, b_loss = losses[0], losses[1], losses[2], losses[3]
 
             loss = a_loss + 0.5 * c_loss * self.critic_coef - entropy_loss + b_loss * self.bounds_loss_coef
+
+            network = getattr(self.model, 'a2c_network', None)
+            penalty_fn = getattr(network, 'synaptic_plasticity_penalty', None)
+            if callable(penalty_fn):
+                mean_sq, synaptic_stats = penalty_fn()
+                if mean_sq is not None:
+                    coef = float(getattr(network, 'synaptic_plasticity_reg', 0.0))
+                    syn_loss = coef * mean_sq
+                    if coef > 0.0:
+                        loss = loss + syn_loss
+                    # Pre-scaling mean(Δ²); λ * this is what enters the loss.
+                    synaptic_extras['synaptic_plasticity_reg'] = mean_sq.detach()
+                    synaptic_extras.update(synaptic_stats)
 
             if zero_grad:
                 if self.multi_gpu:
@@ -296,6 +310,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             }     
         extras["scheduler_kl_sum"] = scheduler_kl_sum
         extras["scheduler_kl_count"] = scheduler_kl_count
+        extras.update(synaptic_extras)
         if self.expl_type.startswith('mixed_expl'):
             bl_ids = self.intr_reward_coef_embd[::self.intr_coef_block_size, 0].reshape(-1,1)
             bl_idxs = torch.argmax((obs_batch[:,-self.intr_reward_coef_embd.shape[1]] == bl_ids).float(), dim=0)
