@@ -660,7 +660,14 @@ Run the separate milestone watchers with:
   --config configs/connectome/evaluation/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_fly_resume_milestones.yaml
 ```
 
-The intrinsic-plasticity suite is identical to the one-third-bounds K=2 adapters-only run except `adaptation.learn_dynamics: true`, which trains per-neuron leak, recurrent bias, and intrinsic gain \(a_i=\exp(\log a_i)\) (5,856 dynamics parameters) while keeping connectome edge weights and neuron gains frozen.
+The intrinsic-plasticity suite is identical to the one-third-bounds K=2 adapters-only run except `adaptation.learn_dynamics: true`, which trains per-neuron leak, recurrent bias, and intrinsic gain \(a_i=\exp(\log a_i)\) (5,856 dynamics parameters) while keeping connectome edge weights and neuron gains frozen. A matched K=4 all-neuron Gaussian noaux intrinsic-plasticity suite also exists:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_plasticity_100b.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_plasticity_100b_milestones.yaml
+```
 
 The suite YAMLs own physical GPU, seed 42, LR/scheduler rules, batch geometry, LF reuse, entropy scale, Sigma-3 policy and the 100B budget. The fly continuation YAML additionally selects `resume_training_state`, its full checkpoint, and an `artifact_target` pointing to the original experiment name and `rl_runs` directory. The suite script composes the resolved configuration, supervises training, and verifies the terminal checkpoint. The artifact target makes the resumed summary writer create a new event file beside the original event file, so TensorBoard port 6008 presents one continuous run identity. The watcher waits for 250M-frame inference checkpoints, resolves checkpoint-time tolerance, and launches `run_connectome_evaluation.py`; that helper generates case YAMLs consumed by `dextoolbench/eval_worker_isaacgym.py`.
 
