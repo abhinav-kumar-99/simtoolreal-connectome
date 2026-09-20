@@ -606,15 +606,15 @@ The evaluation contract reports both configured-base definitions found in the so
 
 ## Entry points
 
-### Current K=2 and resumed fly jobs
+### Current K=2 jobs
 
-The original fixed-LR and adaptive cycle-ablation artifacts remain preserved. The original-bounds adaptive K=2 reached visible TensorBoard frame 4,805,492,736 and completed dual-tolerance milestones through 4.75B before its trainer and watcher were stopped. The current physical-GPU-0 job remains the K=2 fly with one-third actor-LR bounds. The LSTM continuation was stopped at visible frame 3,456,958,464 together with its watcher. Physical GPU 1 now continues the original matched fly from its full epoch-12,800/frame-2,516,582,400 checkpoint. These jobs are not a matched comparison: they belong to different historical cohorts and should not be compared by wall-clock position or rightmost TensorBoard point.
+The original fixed-LR and adaptive cycle-ablation artifacts remain preserved. The original-bounds adaptive K=2 reached visible TensorBoard frame 4,805,492,736 and completed dual-tolerance milestones through 4.75B before its trainer and watcher were stopped. The current physical-GPU-0 job remains the K=2 fly with one-third actor-LR bounds. On 2026-09-20, the K=4 matched-fly continuation and its watcher were stopped with their artifacts preserved; physical GPU 1 now runs a fresh K=2 intrinsic-plasticity case. These two K=2 jobs are distinct cohorts and should not be compared by wall-clock position or rightmost TensorBoard point.
 
 Both live actors use rollout-level adaptive scheduling with KL target `.004` and
 one same-conditioned decision after both PPO mini-epochs. The GPU-0 run uses `min_lr`
 `1e-6/3 = 3.333333333e-7` and `max_lr`
-`1e-3/3 = 3.333333333e-4`; the resumed fly uses its original `[1e-6, 1e-3]`
-bounds and restores the actor optimizer's current LR from the checkpoint. Invalid or
+`1e-3/3 = 3.333333333e-4`; the intrinsic-plasticity case uses the same bounds
+from a fresh optimizer state. Invalid or
 negative KL, or KL above `.008`, divides LR by 1.5; KL below `.002` multiplies
 LR by 1.5; the inclusive `.002--.008` band holds LR. Both
 privileged central critics remain independently fixed at `1e-4`; the
@@ -645,8 +645,6 @@ Launch the current jobs from the repository root:
   --config configs/connectome/suites/ppo_fly1952_k2_adaptive_lr_third_bounds_100b.yaml
 .venv/bin/python scripts/run_connectome_suite.py \
   --config configs/connectome/suites/ppo_fly1952_k2_adaptive_lr_third_bounds_intrinsic_plasticity_100b.yaml
-.venv/bin/python scripts/run_connectome_suite.py \
-  --config configs/connectome/suites/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_fly_resume.yaml
 ```
 
 Run the separate milestone watchers with:
@@ -656,8 +654,6 @@ Run the separate milestone watchers with:
   --config configs/connectome/evaluation/ppo_fly1952_k2_adaptive_lr_third_bounds_100b_milestones.yaml
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py \
   --config configs/connectome/evaluation/ppo_fly1952_k2_adaptive_lr_third_bounds_intrinsic_plasticity_100b_milestones.yaml
-.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
-  --config configs/connectome/evaluation/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_fly_resume_milestones.yaml
 ```
 
 The intrinsic-plasticity suite is identical to the one-third-bounds K=2 adapters-only run except `adaptation.learn_dynamics: true`, which trains per-neuron leak, recurrent bias, and intrinsic gain \(a_i=\exp(\log a_i)\) (5,856 dynamics parameters) while keeping connectome edge weights and neuron gains frozen. A matched K=4 all-neuron Gaussian noaux intrinsic-plasticity suite also exists:
@@ -669,9 +665,9 @@ The intrinsic-plasticity suite is identical to the one-third-bounds K=2 adapters
   --config configs/connectome/evaluation/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_plasticity_100b_milestones.yaml
 ```
 
-The suite YAMLs own physical GPU, seed 42, LR/scheduler rules, batch geometry, LF reuse, entropy scale, Sigma-3 policy and the 100B budget. The fly continuation YAML additionally selects `resume_training_state`, its full checkpoint, and an `artifact_target` pointing to the original experiment name and `rl_runs` directory. The suite script composes the resolved configuration, supervises training, and verifies the terminal checkpoint. The artifact target makes the resumed summary writer create a new event file beside the original event file, so TensorBoard port 6008 presents one continuous run identity. The watcher waits for 250M-frame inference checkpoints, resolves checkpoint-time tolerance, and launches `run_connectome_evaluation.py`; that helper generates case YAMLs consumed by `dextoolbench/eval_worker_isaacgym.py`.
+The suite YAMLs own physical GPU, seed 42, LR/scheduler rules, batch geometry, LF reuse, entropy scale, Sigma-3 policy and the 100B budget. The intrinsic suite is fresh (`checkpoint.mode: none`) and binds GPU 1, while the non-plastic K=2 control remains on GPU 0. The suite script composes the resolved configuration, supervises training, and verifies the terminal checkpoint. The watcher waits for 250M-frame inference checkpoints, resolves checkpoint-time tolerance, and launches `run_connectome_evaluation.py`; that helper generates case YAMLs consumed by `dextoolbench/eval_worker_isaacgym.py`.
 
-The one-third-bounds K=2 is PID 610456 in tmux `connectome-k2-adaptive-third-bounds`, with watcher PID 610177. The resumed fly is PID 1300720 in `connectome-fly1952-rollout-kl-resume`; its fly-only watcher is PID 1300546 in `connectome-fly1952-rollout-kl-resume-eval`. Its log confirms the saved model and ten actor optimizer-state entries restored at epoch 12,800/frame 2,516,582,400 with a fresh simulator rollout. It advanced past 2.525B with finite rollout KL and one scheduler decision, and its original summary directory now contains two event files discovered by TensorBoard port 6008. The fly-only watcher reuses the existing milestone status/tree, retained the ten completed targets through 2.5B, and awaits the next 2.75B inference checkpoint before producing its six mean-action videos.
+The one-third-bounds K=2 control is PID 610456 in tmux `connectome-k2-adaptive-third-bounds`, with watcher PID 610177 on GPU 0. The intrinsic-plasticity replacement is PID 1907621 in `connectome-k2-intrinsic-plasticity`, with watcher PID 1909557 in `connectome-k2-intrinsic-plasticity-eval` on GPU 1. Its first observed training report at epoch 17/frame 3,145,728 was finite (115,741 total FPS); this is launch health, not learning evidence. The watcher starts with no completed milestones and awaits the first 250M-frame inference checkpoint.
 
 The legacy Isaac Gym stack is Python 3.8. A local ignored virtual environment can reuse the installed `diffusion` conda environment while supplying the two missing mesh packages:
 

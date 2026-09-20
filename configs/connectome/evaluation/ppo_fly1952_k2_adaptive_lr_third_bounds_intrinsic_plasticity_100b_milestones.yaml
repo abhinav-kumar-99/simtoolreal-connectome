@@ -10,7 +10,8 @@ watch_until_complete: true
 policies:
   - name: fly1952_k2_adaptive_lr_third_bounds_intrinsic_plasticity
     seed: 42
-    gpu: 0
+    # Match the training suite's physical GPU; GPU 0 hosts the non-plastic K=2 control.
+    gpu: 1
     policy_config_path: train_dir/connectome/cycle_ablation/ppo_fly1952_k2_adaptive_lr_third_bounds_intrinsic_plasticity_100b/00_ppo_fly1952_k2_adaptive_lr_third_bounds_intrinsic_plasticity_100b_fly1952_k2_adaptive_lr_third_bounds_intrinsic_plasticity_seed42/resolved_config.yaml
 evaluation:
   runtime_environment:

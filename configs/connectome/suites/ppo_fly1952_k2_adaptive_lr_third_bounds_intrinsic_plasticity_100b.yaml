@@ -21,7 +21,9 @@ training:
         train.params.network.connectome.adaptation.weight_mode: adapters_only
         train.params.network.connectome.adaptation.learn_dynamics: true
   seeds: [42]
-  gpu_assignments: [0]
+  # Replaces the stopped K=4 resumed-fly job on physical GPU 1.  GPU 0 remains
+  # reserved for the independent non-plastic K=2 one-third-bounds control.
+  gpu_assignments: [1]
   max_parallel: 1
   num_envs: 12288
   sapg_block_size: 2048
