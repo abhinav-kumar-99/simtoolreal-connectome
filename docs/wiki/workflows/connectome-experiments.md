@@ -606,14 +606,14 @@ The evaluation contract reports both configured-base definitions found in the so
 
 ## Entry points
 
-### Current K=2 and resumed matched-LSTM jobs
+### Current K=2 and resumed fly jobs
 
-The original fixed-LR and adaptive cycle-ablation artifacts remain preserved. The original-bounds adaptive K=2 reached visible TensorBoard frame 4,805,492,736 and completed dual-tolerance milestones through 4.75B before its trainer and watcher were stopped. The current physical-GPU-0 job remains the K=2 fly with one-third actor-LR bounds. Physical GPU 1 now continues the previously stopped 323-unit coefficient-matched LSTM from its full epoch-15,000/frame-2,949,120,000 checkpoint. These jobs are not a matched comparison: they belong to different historical cohorts and should not be compared by wall-clock position or rightmost TensorBoard point.
+The original fixed-LR and adaptive cycle-ablation artifacts remain preserved. The original-bounds adaptive K=2 reached visible TensorBoard frame 4,805,492,736 and completed dual-tolerance milestones through 4.75B before its trainer and watcher were stopped. The current physical-GPU-0 job remains the K=2 fly with one-third actor-LR bounds. The LSTM continuation was stopped at visible frame 3,456,958,464 together with its watcher. Physical GPU 1 now continues the original matched fly from its full epoch-12,800/frame-2,516,582,400 checkpoint. These jobs are not a matched comparison: they belong to different historical cohorts and should not be compared by wall-clock position or rightmost TensorBoard point.
 
 Both live actors use rollout-level adaptive scheduling with KL target `.004` and
 one same-conditioned decision after both PPO mini-epochs. The GPU-0 run uses `min_lr`
 `1e-6/3 = 3.333333333e-7` and `max_lr`
-`1e-3/3 = 3.333333333e-4`; the resumed LSTM uses its original `[1e-6, 1e-3]`
+`1e-3/3 = 3.333333333e-4`; the resumed fly uses its original `[1e-6, 1e-3]`
 bounds and restores the actor optimizer's current LR from the checkpoint. Invalid or
 negative KL, or KL above `.008`, divides LR by 1.5; KL below `.002` multiplies
 LR by 1.5; the inclusive `.002--.008` band holds LR. Both
@@ -644,7 +644,7 @@ Launch the current jobs from the repository root:
 .venv/bin/python scripts/run_connectome_suite.py \
   --config configs/connectome/suites/ppo_fly1952_k2_adaptive_lr_third_bounds_100b.yaml
 .venv/bin/python scripts/run_connectome_suite.py \
-  --config configs/connectome/suites/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_lstm_resume.yaml
+  --config configs/connectome/suites/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_fly_resume.yaml
 ```
 
 Run the separate milestone watchers with:
@@ -653,12 +653,12 @@ Run the separate milestone watchers with:
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py \
   --config configs/connectome/evaluation/ppo_fly1952_k2_adaptive_lr_third_bounds_100b_milestones.yaml
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py \
-  --config configs/connectome/evaluation/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_lstm_resume_milestones.yaml
+  --config configs/connectome/evaluation/ppo_lstm323_fly1952_asymmetric_noaux_mlp128x32x32_rollout_kl_100b_fly_resume_milestones.yaml
 ```
 
-The suite YAMLs own physical GPU, seed 42, LR/scheduler rules, batch geometry, LF reuse, entropy scale, Sigma-3 policy and the 100B budget. The LSTM continuation YAML additionally selects `resume_training_state`, its full checkpoint, and an `artifact_target` pointing to the original experiment name and `rl_runs` directory. The suite script composes the resolved configuration, supervises training, and verifies the terminal checkpoint. The artifact target makes the resumed summary writer create a new event file beside the original event file, so TensorBoard port 6008 presents one continuous run identity. The watcher waits for 250M-frame inference checkpoints, resolves checkpoint-time tolerance, and launches `run_connectome_evaluation.py`; that helper generates case YAMLs consumed by `dextoolbench/eval_worker_isaacgym.py`.
+The suite YAMLs own physical GPU, seed 42, LR/scheduler rules, batch geometry, LF reuse, entropy scale, Sigma-3 policy and the 100B budget. The fly continuation YAML additionally selects `resume_training_state`, its full checkpoint, and an `artifact_target` pointing to the original experiment name and `rl_runs` directory. The suite script composes the resolved configuration, supervises training, and verifies the terminal checkpoint. The artifact target makes the resumed summary writer create a new event file beside the original event file, so TensorBoard port 6008 presents one continuous run identity. The watcher waits for 250M-frame inference checkpoints, resolves checkpoint-time tolerance, and launches `run_connectome_evaluation.py`; that helper generates case YAMLs consumed by `dextoolbench/eval_worker_isaacgym.py`.
 
-The one-third-bounds K=2 is PID 610456 in tmux `connectome-k2-adaptive-third-bounds`, with watcher PID 610177. The resumed LSTM is PID 906066 in `connectome-lstm323-rollout-kl-resume`; its LSTM-only watcher is PID 999563 in `connectome-lstm323-rollout-kl-resume-eval`. Its log confirms all 12 actor optimizer-state entries restored at epoch 15,000/frame 2,949,120,000 with a fresh simulator rollout. It advanced beyond frame 2.95B with finite rollout KL and one scheduler decision, and its original summary directory now contains two event files discovered by TensorBoard port 6008. The LSTM-only watcher reuses the existing milestone status/tree, retained the 11 completed targets through 2.75B, and completed the resumed 3.0B target with six new videos.
+The one-third-bounds K=2 is PID 610456 in tmux `connectome-k2-adaptive-third-bounds`, with watcher PID 610177. The resumed fly is PID 1300720 in `connectome-fly1952-rollout-kl-resume`; its fly-only watcher is PID 1300546 in `connectome-fly1952-rollout-kl-resume-eval`. Its log confirms the saved model and ten actor optimizer-state entries restored at epoch 12,800/frame 2,516,582,400 with a fresh simulator rollout. It advanced past 2.525B with finite rollout KL and one scheduler decision, and its original summary directory now contains two event files discovered by TensorBoard port 6008. The fly-only watcher reuses the existing milestone status/tree, retained the ten completed targets through 2.5B, and awaits the next 2.75B inference checkpoint before producing its six mean-action videos.
 
 The legacy Isaac Gym stack is Python 3.8. A local ignored virtual environment can reuse the installed `diffusion` conda environment while supplying the two missing mesh packages:
 

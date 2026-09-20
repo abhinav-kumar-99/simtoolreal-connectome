@@ -407,6 +407,14 @@ fly policy. It retained the eleven completed LSTM targets through 2.75B and
 completed the resumed 3.0B target with six mean-action videos: three tasks at
 each paper and checkpoint-training tolerance.
 
+That LSTM continuation and its LSTM-only watcher were subsequently stopped at
+visible frame 3,456,958,464. The matched fly was then resumed separately on
+physical GPU 1 from epoch 12,800/frame 2,516,582,400, using its own original
+experiment name, `rl_runs` directory, and milestone output/status tree. Its
+fly-only watcher retains ten complete targets through 2.5B and will evaluate
+the next 2.75B checkpoint; neither later action changes the retained LSTM
+artifacts or videos described above.
+
 ### Why the fly can show higher KL and higher LR
 
 A 2026-09-19 port-6008 scalar snapshot compared both active jobs over the same
