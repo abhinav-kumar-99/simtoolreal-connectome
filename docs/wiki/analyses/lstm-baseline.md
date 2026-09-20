@@ -2,7 +2,7 @@
 
 The compact fly control is a standard one-update LSTM matched to the current all-neuron actor's instantiated coefficient count.
 
-Last updated: 2026-09-19
+Last updated: 2026-09-20
 
 Related: [Connectome actor](../concepts/connectome-actor.md), [Experiment workflow](../workflows/connectome-experiments.md), [Compact training](compact-1952-training.md)
 
@@ -390,6 +390,17 @@ was `.0028484` with LR `.000759375`; at frame 4,325,376 the LSTM scheduler KL
 was `.0027223` with LR `.00015`. Both runs are exposed through TensorBoard port
 6008. This verifies launch and controller wiring, not long-run KL regulation or
 comparative learning.
+
+That two-policy trainer was later stopped with both artifact trees preserved.
+On 2026-09-20, only the LSTM was resumed on physical GPU 1 from its complete
+`last/model.pth` at epoch 15,000/frame 2,949,120,000. The continuation uses
+`resume_training_state`, restored all 12 actor optimizer-state entries plus the
+saved model/training counters, and intentionally began with a fresh simulator
+rollout. It targets the original experiment name and `rl_runs` directory, so a
+second event file is appended under the existing summaries directory rather
+than creating a separate TensorBoard run. The resumed trainer is PID 906066 in
+tmux `connectome-lstm323-rollout-kl-resume`; initial post-resume telemetry
+advanced beyond frame 2.95B with finite scheduler KL and one rollout decision.
 
 ### Why the fly can show higher KL and higher LR
 

@@ -2,7 +2,7 @@
 
 Durable project knowledge for the MaleCNS-constrained SimToolReal actor.
 
-Last updated: 2026-09-19
+Last updated: 2026-09-20
 
 Related: [Overview](overview.md), [Log](log.md)
 
@@ -30,13 +30,13 @@ Related: [Overview](overview.md), [Log](log.md)
 
 - [Anatomical activation videos](workflows/anatomical-activity-videos.md) — Actual compact-circuit skeletons, enlarged CNS overview, cropped HD robot footage, population labels/bars, 4× FPS and YAML usage. Last updated 2026-09-18.
 
-- [Experiment workflow](workflows/connectome-experiments.md) — Current no-auxiliary fly and official repository LSTM runs, fixed-reservoir suites, milestone videos, LF entropy runs, and the staged handoff. Last updated 2026-09-19.
+- [Experiment workflow](workflows/connectome-experiments.md) — Current no-auxiliary fly and resumed matched-LSTM runs, fixed-reservoir suites, milestone videos, LF entropy runs, and staged handoffs. Last updated 2026-09-20.
 - [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, early gain audit, and stopped-run status. Last updated 2026-09-14.
 
 ## Analyses
 
 - [Fly cycles and input routing](analyses/fly-cycles-and-input-routing.md) — Exact directed reachability, current all-neuron shortcut, four-cycle boundary, and input-routing alternatives. Last updated 2026-09-19.
-- [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — The 323-unit coefficient match, exact sparsity-control boundary, official 1,024-unit history, diagnosed scheduler cancellation, and active LF rollout-KL matched pair. Last updated 2026-09-19.
+- [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — The 323-unit coefficient match, exact sparsity-control boundary, official 1,024-unit history, diagnosed scheduler cancellation, and resumed LF rollout-KL training. Last updated 2026-09-20.
 - [Visual reservoir performance](analyses/visual-reservoir-performance.md) — Frozen inference, full-CNS capacity sweep, video-worker memory limits and 2,304-environment continuation. Last updated 2026-09-16.
 - [End-to-end system audit](analyses/system-audit-2026-09-15.md) — All 71 event histories, raw-source reproduction, cross-member KL, saturation, proposed Beta parameters and multi-rate neural timing. Last updated 2026-09-15.
 - [Minimal dexterity circuits](analyses/minimal-dexterity-circuit.md) — Exact 86/262/408-cell candidates, threshold rationale, and 262 training evidence weakening its full-task recommendation. Last updated 2026-09-15.
