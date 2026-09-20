@@ -667,6 +667,14 @@ The intrinsic-plasticity suite is identical to the one-third-bounds K=2 adapters
 
 The suite YAMLs own physical GPU, seed 42, LR/scheduler rules, batch geometry, LF reuse, entropy scale, Sigma-3 policy and the 100B budget. The intrinsic suite is fresh (`checkpoint.mode: none`) and binds GPU 1, while the non-plastic K=2 control remains on GPU 0. The suite script composes the resolved configuration, supervises training, and verifies the terminal checkpoint. The watcher waits for 250M-frame inference checkpoints, resolves checkpoint-time tolerance, and launches `run_connectome_evaluation.py`; that helper generates case YAMLs consumed by `dextoolbench/eval_worker_isaacgym.py`.
 
+Every future `run_connectome_suite.py` case also registers its own suite-qualified
+`summaries/` directory under
+`train_dir/connectome/adaptation_100b_gains_update_timing`, the persistent root
+served by TensorBoard port 6008. The default is automatic; a YAML suite can set
+`training.tensorboard_log_root` only when a different aggregation root is
+intentionally required. Registration rejects an occupied name pointing at a
+different run rather than mixing metrics.
+
 The one-third-bounds K=2 control is PID 610456 in tmux `connectome-k2-adaptive-third-bounds`, with watcher PID 610177 on GPU 0. The intrinsic-plasticity replacement is PID 1907621 in `connectome-k2-intrinsic-plasticity`, with watcher PID 1909557 in `connectome-k2-intrinsic-plasticity-eval` on GPU 1. Its first observed training report at epoch 17/frame 3,145,728 was finite (115,741 total FPS); this is launch health, not learning evidence. The watcher starts with no completed milestones and awaits the first 250M-frame inference checkpoint.
 
 The legacy Isaac Gym stack is Python 3.8. A local ignored virtual environment can reuse the installed `diffusion` conda environment while supplying the two missing mesh packages:

@@ -21,6 +21,9 @@ from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+TENSORBOARD_6008_LOG_ROOT = Path(
+    "train_dir/connectome/adaptation_100b_gains_update_timing"
+)
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -83,6 +86,45 @@ def _environment(
         else:
             environment["CUDA_VISIBLE_DEVICES"] = str(gpu)
     return environment
+
+
+def _register_tensorboard_run(
+    training: dict[str, Any],
+    run_name: str,
+    summaries_directory: Path,
+) -> Path:
+    """Expose one suite case under the log root served by TensorBoard port 6008.
+
+    A suite may override ``training.tensorboard_log_root`` in YAML, but every
+    suite defaults to the long-lived port-6008 aggregation root.  The stable,
+    suite-qualified run name prevents two different cases from silently sharing
+    one TensorBoard entry.
+    """
+    configured_root = Path(
+        training.get("tensorboard_log_root", TENSORBOARD_6008_LOG_ROOT)
+    )
+    log_root = (
+        configured_root
+        if configured_root.is_absolute()
+        else REPOSITORY_ROOT / configured_root
+    )
+    log_root.mkdir(parents=True, exist_ok=True)
+    link_path = log_root / run_name
+    expected_target = summaries_directory.resolve(strict=False)
+    if os.path.lexists(link_path):
+        if not link_path.is_symlink():
+            raise RuntimeError(
+                f"TensorBoard registration path is not a symlink: {link_path}"
+            )
+        if link_path.resolve(strict=False) != expected_target:
+            raise RuntimeError(
+                "TensorBoard registration collision: "
+                f"{link_path} targets {link_path.resolve(strict=False)}, expected "
+                f"{expected_target}"
+            )
+        return link_path
+    link_path.symlink_to(expected_target, target_is_directory=True)
+    return link_path
 
 
 def _compose_resolved(overrides: list[str]):
@@ -226,6 +268,7 @@ def _training_overrides(
         artifact_target.get("hydra_directory", run_directory / "hydra")
     )
     experiment_name = str(artifact_target.get("experiment_name", run_name))
+    summaries_directory = train_directory / experiment_name / "summaries"
     if not train_directory.is_absolute():
         train_directory = REPOSITORY_ROOT / train_directory
     if not hydra_directory.is_absolute():
@@ -320,6 +363,7 @@ def _run_training_case(case: dict[str, Any]) -> dict[str, Any]:
         training_log = REPOSITORY_ROOT / training_log
 
     if run_directory.exists() and any(run_directory.iterdir()):
+        _register_tensorboard_run(training, run_name, summaries_directory)
         if training["on_existing"] != "skip":
             raise FileExistsError(
                 f"Run directory already exists: {run_directory}. "
@@ -352,6 +396,10 @@ def _run_training_case(case: dict[str, Any]) -> dict[str, Any]:
         }
 
     run_directory.mkdir(parents=True, exist_ok=True)
+    tensorboard_link = _register_tensorboard_run(
+        training, run_name, summaries_directory
+    )
+    print(f"TensorBoard 6008 registration: {tensorboard_link}", flush=True)
     resolved_config_path.write_text(OmegaConf.to_yaml(resolved, resolve=True))
     if training.get("distributed", False):
         command = [
