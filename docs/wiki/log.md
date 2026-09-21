@@ -10,7 +10,7 @@ Related: [Index](index.md), [Overview](overview.md)
 
 - Replaced low-rank \(W^{\mathrm{eff}}=W^0\exp(\Delta)\) with signed relative LoRA \(W^{\mathrm{eff}}=W^0(1+\Delta)\) on existing edges only (sign flips allowed; no \(\Delta\) clamp).
 - Added detached TensorBoard `synaptic_plasticity/*` and `intrinsic_plasticity/*` under `plasticity_monitoring.{enabled,interval}`; intrinsic uses substep leaks and control-step retention \((1-\lambda)^K\).
-- Enabled spectral + plasticity monitoring on the two historical K=4 low-rank suites; archived prior run trees and relaunched under `env_isaaclab`.
+- Enabled spectral + plasticity monitoring on the two historical K=4 low-rank suites; archived prior run trees as `*_20260921_pre_signed_relative` and relaunched with Isaac Gym `.venv` (suite/trainer PIDs 2849850/2850215 synaptic-only GPU 0; 2849846/2850208 intrinsic+synaptic GPU 1; matching milestone watchers 2849849/2849848). Unit tests used `env_isaaclab`.
 - Provenance: `connectome_network_builder.py`, `a2c_common.py`, suite/Hydra YAMLs, unit tests, `concepts/connectome-adaptation.md`.
 
 ## [2026-09-20] implement | Low-res anatomical watchers for K=2 third-bounds pair
