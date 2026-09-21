@@ -96,6 +96,7 @@ def _build(
     adaptation=None,
     interface_projections=None,
     spectral_monitoring=None,
+    plasticity_monitoring=None,
 ):
     builder = ConnectomeBuilder()
     params = _network_params(
@@ -109,6 +110,8 @@ def _build(
         params["connectome"]["adaptation"] = adaptation
     if spectral_monitoring is not None:
         params["connectome"]["spectral_monitoring"] = spectral_monitoring
+    if plasticity_monitoring is not None:
+        params["connectome"]["plasticity_monitoring"] = plasticity_monitoring
     builder.load(params)
     return builder.build(
         "connectome",
@@ -886,16 +889,14 @@ def test_adaptation_backends_training(artifact_path, mode, dynamics, backend):
             * candidate.incoming_gains()[graph.rows]
             * candidate.outgoing_gains()[graph.col]
         )
-    assert torch.equal(base.sign(), effective.sign())
     if mode in {"neuron_gains", "edgewise"}:
+        assert torch.equal(base.sign(), effective.sign())
         assert torch.all(effective / base >= 0.0625)
         assert torch.all(effective / base <= 16.0)
     elif mode == "low_rank":
-        # Log-fold gains are unbounded (aside from a numerical clamp).
-        gain = effective / base
-        assert torch.all(gain > 0)
+        # Signed relative LoRA: W_eff = W0 * (1 + Delta); may flip signs.
         torch.testing.assert_close(
-            effective, base * candidate.low_rank_delta().clamp(-20, 20).exp()
+            effective, base * (1.0 + candidate.low_rank_delta())
         )
 
 
@@ -983,7 +984,7 @@ def test_adapters_default_and_low_rank_initial_gradient(artifact_path):
     assert model.edge_v.grad.abs().sum() > 0
 
 
-def test_low_rank_log_fold_gains_and_regularizer(artifact_path):
+def test_low_rank_signed_relative_lora_and_regularizer(artifact_path):
     torch.manual_seed(11)
     model = _build(
         artifact_path,
@@ -1009,18 +1010,24 @@ def test_low_rank_log_fold_gains_and_regularizer(artifact_path):
 
     with torch.no_grad():
         model.edge_v.normal_(std=0.5)
-        # Drive an existing edge (dst=2, src=0 in the fixture graph) past the
-        # old [1/16, 16] sigmoid bounds.
+        # Drive an existing edge (dst=2, src=0) to a large relative change.
         model.edge_u[2].fill_(4.0)
         model.edge_v[0].fill_(4.0)
     delta = model.low_rank_delta()
     assert delta.shape == (model.edge_count,)
-    expected = model.recurrent_values * delta.clamp(-20.0, 20.0).exp()
+    expected = model.recurrent_values * (1.0 + delta)
     torch.testing.assert_close(model.effective_values(), expected)
-    gains = model.effective_values() / model.recurrent_values
-    assert torch.all(gains > 0)
-    assert bool((gains > 16.0).any() or (gains < 0.0625).any())
-    assert torch.equal(model.recurrent_values.sign(), model.effective_values().sign())
+    scale = model.effective_values() / model.recurrent_values
+    assert bool((scale > 16.0).any() or (scale < 0.0625).any())
+
+    # Relative multiplier below zero flips anatomical signs.
+    with torch.no_grad():
+        model.edge_u[2].fill_(-4.0)
+        model.edge_v[0].fill_(4.0)
+    delta = model.low_rank_delta()
+    flipped = model.effective_values()
+    assert torch.any(flipped.sign() != model.recurrent_values.sign())
+    assert torch.any((1.0 + delta) < 0)
 
     mean_sq, stats = model.synaptic_plasticity_penalty()
     torch.testing.assert_close(mean_sq, delta.square().mean())
@@ -1028,8 +1035,8 @@ def test_low_rank_log_fold_gains_and_regularizer(artifact_path):
         "synaptic_delta_mean",
         "synaptic_delta_rms",
         "synaptic_delta_std",
-        "synaptic_gain_min",
-        "synaptic_gain_max",
+        "synaptic_relative_scale_min",
+        "synaptic_relative_scale_max",
     }
     assert stats["synaptic_delta_rms"] == pytest.approx(
         float(delta.square().mean().sqrt().item())
@@ -1093,7 +1100,9 @@ def test_spectral_monitoring_activation_and_init_identity(artifact_path):
         tags["spectral/baseline/max_singular_value"], abs=1e-5
     )
     assert tags["spectral/plasticity/delta_rms"] == pytest.approx(0.0, abs=1e-6)
-    assert tags["spectral/plasticity/gain_mean"] == pytest.approx(1.0, abs=1e-5)
+    assert tags["spectral/plasticity/relative_scale_mean"] == pytest.approx(
+        1.0, abs=1e-5
+    )
 
     # Analyzed values match forward effective_values / baseline buffer.
     from rl_games.algos_torch.connectome_spectral import spectral_metrics
@@ -1118,6 +1127,56 @@ def test_spectral_monitoring_activation_and_init_identity(artifact_path):
     # Baseline stays frozen at W0.
     assert moved["spectral/baseline/spectral_radius"] == pytest.approx(
         tags["spectral/baseline/spectral_radius"], abs=0
+    )
+
+
+def test_plasticity_monitoring_synaptic_and_intrinsic(artifact_path):
+    monitor = {"enabled": True, "interval": 10}
+    adapters = _build(
+        artifact_path,
+        adaptation={"weight_mode": "adapters_only", "learn_dynamics": False},
+        plasticity_monitoring=monitor,
+    )
+    low_rank = _build(
+        artifact_path,
+        adaptation={"weight_mode": "low_rank", "learn_dynamics": False, "rank": 2},
+        plasticity_monitoring=monitor,
+    )
+    intrinsic = _build(
+        artifact_path,
+        adaptation={"weight_mode": "adapters_only", "learn_dynamics": True},
+        plasticity_monitoring=monitor,
+    )
+    assert not adapters.should_run_plasticity_monitoring(10)
+    assert low_rank.should_run_plasticity_monitoring(1)
+    assert low_rank.should_run_plasticity_monitoring(10)
+    assert not low_rank.should_run_plasticity_monitoring(11)
+    assert intrinsic.should_run_plasticity_monitoring(10)
+
+    syn = low_rank.compute_plasticity_diagnostics()
+    assert syn
+    assert all(k.startswith("synaptic_plasticity/") for k in syn)
+    assert "intrinsic_plasticity/lambda/mean" not in syn
+    assert syn["synaptic_plasticity/delta_rms"] == pytest.approx(0.0, abs=1e-6)
+    assert syn["synaptic_plasticity/relative_scale_mean"] == pytest.approx(
+        1.0, abs=1e-5
+    )
+
+    with torch.no_grad():
+        low_rank.edge_v.normal_(std=0.5)
+        low_rank.edge_u.fill_(-3.0)
+    syn_moved = low_rank.compute_synaptic_plasticity_diagnostics()
+    assert syn_moved["synaptic_plasticity/delta_rms"] > 0
+    assert syn_moved["synaptic_plasticity/fraction_flipped"] >= 0.0
+
+    inn = intrinsic.compute_plasticity_diagnostics()
+    assert inn
+    assert all(k.startswith("intrinsic_plasticity/") for k in inn)
+    assert inn["intrinsic_plasticity/lambda/mean"] == pytest.approx(0.5, abs=1e-5)
+    assert inn["intrinsic_plasticity/a/mean"] == pytest.approx(1.0, abs=1e-5)
+    assert inn["intrinsic_plasticity/lambda_delta/rms"] == pytest.approx(0.0, abs=1e-6)
+    assert inn["intrinsic_plasticity/control_step_retention/mean"] == pytest.approx(
+        0.5, abs=1e-5
     )
 
 

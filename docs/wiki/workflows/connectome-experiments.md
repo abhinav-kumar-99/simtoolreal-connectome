@@ -2,11 +2,13 @@
 
 Experiments are owned by YAML contracts and proceed through data, profile, smoke, and full-training gates.
 
-Last updated: 2026-09-20
+Last updated: 2026-09-21
 
-Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md)
+Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md), [Adaptation](../concepts/connectome-adaptation.md)
 
 For source-derived skeleton geometry and recorded recurrent-state videos at four times the rollout FPS, see [Anatomical activation videos](anatomical-activity-videos.md). This optional YAML path supports saved-case replay and future ordinary/milestone evaluations.
+
+Default interpreter for focused unit tests and agent work is the `env_isaaclab` conda environment. Legacy Isaac Gym training and milestone watchers still require the repository `.venv` (Python 3.8 + Isaac Gym bindings). Older docs that cite only `.venv/bin/python` remain historically valid for prior runs.
 
 ## Recovery checkpoint contract
 
@@ -686,7 +688,20 @@ different run rather than mixing metrics.
 
 The one-third-bounds K=2 control is PID 610456 in tmux `connectome-k2-adaptive-third-bounds`, with watcher PID 610177 on GPU 0. The intrinsic-plasticity replacement is PID 1907621 in `connectome-k2-intrinsic-plasticity`, with watcher PID 1909557 in `connectome-k2-intrinsic-plasticity-eval` on GPU 1. Its first observed training report at epoch 17/frame 3,145,728 was finite (115,741 total FPS); this is launch health, not learning evidence. The watcher starts with no completed milestones and awaits the first 250M-frame inference checkpoint.
 
-The legacy Isaac Gym stack is Python 3.8. A local ignored virtual environment can reuse the installed `diffusion` conda environment while supplying the two missing mesh packages:
+### Historical K=4 noaux signed-relative LoRA plasticity (GPU 0 / GPU 1)
+
+On 2026-09-21 the prior exponential-gain low-rank jobs were stopped and archived (`*_20260921_pre_signed_relative`), then relaunched under signed relative LoRA \(W^{\mathrm{eff}}=W^0(1+\Delta)\) with `plasticity_monitoring` and `spectral_monitoring` enabled (Isaac Gym `.venv`):
+
+```bash
+.venv/bin/python -u scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_lowrank4_synaptic_plasticity_100b.yaml
+.venv/bin/python -u scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_lowrank4_synaptic_plasticity_100b.yaml
+```
+
+Matching milestone watchers use the sibling `configs/connectome/evaluation/..._milestones.yaml` files. Synaptic-only keeps `learn_dynamics: false` on GPU 0; intrinsic+synaptic uses `learn_dynamics: true` on GPU 1.
+
+The legacy Isaac Gym stack uses Python 3.8 via `.venv`. Focused connectome unit tests default to `env_isaaclab`. A local ignored virtual environment can still reuse the installed `diffusion` conda environment while supplying the two missing mesh packages:
 
 ```bash
 conda run --no-capture-output -n diffusion python -m venv --system-site-packages .venv
