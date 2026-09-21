@@ -268,7 +268,6 @@ def _training_overrides(
         artifact_target.get("hydra_directory", run_directory / "hydra")
     )
     experiment_name = str(artifact_target.get("experiment_name", run_name))
-    summaries_directory = train_directory / experiment_name / "summaries"
     if not train_directory.is_absolute():
         train_directory = REPOSITORY_ROOT / train_directory
     if not hydra_directory.is_absolute():
@@ -356,6 +355,7 @@ def _run_training_case(case: dict[str, Any]) -> dict[str, Any]:
     if not train_directory.is_absolute():
         train_directory = REPOSITORY_ROOT / train_directory
     experiment_name = str(artifact_target.get("experiment_name", run_name))
+    summaries_directory = train_directory / experiment_name / "summaries"
     training_log = Path(
         artifact_target.get("training_log", run_directory / "train.log")
     )
