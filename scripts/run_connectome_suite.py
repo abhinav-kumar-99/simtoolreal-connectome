@@ -21,9 +21,11 @@ from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-TENSORBOARD_6008_LOG_ROOT = Path(
-    "train_dir/connectome/adaptation_100b_gains_update_timing"
-)
+# Keep registrations outside every physical training-output tree.  TensorBoard
+# recursively scans its logdir; placing a symlink beside its own target makes
+# one event stream appear once by its stable name and again by its long
+# canonical path.
+TENSORBOARD_6008_LOG_ROOT = Path("train_dir/tensorboard_6008")
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
