@@ -10,7 +10,7 @@ watch_until_complete: true
 policies:
   - name: gaussian_lf_entropy1x_sigma3_all_neurons_noaux_intrinsic_plasticity
     seed: 42
-    gpu: 0
+    gpu: 1
     policy_config_path: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_plasticity_100b/00_ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_plasticity_100b_gaussian_lf_entropy1x_sigma3_all_neurons_noaux_intrinsic_plasticity_seed42/resolved_config.yaml
 evaluation:
   runtime_environment:
