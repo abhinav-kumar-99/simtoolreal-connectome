@@ -1,0 +1,57 @@
+# Checkpoint-threshold-only low-res anatomical videos for the K=2 third-bounds control.
+# Separate output directory so existing robot-only milestone videos are preserved.
+schema_version: 1
+training_suite_name: ppo_fly1952_k2_adaptive_lr_third_bounds_100b
+training_suite_directory: train_dir/connectome/cycle_ablation/ppo_fly1952_k2_adaptive_lr_third_bounds_100b
+output_directory: evals/connectome/ppo_fly1952_k2_adaptive_lr_third_bounds_100b_checkpoint_lowres
+max_frames: 100000000000
+milestone_interval_frames: 250000000
+poll_interval_seconds: 30
+watch_until_complete: true
+policies:
+  - name: fly1952_k2_adaptive_lr_third_bounds
+    seed: 42
+    # Match the training suite's physical GPU.
+    gpu: 0
+    policy_config_path: train_dir/connectome/cycle_ablation/ppo_fly1952_k2_adaptive_lr_third_bounds_100b/00_ppo_fly1952_k2_adaptive_lr_third_bounds_100b_fly1952_k2_adaptive_lr_third_bounds_seed42/resolved_config.yaml
+evaluation:
+  runtime_environment:
+    CC: /usr/bin/gcc
+    CXX: /usr/bin/g++
+    OMP_NUM_THREADS: '1'
+    MKL_NUM_THREADS: '1'
+  episodes_per_case: 1
+  action_selection: mean
+  downsample_factor: 1
+  z_offset: 0.03
+  max_steps: 601
+  table_urdf: urdf/table_narrow.urdf
+  metrics:
+    checkpoint_training_tolerance:
+      success_tolerance_source: checkpoint_tensorboard
+      success_tolerance_tag: scalars/success_tolerance/frame
+  videos:
+    metrics: [checkpoint_training_tolerance]
+    fps: 20
+    frame_interval: 3
+    camera_resolution_reduction_factor: 4
+    video_quality: 5
+    circuit:
+      enabled: true
+      fps_multiplier: 4
+      group_labels: true
+      leg_shadows: true
+      activity_bars: true
+      robot_crop: [0.30, 0.06, 0.70, 0.88]
+      robot_panel_fraction: 0.40
+      overview_panel_fraction: 0.65
+      resolution: [1280, 720]
+      geometry_cache: data/connectomes/geometry/malecns_v1
+      annotations_path: data/connectomes/raw/malecns_v1_audit/annotations.feather
+      projection: [x, z]
+      vnc_bounds_um: [240, 560, 400, 1100]
+      outputs: [circuit, combined]
+  eval_cases:
+    - {object_category: marker, object_name: sharpie_marker, task_name: write_c}
+    - {object_category: eraser, object_name: flat_eraser, task_name: wipe_smile}
+    - {object_category: spatula, object_name: flat_spatula, task_name: flip_over}

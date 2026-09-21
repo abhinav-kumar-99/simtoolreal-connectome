@@ -656,6 +656,15 @@ Run the separate milestone watchers with:
   --config configs/connectome/evaluation/ppo_fly1952_k2_adaptive_lr_third_bounds_intrinsic_plasticity_100b_milestones.yaml
 ```
 
+Low-res anatomical (checkpoint-tolerance only, 400 × 225 source / 1280 × 720 circuit) watchers that leave the robot-only dual-tolerance galleries untouched:
+
+```bash
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/ppo_fly1952_k2_adaptive_lr_third_bounds_100b_checkpoint_lowres.yaml
+.venv/bin/python scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/ppo_fly1952_k2_adaptive_lr_third_bounds_intrinsic_plasticity_100b_checkpoint_lowres.yaml
+```
+
 The intrinsic-plasticity suite is identical to the one-third-bounds K=2 adapters-only run except `adaptation.learn_dynamics: true`, which trains per-neuron leak, recurrent bias, and intrinsic gain \(a_i=\exp(\log a_i)\) (5,856 dynamics parameters) while keeping connectome edge weights and neuron gains frozen. A matched K=4 all-neuron Gaussian noaux intrinsic-plasticity suite also exists:
 
 ```bash

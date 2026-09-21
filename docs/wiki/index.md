@@ -28,7 +28,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 ## Workflows
 
-- [Anatomical activation videos](workflows/anatomical-activity-videos.md) — Actual compact-circuit skeletons, enlarged CNS overview, cropped HD robot footage, population labels/bars, 4× FPS and YAML usage. Last updated 2026-09-18.
+- [Anatomical activation videos](workflows/anatomical-activity-videos.md) — Actual compact-circuit skeletons, enlarged CNS overview, cropped HD robot footage, population labels/bars, 4× FPS, low-res K=2 third-bounds watchers, and YAML usage. Last updated 2026-09-20.
 
 - [Experiment workflow](workflows/connectome-experiments.md) — Current no-auxiliary fly continuations, intrinsic-plasticity K=2 suite, historical LSTM continuation, fixed-reservoir suites, milestone videos, LF entropy runs, and staged handoffs. Last updated 2026-09-20.
 - [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, early gain audit, and stopped-run status. Last updated 2026-09-14.
