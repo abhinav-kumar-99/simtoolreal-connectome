@@ -1,8 +1,8 @@
-# Match the all-neuron Gaussian noaux run while enabling intrinsic plasticity (a, lambda, b).
+# Historical all-neuron noaux contract with intrinsic and rank-4 synaptic plasticity.
 schema_version: 1
-name: ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_plasticity_100b
+name: ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_lowrank4_synaptic_plasticity_100b
 stages: [prepare, train]
-output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_plasticity_100b
+output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_lowrank4_synaptic_plasticity_100b
 runtime_environment:
   CC: /usr/bin/gcc
   CXX: /usr/bin/g++
@@ -14,13 +14,13 @@ preparation:
 training:
   task_profile: SimToolRealLSTMAsymmetric
   train_profiles:
-    - name: gaussian_lf_entropy1x_sigma3_all_neurons_noaux_intrinsic_plasticity
+    - name: gaussian_lf_entropy1x_sigma3_all_neurons_noaux_intrinsic_lowrank4_synaptic_plasticity
       train_profile: SimToolRealConnectome1952AdaptersMLPAllNeuronReadoutGaussianSigma3SAPG
       overrides:
-        train.params.network.connectome.adaptation.weight_mode: adapters_only
+        train.params.network.connectome.adaptation.weight_mode: low_rank
+        train.params.network.connectome.adaptation.rank: 4
         train.params.network.connectome.adaptation.learn_dynamics: true
   seeds: [42]
-  # Keep intrinsic and synaptic-plasticity trainers on separate physical GPUs.
   gpu_assignments: [1]
   max_parallel: 1
   num_envs: 12288
@@ -41,8 +41,8 @@ training:
     enabled: false
     project: simtoolreal-connectome
     entity: ''
-    group: gaussian-lf-entropy1x-sigma3-all-neuron-readout-noaux-intrinsic-plasticity
-    tags: [malecns, all-neuron-readout, no-actor-value-loss, mlp-adapters, clipped-gaussian, sigma-3, leader-follower, entropy-1x, intrinsic-plasticity]
+    group: gaussian-lf-entropy1x-sigma3-all-neuron-readout-noaux-intrinsic-lowrank4-synaptic-plasticity
+    tags: [malecns, all-neuron-readout, no-actor-value-loss, mlp-adapters, clipped-gaussian, sigma-3, leader-follower, entropy-1x, low-rank, rank-4, synaptic-plasticity, intrinsic-plasticity]
   overrides:
     train.params.config.kl_threshold: 0.004
     train.params.config.learning_rate: 0.0001
@@ -50,6 +50,7 @@ training:
     train.params.config.schedule_type: standard
     train.params.config.min_lr: 0.000001
     train.params.config.max_lr: 0.001
+    train.params.config.central_value_config.learning_rate: 0.0001
     train.params.config.use_others_experience: lf
     train.params.config.off_policy_ratio: 1.0
     ++train.params.config.use_experimental_cv: false

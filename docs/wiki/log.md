@@ -6,6 +6,12 @@ Last updated: 2026-09-20
 
 Related: [Index](index.md), [Overview](overview.md)
 
+## [2026-09-20] implement | Low-res anatomical watchers for K=2 third-bounds pair
+
+- Added checkpoint-tolerance low-res anatomical milestone configs for `fly1952_k2_adaptive_lr_third_bounds` (GPU 0) and `fly1952_k2_adaptive_lr_third_bounds_intrinsic_plasticity` (GPU 1 / seed42 run).
+- Capture is 400 × 225 with 1280 × 720 circuit/combined output into separate `_checkpoint_lowres` eval trees; robot-only dual-tolerance milestone watchers remain unchanged.
+- Provenance: asymmetric fly `_checkpoint_lowres` template; launched in tmux `connectome-k2-third-bounds-lowres-eval` and `connectome-k2-intrinsic-plasticity-lowres-eval`.
+
 ## [2026-09-20] implement | Spectral monitoring for synaptic plasticity
 
 - Added detached epoch-interval spectrum diagnostics of \(W^{\mathrm{eff}}\) (`effective_values` CSR) under TensorBoard `spectral/*`, active only for `low_rank`/`edgewise`.

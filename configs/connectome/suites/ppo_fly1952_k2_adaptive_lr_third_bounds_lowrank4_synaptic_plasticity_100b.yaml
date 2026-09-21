@@ -1,8 +1,8 @@
-# Match the all-neuron Gaussian noaux run while enabling intrinsic plasticity (a, lambda, b).
+# Fresh K=2 one-third-bounds run with rank-4 existing-edge synaptic plasticity.
 schema_version: 1
-name: ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_plasticity_100b
+name: ppo_fly1952_k2_adaptive_lr_third_bounds_lowrank4_synaptic_plasticity_100b
 stages: [prepare, train]
-output_directory: train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_plasticity_100b
+output_directory: train_dir/connectome/cycle_ablation/ppo_fly1952_k2_adaptive_lr_third_bounds_lowrank4_synaptic_plasticity_100b
 runtime_environment:
   CC: /usr/bin/gcc
   CXX: /usr/bin/g++
@@ -14,14 +14,15 @@ preparation:
 training:
   task_profile: SimToolRealLSTMAsymmetric
   train_profiles:
-    - name: gaussian_lf_entropy1x_sigma3_all_neurons_noaux_intrinsic_plasticity
-      train_profile: SimToolRealConnectome1952AdaptersMLPAllNeuronReadoutGaussianSigma3SAPG
+    - name: fly1952_k2_adaptive_lr_third_bounds_lowrank4_synaptic_plasticity
+      train_profile: SimToolRealConnectome1952AdaptersMLP128x32x32AllNeuronReadoutGaussianSigma3SAPG
       overrides:
-        train.params.network.connectome.adaptation.weight_mode: adapters_only
-        train.params.network.connectome.adaptation.learn_dynamics: true
+        ++train.params.network.connectome.dynamics.neural_updates: 2
+        train.params.network.connectome.adaptation.weight_mode: low_rank
+        train.params.network.connectome.adaptation.rank: 4
+        train.params.network.connectome.adaptation.learn_dynamics: false
   seeds: [42]
-  # Keep intrinsic and synaptic-plasticity trainers on separate physical GPUs.
-  gpu_assignments: [1]
+  gpu_assignments: [0]
   max_parallel: 1
   num_envs: 12288
   sapg_block_size: 2048
@@ -41,19 +42,19 @@ training:
     enabled: false
     project: simtoolreal-connectome
     entity: ''
-    group: gaussian-lf-entropy1x-sigma3-all-neuron-readout-noaux-intrinsic-plasticity
-    tags: [malecns, all-neuron-readout, no-actor-value-loss, mlp-adapters, clipped-gaussian, sigma-3, leader-follower, entropy-1x, intrinsic-plasticity]
+    group: fly1952-k2-adaptive-lr-third-bounds-lowrank4-synaptic-plasticity
+    tags: [fly-1952, k2, cycle-ablation, adaptive-lr, third-lr-bounds, low-rank, rank-4, synaptic-plasticity, frozen-intrinsic-dynamics, asymmetric-central-critic, no-actor-value-loss, mlp-128x32x32, clipped-gaussian, sigma-3, leader-follower, entropy-1x]
   overrides:
-    train.params.config.kl_threshold: 0.004
     train.params.config.learning_rate: 0.0001
     train.params.config.lr_schedule: adaptive
-    train.params.config.schedule_type: standard
-    train.params.config.min_lr: 0.000001
-    train.params.config.max_lr: 0.001
+    train.params.config.schedule_type: rollout
+    train.params.config.min_lr: 3.333333333333333e-7
+    train.params.config.max_lr: 0.0003333333333333333
+    train.params.config.central_value_config.learning_rate: 0.0001
+    train.params.config.kl_threshold: 0.004
     train.params.config.use_others_experience: lf
     train.params.config.off_policy_ratio: 1.0
     ++train.params.config.use_experimental_cv: false
-    ++train.params.network.connectome.dynamics.neural_updates: 4
     ++task.env.useSparseReward: false
     task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
     task.env.forceConsecutiveNearGoalSteps: true
@@ -66,6 +67,5 @@ training:
     task.env.torqueScale: 0.0
     task.env.linVelImpulseScale: 0.0
     task.env.angVelImpulseScale: 0.0
-    task.env.objectAngVelPenaltyScale: 0.0
     task.env.goodResetBoundary: 0
     train.params.config.good_reset_boundary: 0
