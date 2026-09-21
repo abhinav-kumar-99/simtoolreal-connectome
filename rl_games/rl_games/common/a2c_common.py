@@ -1543,6 +1543,29 @@ class ContinuousA2CBase(A2CBase):
                 continue
             self.writer.add_scalar(tag, float(value), frame)
 
+    def _maybe_log_plasticity_diagnostics(self, epoch_num, frame):
+        """Epoch-interval synaptic/intrinsic diagnostics; no effect on loss."""
+        if self.writer is None:
+            return
+        network = getattr(self.model, "a2c_network", None)
+        should_run = getattr(network, "should_run_plasticity_monitoring", None)
+        compute = getattr(network, "compute_plasticity_diagnostics", None)
+        if not callable(should_run) or not callable(compute):
+            return
+        if not should_run(epoch_num):
+            return
+        metrics = compute()
+        if not metrics:
+            return
+        for tag, value in metrics.items():
+            name = str(tag)
+            if not (
+                name.startswith("synaptic_plasticity/")
+                or name.startswith("intrinsic_plasticity/")
+            ):
+                continue
+            self.writer.add_scalar(name, float(value), frame)
+
     def init_tensors(self):
         A2CBase.init_tensors(self)
         self.update_list = ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']
@@ -1641,8 +1664,8 @@ class ContinuousA2CBase(A2CBase):
             'synaptic_delta_mean' : [],
             'synaptic_delta_rms' : [],
             'synaptic_delta_std' : [],
-            'synaptic_gain_min' : [],
-            'synaptic_gain_max' : [],
+            'synaptic_relative_scale_min' : [],
+            'synaptic_relative_scale_max' : [],
         }
 
         for mini_ep in range(0, self.mini_epochs_num):
@@ -1673,8 +1696,8 @@ class ContinuousA2CBase(A2CBase):
                     'synaptic_delta_mean',
                     'synaptic_delta_rms',
                     'synaptic_delta_std',
-                    'synaptic_gain_min',
-                    'synaptic_gain_max',
+                    'synaptic_relative_scale_min',
+                    'synaptic_relative_scale_max',
                 ):
                     if key in extras:
                         value = extras[key]
@@ -1986,17 +2009,18 @@ class ContinuousA2CBase(A2CBase):
                         frame,
                     )
                     self.writer.add_scalar(
-                        'adaptation/synaptic_gain_min',
-                        float(np.mean(extra_infos['synaptic_gain_min'])),
+                        'adaptation/synaptic_relative_scale_min',
+                        float(np.mean(extra_infos['synaptic_relative_scale_min'])),
                         frame,
                     )
                     self.writer.add_scalar(
-                        'adaptation/synaptic_gain_max',
-                        float(np.mean(extra_infos['synaptic_gain_max'])),
+                        'adaptation/synaptic_relative_scale_max',
+                        float(np.mean(extra_infos['synaptic_relative_scale_max'])),
                         frame,
                     )
 
                 self._maybe_log_spectral_diagnostics(epoch_num, frame)
+                self._maybe_log_plasticity_diagnostics(epoch_num, frame)
 
                 if self.has_soft_aug:
                     self.writer.add_scalar('losses/aug_loss', np.mean(aug_losses), frame)

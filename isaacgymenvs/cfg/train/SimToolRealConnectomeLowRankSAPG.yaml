@@ -12,5 +12,8 @@ params:
         enabled: true
         interval: 100
         top_k: 8
+      plasticity_monitoring:
+        enabled: true
+        interval: 100
   config:
     name: ${resolve_default:SimToolRealConnectomeLowRankSAPG,${....experiment}}

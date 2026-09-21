@@ -358,9 +358,6 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     "edge_scale_bounds must be finite positive bounds straddling one"
                 )
             self.edge_log_min, self.edge_log_max = map(math.log, bounds)
-            # Numerical overflow guard for exp(delta) in low_rank mode only.
-            # Not a plasticity constraint; far outside any expected training regime.
-            self.low_rank_delta_clamp = 20.0
             plasticity_reg = adaptation.get("synaptic_plasticity_reg", 0.0)
             if isinstance(plasticity_reg, bool) or not isinstance(
                 plasticity_reg, (int, float)
@@ -374,6 +371,8 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 raise ValueError(
                     "synaptic_plasticity_reg must be finite and non-negative"
                 )
+            # |1+Δ| below this counts as a numerical zero-crossing for diagnostics.
+            self.synaptic_zero_crossing_tol = 1.0e-3
             spectral = connectome.get("spectral_monitoring", {}) or {}
             if not isinstance(spectral, Mapping):
                 raise TypeError("spectral_monitoring must be a YAML mapping")
@@ -385,6 +384,17 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             if self.spectral_monitoring_top_k < 1:
                 raise ValueError("spectral_monitoring.top_k must be >= 1")
             self._spectral_baseline = None
+            plasticity_mon = connectome.get("plasticity_monitoring", {}) or {}
+            if not isinstance(plasticity_mon, Mapping):
+                raise TypeError("plasticity_monitoring must be a YAML mapping")
+            self.plasticity_monitoring_enabled = bool(
+                plasticity_mon.get("enabled", False)
+            )
+            self.plasticity_monitoring_interval = int(
+                plasticity_mon.get("interval", 100)
+            )
+            if self.plasticity_monitoring_interval < 1:
+                raise ValueError("plasticity_monitoring.interval must be >= 1")
             self.backend_options = connectome.get("backend_options", {})
             self._frozen_tanh_runner = None
             if connectome.get("dtype", "float32") != "float32":
@@ -891,6 +901,29 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self.log_intrinsic_gain = nn.Parameter(
                 torch.zeros(self.neuron_count, dtype=torch.float32)
             )
+            # Detached baselines for intrinsic-plasticity diagnostics (actual
+            # forward substep leak, not the control-interval leak when K>1).
+            with torch.no_grad():
+                if self.neural_updates == 1:
+                    lambda0 = torch.sigmoid(self.leak_raw.detach())
+                else:
+                    lambda0 = -torch.expm1(
+                        torch.nn.functional.logsigmoid(-self.leak_raw.detach())
+                        / self.neural_updates
+                    )
+            self.register_buffer(
+                "_intrinsic_lambda0_substep", lambda0.clone().detach()
+            )
+            self.register_buffer(
+                "_intrinsic_a0",
+                torch.ones(self.neuron_count, dtype=torch.float32),
+            )
+            self.register_buffer(
+                "_intrinsic_b0", self.recurrent_bias.detach().clone()
+            )
+            self._edge_source_nt_labels = self._load_edge_source_nt_labels(
+                artifact_path, body_ids
+            )
 
             if (
                 self.dynamics_activation == "lif"
@@ -1037,6 +1070,16 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 return False
             return epoch == 1 or epoch % self.spectral_monitoring_interval == 0
 
+        def should_run_plasticity_monitoring(self, epoch_num: int) -> bool:
+            if not self.plasticity_monitoring_enabled:
+                return False
+            if self.weight_mode != "low_rank" and not self.learn_dynamics:
+                return False
+            epoch = int(epoch_num)
+            if epoch < 1:
+                return False
+            return epoch == 1 or epoch % self.plasticity_monitoring_interval == 0
+
         def backend_graph(self):
             if self._backend_graph is None:
                 from rl_games.algos_torch.connectome_ops import Graph
@@ -1044,10 +1087,49 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 self._backend_graph = Graph(self.crow_indices, self.col_indices)
             return self._backend_graph
 
+        @staticmethod
+        def _load_edge_source_nt_labels(artifact_path: Path, body_ids: np.ndarray):
+            """Per-neuron consensus_nt from sibling neurons.csv, if present."""
+            import csv
+
+            csv_path = artifact_path.parent / "neurons.csv"
+            if not csv_path.is_file():
+                return None
+            by_body = {}
+            with csv_path.open(newline="") as handle:
+                reader = csv.DictReader(handle)
+                if reader.fieldnames is None:
+                    return None
+                body_key = (
+                    "bodyId"
+                    if "bodyId" in reader.fieldnames
+                    else ("body_id" if "body_id" in reader.fieldnames else None)
+                )
+                nt_key = (
+                    "consensus_nt"
+                    if "consensus_nt" in reader.fieldnames
+                    else (
+                        "consensusNt" if "consensusNt" in reader.fieldnames else None
+                    )
+                )
+                if body_key is None or nt_key is None:
+                    return None
+                for row in reader:
+                    try:
+                        body = int(float(row[body_key]))
+                    except (TypeError, ValueError):
+                        continue
+                    label = str(row.get(nt_key, "") or "").strip().lower()
+                    if not label:
+                        label = "missing"
+                    by_body[body] = label
+            return [by_body.get(int(body), "missing") for body in body_ids.tolist()]
+
         def low_rank_delta(self) -> torch.Tensor:
-            """Log fold-change scores on existing anatomical edges only.
+            """Relative synaptic change scores on existing anatomical edges only.
 
             For edge j -> i: Delta_ij = (U_i · V_j) / sqrt(r).
+            Effective weights use W_eff = W0 * (1 + Delta).
             """
             graph = self.backend_graph()
             score = (self.edge_u[graph.rows] * self.edge_v[self.col_indices]).sum(-1)
@@ -1055,12 +1137,10 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
 
         def effective_values(self):
             if self.weight_mode == "low_rank":
-                # Direct log-fold gains: W_eff = W0 * exp(Delta). No sigmoid
-                # or edge_scale_bounds. Clamp is overflow protection only.
-                delta = self.low_rank_delta().clamp(
-                    -self.low_rank_delta_clamp, self.low_rank_delta_clamp
-                )
-                return self.recurrent_values * delta.exp()
+                # Signed relative LoRA on existing edges:
+                # W_eff = W0 * (1 + Delta). Unconstrained Delta may weaken
+                # through zero and change sign. No new edges.
+                return self.recurrent_values * (1.0 + self.low_rank_delta())
             if self.weight_mode == "edgewise":
                 score = self.edge_raw
                 # Shift the logistic so zero scores are exactly the identity even
@@ -1073,36 +1153,30 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             return self.recurrent_values
 
         def synaptic_plasticity_penalty(self):
-            """Mean-square log-gain penalty and update-level plasticity stats.
+            """Mean-square relative-change penalty and update-level plasticity stats.
 
             Returns (mean(delta^2), stats_dict) for low_rank mode; otherwise
             (None, {}). The caller multiplies mean(delta^2) by
-            synaptic_plasticity_reg when forming the PPO/SAPG loss.
+            synaptic_plasticity_reg when forming the PPO/SAPG loss. Here delta is
+            the relative synaptic change (W_eff/W0 - 1), not a log-fold gain.
             """
             if self.weight_mode != "low_rank":
                 return None, {}
             delta = self.low_rank_delta()
             mean_sq = delta.square().mean()
             with torch.no_grad():
-                # Clamp only for gain stats (overflow guard); mean_sq uses raw delta.
-                gain = delta.clamp(
-                    -self.low_rank_delta_clamp, self.low_rank_delta_clamp
-                ).exp()
+                scale = 1.0 + delta
                 stats = {
                     "synaptic_delta_mean": float(delta.mean().item()),
                     "synaptic_delta_rms": float(delta.square().mean().sqrt().item()),
                     "synaptic_delta_std": float(delta.std(unbiased=False).item()),
-                    "synaptic_gain_min": float(gain.min().item()),
-                    "synaptic_gain_max": float(gain.max().item()),
+                    "synaptic_relative_scale_min": float(scale.min().item()),
+                    "synaptic_relative_scale_max": float(scale.max().item()),
                 }
             return mean_sq, stats
 
         def _edge_log_gains(self) -> torch.Tensor:
-            """Per-edge log gains for plasticity diagnostics (existing edges only)."""
-            if self.weight_mode == "low_rank":
-                return self.low_rank_delta().clamp(
-                    -self.low_rank_delta_clamp, self.low_rank_delta_clamp
-                )
+            """Per-edge log gains for edgewise plasticity diagnostics."""
             if self.weight_mode == "edgewise":
                 span = self.edge_log_max - self.edge_log_min
                 fraction = -self.edge_log_min / span
@@ -1165,8 +1239,13 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             tags["spectral/change/spectral_radius_ratio"] = float(rho_ratio)
             tags["spectral/change/max_singular_value_ratio"] = float(sigma_ratio)
 
-            delta = self._edge_log_gains().detach()
-            gain = delta.exp()
+            if self.weight_mode == "low_rank":
+                delta = self.low_rank_delta().detach()
+                scale = 1.0 + delta
+            else:
+                log_gain = self._edge_log_gains().detach()
+                delta = log_gain
+                scale = log_gain.exp()
             tags["spectral/plasticity/delta_mean"] = float(delta.mean().item())
             tags["spectral/plasticity/delta_std"] = float(
                 delta.std(unbiased=False).item()
@@ -1174,12 +1253,204 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             tags["spectral/plasticity/delta_rms"] = float(
                 delta.square().mean().sqrt().item()
             )
-            tags["spectral/plasticity/gain_mean"] = float(gain.mean().item())
-            tags["spectral/plasticity/gain_std"] = float(
-                gain.std(unbiased=False).item()
+            tags["spectral/plasticity/relative_scale_mean"] = float(scale.mean().item())
+            tags["spectral/plasticity/relative_scale_std"] = float(
+                scale.std(unbiased=False).item()
             )
-            tags["spectral/plasticity/gain_min"] = float(gain.min().item())
-            tags["spectral/plasticity/gain_max"] = float(gain.max().item())
+            tags["spectral/plasticity/relative_scale_min"] = float(scale.min().item())
+            tags["spectral/plasticity/relative_scale_max"] = float(scale.max().item())
+            return tags
+
+        @torch.no_grad()
+        def compute_synaptic_plasticity_diagnostics(self) -> dict:
+            """Detached TensorBoard tags under synaptic_plasticity/ (low_rank only)."""
+            if self.weight_mode != "low_rank":
+                return {}
+            delta = self.low_rank_delta().detach()
+            scale = 1.0 + delta
+            base = self.recurrent_values.detach()
+            effective = base * scale
+            tol = float(self.synaptic_zero_crossing_tol)
+            sign_base = torch.sign(base)
+            sign_eff = torch.sign(effective)
+            comparable = (sign_base != 0) & (sign_eff != 0)
+            flips = comparable & (sign_base != sign_eff)
+
+            tags = {
+                "synaptic_plasticity/delta_mean": float(delta.mean().item()),
+                "synaptic_plasticity/delta_std": float(
+                    delta.std(unbiased=False).item()
+                ),
+                "synaptic_plasticity/delta_rms": float(
+                    delta.square().mean().sqrt().item()
+                ),
+                "synaptic_plasticity/delta_min": float(delta.min().item()),
+                "synaptic_plasticity/delta_max": float(delta.max().item()),
+                "synaptic_plasticity/relative_scale_mean": float(scale.mean().item()),
+                "synaptic_plasticity/relative_scale_std": float(
+                    scale.std(unbiased=False).item()
+                ),
+                "synaptic_plasticity/relative_scale_min": float(scale.min().item()),
+                "synaptic_plasticity/relative_scale_max": float(scale.max().item()),
+                "synaptic_plasticity/sign_flip_fraction": float(
+                    flips.float().mean().item()
+                ),
+                "synaptic_plasticity/zero_crossing_fraction": float(
+                    (scale.abs() < tol).float().mean().item()
+                ),
+                "synaptic_plasticity/fraction_strengthened": float(
+                    (scale > 1.0).float().mean().item()
+                ),
+                "synaptic_plasticity/fraction_weakened": float(
+                    ((scale > 0.0) & (scale < 1.0)).float().mean().item()
+                ),
+                "synaptic_plasticity/fraction_flipped": float(
+                    (scale < 0.0).float().mean().item()
+                ),
+            }
+
+            neuron_labels = self._edge_source_nt_labels
+            if neuron_labels is not None:
+                sources = self.col_indices.detach().cpu().numpy()
+                flip_np = flips.detach().cpu().numpy()
+                present = sorted({neuron_labels[int(s)] for s in sources.tolist()})
+                for label in present:
+                    mask = np.fromiter(
+                        (neuron_labels[int(s)] == label for s in sources.tolist()),
+                        dtype=bool,
+                        count=len(sources),
+                    )
+                    if not mask.any():
+                        continue
+                    safe = label.replace("/", "_").replace(" ", "_")
+                    tags[
+                        f"synaptic_plasticity/sign_flip_fraction_by_nt/{safe}"
+                    ] = float(flip_np[mask].mean())
+            return tags
+
+        @torch.no_grad()
+        def compute_intrinsic_plasticity_diagnostics(self) -> dict:
+            """Detached TensorBoard tags under intrinsic_plasticity/.
+
+            Uses substep leaks (actual forward dynamics). Control-step retention
+            is (1-λ_sub)^K — K is applied only there, not twice.
+            """
+            if not self.learn_dynamics:
+                return {}
+            lam = self.substep_leaks().detach()
+            a = self.intrinsic_gains().detach()
+            b = self.recurrent_bias.detach()
+            lam0 = self._intrinsic_lambda0_substep
+            a0 = self._intrinsic_a0
+            b0 = self._intrinsic_b0
+            dlam = lam - lam0
+            retention = 1.0 - lam
+            eps = 1.0e-6
+            r_safe = retention.clamp(min=eps, max=1.0 - eps)
+            timescale = -1.0 / torch.log(r_safe)
+            k = int(self.neural_updates)
+            control_retention = retention.clamp(min=0.0, max=1.0).pow(k)
+            proxy = lam * a
+
+            def _mean(t: torch.Tensor) -> float:
+                return float(t.mean().item())
+
+            def _std(t: torch.Tensor) -> float:
+                return float(t.std(unbiased=False).item())
+
+            def _q(t: torch.Tensor, q: float) -> float:
+                return float(torch.quantile(t.float(), q).item())
+
+            return {
+                "intrinsic_plasticity/lambda/mean": _mean(lam),
+                "intrinsic_plasticity/lambda/std": _std(lam),
+                "intrinsic_plasticity/lambda/min": float(lam.min().item()),
+                "intrinsic_plasticity/lambda/max": float(lam.max().item()),
+                "intrinsic_plasticity/lambda/p01": _q(lam, 0.01),
+                "intrinsic_plasticity/lambda/p05": _q(lam, 0.05),
+                "intrinsic_plasticity/lambda/p50": _q(lam, 0.50),
+                "intrinsic_plasticity/lambda/p95": _q(lam, 0.95),
+                "intrinsic_plasticity/lambda/p99": _q(lam, 0.99),
+                "intrinsic_plasticity/lambda_delta/mean": _mean(dlam),
+                "intrinsic_plasticity/lambda_delta/std": _std(dlam),
+                "intrinsic_plasticity/lambda_delta/rms": float(
+                    dlam.square().mean().sqrt().item()
+                ),
+                "intrinsic_plasticity/lambda_delta/max_abs": float(
+                    dlam.abs().max().item()
+                ),
+                "intrinsic_plasticity/lambda/fraction_lt_0_05": float(
+                    (lam < 0.05).float().mean().item()
+                ),
+                "intrinsic_plasticity/lambda/fraction_gt_0_95": float(
+                    (lam > 0.95).float().mean().item()
+                ),
+                "intrinsic_plasticity/retention/mean": _mean(retention),
+                "intrinsic_plasticity/retention/std": _std(retention),
+                "intrinsic_plasticity/retention/min": float(retention.min().item()),
+                "intrinsic_plasticity/retention/max": float(retention.max().item()),
+                "intrinsic_plasticity/retention/p05": _q(retention, 0.05),
+                "intrinsic_plasticity/retention/p50": _q(retention, 0.50),
+                "intrinsic_plasticity/retention/p95": _q(retention, 0.95),
+                "intrinsic_plasticity/timescale_steps/mean": _mean(timescale),
+                "intrinsic_plasticity/timescale_steps/median": _q(timescale, 0.50),
+                "intrinsic_plasticity/timescale_steps/p05": _q(timescale, 0.05),
+                "intrinsic_plasticity/timescale_steps/p95": _q(timescale, 0.95),
+                "intrinsic_plasticity/timescale_steps/max": float(
+                    timescale.max().item()
+                ),
+                "intrinsic_plasticity/control_step_retention/mean": _mean(
+                    control_retention
+                ),
+                "intrinsic_plasticity/control_step_retention/p05": _q(
+                    control_retention, 0.05
+                ),
+                "intrinsic_plasticity/control_step_retention/p50": _q(
+                    control_retention, 0.50
+                ),
+                "intrinsic_plasticity/control_step_retention/p95": _q(
+                    control_retention, 0.95
+                ),
+                "intrinsic_plasticity/a/mean": _mean(a),
+                "intrinsic_plasticity/a/std": _std(a),
+                "intrinsic_plasticity/a/min": float(a.min().item()),
+                "intrinsic_plasticity/a/max": float(a.max().item()),
+                "intrinsic_plasticity/a/p05": _q(a, 0.05),
+                "intrinsic_plasticity/a/p50": _q(a, 0.50),
+                "intrinsic_plasticity/a/p95": _q(a, 0.95),
+                "intrinsic_plasticity/a_delta/rms": float(
+                    (a - a0).square().mean().sqrt().item()
+                ),
+                "intrinsic_plasticity/a_delta/max_abs": float(
+                    (a - a0).abs().max().item()
+                ),
+                "intrinsic_plasticity/b/mean": _mean(b),
+                "intrinsic_plasticity/b/std": _std(b),
+                "intrinsic_plasticity/b/min": float(b.min().item()),
+                "intrinsic_plasticity/b/max": float(b.max().item()),
+                "intrinsic_plasticity/b_delta/rms": float(
+                    (b - b0).square().mean().sqrt().item()
+                ),
+                "intrinsic_plasticity/b_delta/max_abs": float(
+                    (b - b0).abs().max().item()
+                ),
+                # Proxy only: roughly proportional to λ*a before tanh' and W.
+                # Not a full Jacobian or stability criterion.
+                "intrinsic_plasticity/recurrent_sensitivity_proxy/mean": _mean(proxy),
+                "intrinsic_plasticity/recurrent_sensitivity_proxy/p95": _q(proxy, 0.95),
+                "intrinsic_plasticity/recurrent_sensitivity_proxy/max": float(
+                    proxy.max().item()
+                ),
+            }
+
+        @torch.no_grad()
+        def compute_plasticity_diagnostics(self) -> dict:
+            """Combined synaptic + intrinsic diagnostic tags for TensorBoard."""
+            tags = {}
+            if self.weight_mode == "low_rank":
+                tags.update(self.compute_synaptic_plasticity_diagnostics())
+            if self.learn_dynamics:
+                tags.update(self.compute_intrinsic_plasticity_diagnostics())
             return tags
 
         def _load_from_state_dict(

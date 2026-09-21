@@ -20,6 +20,8 @@ training:
         train.params.network.connectome.adaptation.weight_mode: low_rank
         train.params.network.connectome.adaptation.rank: 4
         train.params.network.connectome.adaptation.learn_dynamics: false
+        train.params.network.connectome.spectral_monitoring.enabled: true
+        train.params.network.connectome.plasticity_monitoring.enabled: true
   seeds: [42]
   gpu_assignments: [0]
   max_parallel: 1

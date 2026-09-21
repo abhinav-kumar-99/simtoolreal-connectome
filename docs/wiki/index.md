@@ -2,7 +2,7 @@
 
 Durable project knowledge for the MaleCNS-constrained SimToolReal actor.
 
-Last updated: 2026-09-20
+Last updated: 2026-09-21
 
 Related: [Overview](overview.md), [Log](log.md)
 
@@ -23,7 +23,7 @@ Related: [Overview](overview.md), [Log](log.md)
 
 - [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics with intrinsic gain, independently sized interface MLPs, structured sensory routing and 6D orientation, exact central-critic inputs, connectome-versus-LSTM auxiliary value gradients, propagation delay and saturation boundaries. Last updated 2026-09-20.
 - [Fixed-input reservoir controller](concepts/fixed-reservoir-controller.md) — Parameter-free robot-to-MaleCNS population coding, cached motor features, no-BPTT PPO boundary, optional hard-spiking LIF dynamics, exact channel map and smoke evidence. Last updated 2026-09-19.
-- [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, low-rank log-fold gains, synaptic regularizer, spectral monitoring, learn_dynamics, and GPU backends. Last updated 2026-09-20.
+- [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, signed relative low-rank LoRA, synaptic regularizer, spectral and plasticity monitoring, learn_dynamics, and GPU backends. Last updated 2026-09-21.
 - [Training and evaluation success metrics](concepts/success-metrics.md) — TensorBoard populations, tolerance scaling, policy-ID mismatch, milestone Task Progress, and dual fixed/checkpoint-tolerance videos. Last updated 2026-09-18.
 
 ## Workflows
