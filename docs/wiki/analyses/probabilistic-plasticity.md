@@ -78,17 +78,17 @@ Spectral monitoring and preconditioning use the expected current candidate opera
 
 Source: `configs/connectome/profiling/probabilistic_plasticity.yaml`, output `profiles/connectome/probabilistic_plasticity.json`. The matched RTX 4090 run used rank 4, 33,720 candidate nonedges, Triton, and synthetic PPO loss. Both physical GPUs were already occupied by long-running jobs, so these numbers are contention-sensitive engineering measurements rather than publication-quality isolated benchmarks.
 
-- Signed LoRA, 33,720 edges: 384-lane forward 1.058 ms; 64x16 forward+backward 19.348 ms; PPO-step throughput 42,688 observations/s; peak 88.4 MiB.
-- Probabilistic, group size 1, 67,440 support edges: forward 3.350 ms; forward+backward 23.993 ms; PPO-step throughput 38,356 observations/s; peak 127.6 MiB.
-- Probabilistic, group size 32, 67,440 support edges: forward 3.942 ms; forward+backward 28.295 ms; PPO-step throughput 37,086 observations/s; peak 127.6 MiB.
+- Signed LoRA, 33,720 edges: 384-lane forward 2.099 ms; 64x16 forward+backward 21.739 ms; PPO-step throughput 35,947 observations/s; peak 87.4 MiB.
+- Probabilistic, group size 1, 67,440 support edges: forward 12.900 ms; forward+backward 31.594 ms; PPO-step throughput 33,434 observations/s; peak 126.6 MiB.
+- Probabilistic, group size 32, 67,440 support edges: forward 2.451 ms; forward+backward 34.535 ms; PPO-step throughput 29,775 observations/s; peak 126.6 MiB.
 
-Relative to signed LoRA, independent sampled topology measured about 3.17x forward latency, 1.24x forward+backward latency, 10.1% lower PPO throughput, and 39.2 MiB higher measured peak memory. Grouping 32 did not improve this implementation because sharing changes seed assignment but does not remove per-lane hidden-state work or hash operations. The default therefore remains fully independent group size 1.
+Relative to signed LoRA, independent sampled topology measured about 6.15x forward latency, 1.45x forward+backward latency, 7.0% lower PPO throughput, and 39.2 MiB higher measured peak memory. Group 32 produced a much lower isolated forward median under the contended run but worse forward+backward and 10.9% lower PPO throughput than group 1. Sharing changes seed assignment but does not remove per-lane hidden-state work. The default therefore remains fully independent group size 1.
 
-The support doubled from 33,720 to 67,440 edges, matching the expected main cost driver. No sampled mask storage appears in model state or peak-memory accounting. Warm candidate refreshes were approximately 6.6-23.8 ms in these cases; the first probabilistic refresh included cold allocator/kernel effects and took 191.5 ms.
+The support doubled from 33,720 to 67,440 edges, matching the expected main cost driver. No sampled mask storage appears in model state or peak-memory accounting. Warm candidate refreshes were approximately 7.1-28.5 ms in these cases; the first probabilistic refresh included cold allocator/kernel effects and took 107.2 ms.
 
 ## Verification
 
-- New focused suite: 14 tests passed, including CPU math/cache/checkpoint/PPO paths, exact diagnostics and inference-mode guards, two-rank Gloo support/dual/SVD equality, and CUDA forward/backward parity with the dense straight-through reference.
+- New focused suite: 16 tests passed, including CPU math/cache/checkpoint/PPO/LF paths, keyed pair-sampling and collision-safe ID checks, exact diagnostics and inference-mode guards, two-rank Gloo support/dual/SVD equality, and CUDA forward/backward parity with the dense straight-through reference.
 - Legacy connectome CPU regression: 60 passed, 9 skipped.
 - Legacy Triton regression: 12 passed.
 - PPO accumulation and configuration suite: 40 tests passed; one unrelated pre-existing evaluation-contract assertion expects three cases while the YAML currently contains five.
