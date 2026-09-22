@@ -97,6 +97,7 @@ def _build(
     interface_projections=None,
     spectral_monitoring=None,
     plasticity_monitoring=None,
+    spectral_preconditioning=None,
 ):
     builder = ConnectomeBuilder()
     params = _network_params(
@@ -112,6 +113,8 @@ def _build(
         params["connectome"]["spectral_monitoring"] = spectral_monitoring
     if plasticity_monitoring is not None:
         params["connectome"]["plasticity_monitoring"] = plasticity_monitoring
+    if spectral_preconditioning is not None:
+        params["connectome"]["spectral_preconditioning"] = spectral_preconditioning
     builder.load(params)
     return builder.build(
         "connectome",
@@ -1644,3 +1647,181 @@ def test_deployment_rl_player_loads_connectome_checkpoint(
     config_path.write_text(yaml.safe_dump({'train': {'params': params}}))
     with pytest.raises(ValueError, match='differs from training'):
         RlPlayer(5, 2, str(config_path), str(checkpoint_path), 'cpu')
+
+
+def _low_rank_precond(artifact_path, **precond):
+    config = {
+        "enabled": True,
+        "alpha": -0.5,
+        "singular_value_floor_ratio": 1.0e-3,
+        "refresh_every_ppo_updates": 1,
+    }
+    config.update(precond)
+    return _build(
+        artifact_path,
+        adaptation={
+            "weight_mode": "low_rank",
+            "learn_dynamics": False,
+            "rank": 4,
+            "synaptic_plasticity_reg": 1.0e-4,
+        },
+        spectral_preconditioning=config,
+    )
+
+
+def test_spectral_multipliers_floor_and_mean_one():
+    from rl_games.algos_torch.connectome_spectral_preconditioning import (
+        apply_spectral_preconditioner,
+        spectral_multipliers,
+    )
+
+    sigma = torch.tensor([10.0, 1.0, 1.0e-8, 0.0])
+    multipliers, stats = spectral_multipliers(sigma, alpha=-1.0, floor_ratio=1.0e-3)
+    assert stats["sigma_floor"] == pytest.approx(0.01)
+    assert stats["sigma_max"] == pytest.approx(10.0)
+    assert stats["sigma_min"] == pytest.approx(0.0)
+    assert multipliers.mean().item() == pytest.approx(1.0)
+    floored = torch.tensor([10.0, 1.0, 0.01, 0.01], dtype=torch.float64)
+    expected = floored.pow(-1.0)
+    expected = expected / expected.mean()
+    torch.testing.assert_close(multipliers, expected)
+
+    basis, _r = torch.linalg.qr(torch.randn(5, 5))
+    weights = torch.tensor([0.5, 1.0, 1.5, 2.0, 0.25])
+    weights = weights / weights.mean()
+    grad = torch.randn(5, 2)
+    got = apply_spectral_preconditioner(grad, basis, weights)
+    expected_grad = basis @ torch.diag(weights) @ basis.T @ grad
+    torch.testing.assert_close(got, expected_grad, atol=1e-5, rtol=1e-5)
+
+
+def test_spectral_preconditioning_identity_when_disabled_or_alpha_zero(artifact_path):
+    raw_u = torch.randn(7, 4)
+    raw_v = torch.randn(7, 4)
+    for precond in (
+        {"enabled": False, "alpha": -0.5},
+        {"enabled": True, "alpha": 0.0},
+    ):
+        model = _low_rank_precond(artifact_path, **precond)
+        assert not model.spectral_preconditioning_active
+        model.edge_u.grad = raw_u.clone()
+        model.edge_v.grad = raw_v.clone()
+        model.precondition_lora_gradients()
+        torch.testing.assert_close(model.edge_u.grad, raw_u)
+        torch.testing.assert_close(model.edge_v.grad, raw_v)
+        assert model._spectral_precond is None
+        assert model.drain_spectral_preconditioning_metrics() == {}
+
+
+def test_spectral_preconditioning_uses_full_weff_svd_and_lora_grads_only(artifact_path):
+    from rl_games.algos_torch.connectome_spectral_preconditioning import (
+        dense_recurrent_from_csr,
+    )
+
+    model = _low_rank_precond(artifact_path, alpha=-0.5)
+    with torch.no_grad():
+        model.edge_u.normal_(std=0.8)
+        model.edge_v.normal_(std=0.8)
+    delta = model.low_rank_delta()
+    torch.testing.assert_close(
+        model.effective_values(), model.recurrent_values * (1.0 + delta)
+    )
+    mean_sq, _stats = model.synaptic_plasticity_penalty()
+    torch.testing.assert_close(mean_sq, delta.square().mean())
+
+    model.refresh_spectral_preconditioner()
+    cache = model._spectral_precond
+    assert cache["multipliers"].numel() == model.neuron_count
+    assert cache["P"].shape == (model.neuron_count, model.neuron_count)
+    assert cache["Q"].shape == (model.neuron_count, model.neuron_count)
+    assert cache["multiplier_mean"] == pytest.approx(1.0, abs=1e-5)
+    weff = dense_recurrent_from_csr(
+        model.crow_indices,
+        model.col_indices,
+        model.effective_values().detach(),
+        model.neuron_count,
+    )
+    baseline = dense_recurrent_from_csr(
+        model.crow_indices,
+        model.col_indices,
+        model.recurrent_values.detach(),
+        model.neuron_count,
+    )
+    singular = cache["singular_values"].to(dtype=torch.float64)
+    recon = (
+        cache["P"].to(dtype=torch.float64)
+        @ torch.diag(singular)
+        @ cache["Q"].to(dtype=torch.float64).T
+    )
+    torch.testing.assert_close(recon, weff.to(dtype=torch.float64), atol=1e-4, rtol=1e-4)
+    assert not torch.allclose(weff, baseline, atol=1e-5)
+
+    rank = model.adaptation_rank
+    raw_u = cache["P"][:, :rank].contiguous()
+    raw_v = cache["Q"][:, :rank].contiguous()
+    other = torch.randn_like(model.sensory_adapter.weight)
+    model.edge_u.grad = raw_u.clone()
+    model.edge_v.grad = raw_v.clone()
+    model.sensory_adapter.weight.grad = other.clone()
+    model.log_intrinsic_gain.grad = torch.ones_like(model.log_intrinsic_gain)
+    intrinsic_before = model.log_intrinsic_gain.grad.clone()
+    model.precondition_lora_gradients()
+    torch.testing.assert_close(model.sensory_adapter.weight.grad, other)
+    torch.testing.assert_close(model.log_intrinsic_gain.grad, intrinsic_before)
+    scales = cache["multipliers"][:rank].to(dtype=raw_u.dtype)
+    torch.testing.assert_close(model.edge_u.grad, raw_u * scales, atol=1e-4, rtol=1e-4)
+    torch.testing.assert_close(model.edge_v.grad, raw_v * scales, atol=1e-4, rtol=1e-4)
+    assert cache["multiplier_max"] != pytest.approx(cache["multiplier_min"])
+
+    tags = model.drain_spectral_preconditioning_metrics()
+    assert tags["spectral_preconditioning/alpha"] == pytest.approx(-0.5)
+    assert "spectral_preconditioning/u_gradient_cosine" in tags
+    assert "spectral_preconditioning/v_gradient_norm_ratio" in tags
+    for name in (
+        "sigma_max",
+        "sigma_min",
+        "sigma_floor",
+        "multiplier_min",
+        "multiplier_max",
+        "multiplier_mean",
+        "multiplier_std",
+    ):
+        assert f"spectral_preconditioning/{name}" in tags
+
+
+def test_spectral_preconditioning_keeps_adam_state_on_uv(artifact_path):
+    model = _low_rank_precond(artifact_path, alpha=-0.25)
+    u_ptr = model.edge_u.data_ptr()
+    v_ptr = model.edge_v.data_ptr()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-3)
+    model.edge_u.grad = torch.randn_like(model.edge_u)
+    model.edge_v.grad = torch.randn_like(model.edge_v)
+    model.precondition_lora_gradients()
+    optimizer.step()
+    exp_avg_u = optimizer.state[model.edge_u]["exp_avg"].clone()
+    exp_avg_v = optimizer.state[model.edge_v]["exp_avg"].clone()
+    step = optimizer.state[model.edge_u]["step"].clone()
+    model.refresh_spectral_preconditioner()
+    assert model.edge_u.data_ptr() == u_ptr
+    assert model.edge_v.data_ptr() == v_ptr
+    params = optimizer.param_groups[0]["params"]
+    assert any(param is model.edge_u for param in params)
+    assert any(param is model.edge_v for param in params)
+    torch.testing.assert_close(optimizer.state[model.edge_u]["exp_avg"], exp_avg_u)
+    torch.testing.assert_close(optimizer.state[model.edge_v]["exp_avg"], exp_avg_v)
+    assert int(optimizer.state[model.edge_u]["step"]) == int(step)
+    assert int(optimizer.state[model.edge_v]["step"]) == int(step)
+
+
+def test_spectral_preconditioning_refresh_cadence(artifact_path):
+    model = _low_rank_precond(artifact_path, alpha=-0.5, refresh_every_ppo_updates=2)
+    model.begin_spectral_preconditioning_update()
+    first = model._spectral_precond
+    assert first is not None
+    with torch.no_grad():
+        model.edge_v.add_(0.5)
+    model.finish_spectral_preconditioning_update(1)
+    assert model._spectral_precond is first
+    model.finish_spectral_preconditioning_update(2)
+    assert model._spectral_precond is not first
+    assert model._spectral_precond_for_log is first

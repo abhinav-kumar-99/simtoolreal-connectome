@@ -1,3 +1,4 @@
+import hashlib
 import os
 import numpy as np
 import torch
@@ -138,7 +139,30 @@ def safe_save(state, filename):
 def safe_load(filename):
     return safe_filesystem_op(torch.load, filename, weights_only=False, map_location='cpu')
 
+def fit_checkpoint_path(filename):
+    """Keep the checkpoint basename within the 255-byte directory entry limit."""
+    directory, stem = os.path.split(filename)
+    basename = stem + '.pth'
+    if len(basename.encode('utf-8')) <= 255:
+        return filename
+    digest = hashlib.sha1(basename.encode('utf-8')).hexdigest()[:10]
+    suffix = '_' + digest
+    keep = 255 - len((suffix + '.pth').encode('utf-8'))
+    shortened = stem.encode('utf-8')[:keep].decode('utf-8', errors='ignore').rstrip('._')
+    shortened_stem = shortened + suffix
+    print(
+        "=> checkpoint basename is {} bytes; writing '{}.pth'".format(
+            len(basename.encode('utf-8')),
+            shortened_stem,
+        )
+    )
+    if directory:
+        return os.path.join(directory, shortened_stem)
+    return shortened_stem
+
+
 def save_checkpoint(filename, state):
+    filename = fit_checkpoint_path(filename)
     print("=> saving checkpoint '{}'".format(filename + '.pth'))
     safe_save(state, filename + '.pth')
 

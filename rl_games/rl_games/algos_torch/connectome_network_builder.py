@@ -384,6 +384,54 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             if self.spectral_monitoring_top_k < 1:
                 raise ValueError("spectral_monitoring.top_k must be >= 1")
             self._spectral_baseline = None
+            precond = connectome.get("spectral_preconditioning", {}) or {}
+            if not isinstance(precond, Mapping):
+                raise TypeError("spectral_preconditioning must be a YAML mapping")
+            self.spectral_preconditioning_enabled = bool(precond.get("enabled", False))
+            alpha = precond.get("alpha", 0.0)
+            if isinstance(alpha, bool) or not isinstance(alpha, (int, float)):
+                raise TypeError("spectral_preconditioning.alpha must be a number")
+            self.spectral_preconditioning_alpha = float(alpha)
+            if not math.isfinite(self.spectral_preconditioning_alpha):
+                raise ValueError("spectral_preconditioning.alpha must be finite")
+            floor_ratio = precond.get("singular_value_floor_ratio", 1.0e-3)
+            if isinstance(floor_ratio, bool) or not isinstance(
+                floor_ratio, (int, float)
+            ):
+                raise TypeError(
+                    "spectral_preconditioning.singular_value_floor_ratio must be a number"
+                )
+            self.spectral_preconditioning_floor_ratio = float(floor_ratio)
+            if (
+                not math.isfinite(self.spectral_preconditioning_floor_ratio)
+                or not (0.0 <= self.spectral_preconditioning_floor_ratio < 1.0)
+            ):
+                raise ValueError(
+                    "spectral_preconditioning.singular_value_floor_ratio "
+                    "must be in [0, 1)"
+                )
+            if (
+                self.spectral_preconditioning_alpha < 0.0
+                and self.spectral_preconditioning_floor_ratio <= 0.0
+            ):
+                raise ValueError(
+                    "singular_value_floor_ratio must be positive when alpha is negative"
+                )
+            refresh_every = precond.get("refresh_every_ppo_updates", 1)
+            if isinstance(refresh_every, bool) or not isinstance(
+                refresh_every, (int, float)
+            ):
+                raise TypeError(
+                    "spectral_preconditioning.refresh_every_ppo_updates must be an integer"
+                )
+            if int(refresh_every) != refresh_every or int(refresh_every) < 1:
+                raise ValueError(
+                    "spectral_preconditioning.refresh_every_ppo_updates must be >= 1"
+                )
+            self.spectral_preconditioning_refresh_every = int(refresh_every)
+            self._spectral_precond = None
+            self._spectral_precond_for_log = None
+            self._spectral_precond_step_stats = []
             plasticity_mon = connectome.get("plasticity_monitoring", {}) or {}
             if not isinstance(plasticity_mon, Mapping):
                 raise TypeError("plasticity_monitoring must be a YAML mapping")
@@ -1080,6 +1128,126 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 return False
             return epoch == 1 or epoch % self.plasticity_monitoring_interval == 0
 
+        @property
+        def spectral_preconditioning_active(self) -> bool:
+            """True only for signed LoRA with a non-identity spectral exponent."""
+            return (
+                self.spectral_preconditioning_enabled
+                and self.weight_mode == "low_rank"
+                and self.spectral_preconditioning_alpha != 0.0
+            )
+
+        @torch.no_grad()
+        def refresh_spectral_preconditioner(self) -> None:
+            """Cache a full SVD of the current detached ``W_eff``."""
+            if not self.spectral_preconditioning_active:
+                self._spectral_precond = None
+                return
+            from rl_games.algos_torch.connectome_spectral_preconditioning import (
+                compute_spectral_preconditioner,
+            )
+
+            self._spectral_precond = compute_spectral_preconditioner(
+                self.crow_indices,
+                self.col_indices,
+                self.effective_values().detach(),
+                self.neuron_count,
+                alpha=self.spectral_preconditioning_alpha,
+                floor_ratio=self.spectral_preconditioning_floor_ratio,
+                dtype=self.edge_u.dtype,
+            )
+
+        def begin_spectral_preconditioning_update(self) -> None:
+            """Fix one spectral basis for the upcoming PPO/SAPG update."""
+            if not self.spectral_preconditioning_active:
+                return
+            if self._spectral_precond is None:
+                self.refresh_spectral_preconditioner()
+            self._spectral_precond_for_log = self._spectral_precond
+
+        def finish_spectral_preconditioning_update(self, epoch_num: int) -> None:
+            """Refresh after a completed rollout-plus-optimization update."""
+            if not self.spectral_preconditioning_active:
+                return
+            every = self.spectral_preconditioning_refresh_every
+            if int(epoch_num) % every == 0:
+                self.refresh_spectral_preconditioner()
+
+        def precondition_lora_gradients(self) -> None:
+            """Replace ``edge_u`` / ``edge_v`` grads only. Adam state is untouched."""
+            if not self.spectral_preconditioning_active:
+                return
+            if self._spectral_precond is None:
+                self.refresh_spectral_preconditioner()
+            cache = self._spectral_precond
+            if cache is None:
+                return
+            from rl_games.algos_torch.connectome_spectral_preconditioning import (
+                apply_spectral_preconditioner,
+                gradient_change_stats,
+            )
+
+            stats = {}
+            with torch.no_grad():
+                if self.edge_u.grad is not None:
+                    raw_u = self.edge_u.grad.detach().clone()
+                    tilde_u = apply_spectral_preconditioner(
+                        raw_u, cache["P"], cache["multipliers"]
+                    )
+                    self.edge_u.grad.copy_(tilde_u)
+                    stats.update(gradient_change_stats("u", raw_u, tilde_u))
+                if self.edge_v.grad is not None:
+                    raw_v = self.edge_v.grad.detach().clone()
+                    tilde_v = apply_spectral_preconditioner(
+                        raw_v, cache["Q"], cache["multipliers"]
+                    )
+                    self.edge_v.grad.copy_(tilde_v)
+                    stats.update(gradient_change_stats("v", raw_v, tilde_v))
+            if stats:
+                self._spectral_precond_step_stats.append(stats)
+
+        def drain_spectral_preconditioning_metrics(self) -> dict:
+            """Mean LoRA gradient-change stats for the basis used this update."""
+            if not self.spectral_preconditioning_active:
+                self._spectral_precond_step_stats = []
+                return {}
+            source = self._spectral_precond_for_log or self._spectral_precond
+            steps = self._spectral_precond_step_stats
+            self._spectral_precond_step_stats = []
+            if source is None:
+                return {}
+            tags = {
+                "spectral_preconditioning/alpha": float(source["alpha"]),
+                "spectral_preconditioning/sigma_max": float(source["sigma_max"]),
+                "spectral_preconditioning/sigma_min": float(source["sigma_min"]),
+                "spectral_preconditioning/sigma_floor": float(source["sigma_floor"]),
+                "spectral_preconditioning/multiplier_min": float(
+                    source["multiplier_min"]
+                ),
+                "spectral_preconditioning/multiplier_max": float(
+                    source["multiplier_max"]
+                ),
+                "spectral_preconditioning/multiplier_mean": float(
+                    source["multiplier_mean"]
+                ),
+                "spectral_preconditioning/multiplier_std": float(
+                    source["multiplier_std"]
+                ),
+            }
+            keys = (
+                "u_gradient_cosine",
+                "v_gradient_cosine",
+                "u_gradient_norm_ratio",
+                "v_gradient_norm_ratio",
+            )
+            for key in keys:
+                values = [step[key] for step in steps if key in step]
+                if values:
+                    tags[f"spectral_preconditioning/{key}"] = float(
+                        sum(values) / len(values)
+                    )
+            return tags
+
         def backend_graph(self):
             if self._backend_graph is None:
                 from rl_games.algos_torch.connectome_ops import Graph
@@ -1467,6 +1635,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self._cached_recurrent_operator = None
             self._backend_graph = None
             self._spectral_baseline = None
+            self._spectral_precond = None
+            self._spectral_precond_for_log = None
+            self._spectral_precond_step_stats = []
             # Older checkpoints predate intrinsic gain; default a_i = 1.
             key = prefix + "log_intrinsic_gain"
             if key not in state_dict:

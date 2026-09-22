@@ -23,18 +23,19 @@ Related: [Overview](overview.md), [Log](log.md)
 
 - [Connectome actor](concepts/connectome-actor.md) — Circuit inventory, dynamics with intrinsic gain, independently sized interface MLPs, structured sensory routing and 6D orientation, exact central-critic inputs, connectome-versus-LSTM auxiliary value gradients, propagation delay and saturation boundaries. Last updated 2026-09-20.
 - [Fixed-input reservoir controller](concepts/fixed-reservoir-controller.md) — Parameter-free robot-to-MaleCNS population coding, cached motor features, no-BPTT PPO boundary, optional hard-spiking LIF dynamics, exact channel map and smoke evidence. Last updated 2026-09-19.
-- [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, signed relative low-rank LoRA, synaptic regularizer, spectral and plasticity monitoring, learn_dynamics, and GPU backends. Last updated 2026-09-21.
+- [Adaptation and custom compute](concepts/connectome-adaptation.md) — Independent recurrent/interface controls, signed relative low-rank LoRA, synaptic regularizer, spectral preconditioning, spectral and plasticity monitoring, learn_dynamics, and GPU backends. Last updated 2026-09-21.
 - [Training and evaluation success metrics](concepts/success-metrics.md) — TensorBoard populations, tolerance scaling, policy-ID mismatch, milestone Task Progress, and dual fixed/checkpoint-tolerance videos. Last updated 2026-09-18.
 
 ## Workflows
 
 - [Anatomical activation videos](workflows/anatomical-activity-videos.md) — Actual compact-circuit skeletons, enlarged CNS overview, cropped HD robot footage, population labels/bars, 4× FPS, low-res K=2 third-bounds watchers, and YAML usage. Last updated 2026-09-20.
 
-- [Experiment workflow](workflows/connectome-experiments.md) — Current no-auxiliary fly continuations, intrinsic-plasticity K=2 suite, historical LSTM continuation, fixed-reservoir suites, milestone videos, LF entropy runs, and staged handoffs. Last updated 2026-09-20.
+- [Experiment workflow](workflows/connectome-experiments.md) — Current no-auxiliary fly continuations, intrinsic-plasticity K=2 suite, spectral-preconditioned signed LoRA, historical LSTM continuation, fixed-reservoir suites, milestone videos, LF entropy runs, and staged handoffs. Last updated 2026-09-21.
 - [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, early gain audit, and stopped-run status. Last updated 2026-09-14.
 
 ## Analyses
 
+- [Spectral preconditioning at 266M](analyses/spectral-preconditioning-266m.md) — Live alpha=-0.5 run changes LoRA gradients every update, while the effective spectrum stays anatomical. Last updated 2026-09-21.
 - [Fly cycles and input routing](analyses/fly-cycles-and-input-routing.md) — Exact directed reachability, current all-neuron shortcut, four-cycle boundary, and input-routing alternatives. Last updated 2026-09-19.
 - [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — The 323-unit coefficient match (735,748 fly vs 733,790 LSTM after intrinsic gain), exact sparsity-control boundary, official 1,024-unit history, diagnosed scheduler cancellation, and resumed LF rollout-KL training. Last updated 2026-09-20.
 - [Visual reservoir performance](analyses/visual-reservoir-performance.md) — Frozen inference, full-CNS capacity sweep, video-worker memory limits and 2,304-environment continuation. Last updated 2026-09-16.

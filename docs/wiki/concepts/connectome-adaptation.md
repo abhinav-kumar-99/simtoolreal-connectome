@@ -68,6 +68,29 @@ spectral_monitoring:
 
 Default interval is every 100 epochs. Metrics are written exclusively under `spectral/` (`effective/*`, `baseline/*`, `change/*`, `plasticity/*` with relative-scale stats for the signed `W^{\mathrm{eff}}`). Computation is detached (`torch.no_grad`); compact graphs (\(\le 2048\) neurons) use dense eig/SVD, larger graphs use ARPACK `eigs`/`svds`. Baseline \(\rho(W^0)\) and \(\sigma_{\max}(W^0)\) are cached once. Does not affect the loss.
 
+### Spectral gradient preconditioning
+
+Optional optimization geometry for signed LoRA only. It does not change \(\Delta\), \(W^{\mathrm{eff}}\), the plasticity loss, or the trainable parameters. `edge_u` and `edge_v` remain the Adam parameters. Adam moments are not reset or rotated when the basis refreshes.
+
+```yaml
+spectral_preconditioning:
+  enabled: false
+  alpha: 0.0
+  singular_value_floor_ratio: 1.0e-3
+  refresh_every_ppo_updates: 1
+```
+
+Once per completed PPO/SAPG update (rollout collection plus all optimization epochs; configurable `refresh_every_ppo_updates`, default 1), a detached full float32 SVD is taken of the same CSR \(W^{\mathrm{eff}}\) used by SpMM and by `spectral/` monitoring. Multiplier arithmetic still uses float64. All modes are kept. Singular values are floored at `singular_value_floor_ratio * sigma_max`, raised to `alpha`, then normalized so the multipliers have mean 1. Target-side gradients use the left singular vectors and source-side gradients use the right singular vectors:
+
+\[
+\tilde G_U = P \widehat M P^\top G_U, \qquad
+\tilde G_V = Q \widehat M Q^\top G_V.
+\]
+
+`alpha = 0` or `enabled: false` leaves gradients unchanged. Inactive unless `weight_mode` is `low_rank`. Defaults are off. Update-level TensorBoard tags live under `spectral_preconditioning/` (spectrum, multipliers, and LoRA gradient cosine / norm ratio). No additional spectral loss is added.
+
+On the 33,720-edge MaleCNS matrix, `sigma_max` is 3.643 and 1,361 of 1,952 singular values exceed `1e-3 * sigma_max`. A partial SVD at the current floor therefore keeps about 70% of the modes, so it does not replace the dense float32 factorization. The remaining speed knob that preserves the formula is `refresh_every_ppo_updates`: the float32 SVD is roughly 0.6 s inside a 3.3 s epoch. bfloat16 SVD is unsupported on the RTX 4090.
+
 ### Plasticity monitoring
 
 Epoch-interval TensorBoard diagnostics under `synaptic_plasticity/` and `intrinsic_plasticity/`. Content auto-activates by trainability (`low_rank` → synaptic tags; `learn_dynamics` → intrinsic tags). Config:

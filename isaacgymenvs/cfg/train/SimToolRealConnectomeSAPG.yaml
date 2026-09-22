@@ -45,6 +45,11 @@ params:
         enabled: false
         interval: 100
         top_k: 8
+      spectral_preconditioning:
+        enabled: false
+        alpha: 0.0
+        singular_value_floor_ratio: 1.0e-3
+        refresh_every_ppo_updates: 1
       plasticity_monitoring:
         enabled: false
         interval: 100

@@ -411,13 +411,23 @@ class A2CBase(BaseAlgorithm):
         
         if self.truncate_grads:
             self.scaler.unscale_(self.optimizer)
+            self._precondition_connectome_lora_gradients()
             nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
+        else:
+            self._precondition_connectome_lora_gradients()
 
         self.scaler.step(self.optimizer)
         self.scaler.update()
 
         
         return all_grads
+
+    def _precondition_connectome_lora_gradients(self):
+        """Spectral geometry for signed-LoRA grads only; other grads stay raw."""
+        network = getattr(self.model, "a2c_network", None)
+        precondition = getattr(network, "precondition_lora_gradients", None)
+        if callable(precondition):
+            precondition()
 
     def load_networks(self, params):
         builder = model_builder.ModelBuilder()
@@ -1566,6 +1576,32 @@ class ContinuousA2CBase(A2CBase):
                 continue
             self.writer.add_scalar(name, float(value), frame)
 
+    def _begin_spectral_preconditioning_update(self):
+        network = getattr(self.model, "a2c_network", None)
+        begin = getattr(network, "begin_spectral_preconditioning_update", None)
+        if callable(begin):
+            begin()
+
+    def _finish_spectral_preconditioning_update(self):
+        network = getattr(self.model, "a2c_network", None)
+        finish = getattr(network, "finish_spectral_preconditioning_update", None)
+        if callable(finish):
+            finish(getattr(self, "epoch_num", 0))
+
+    def _maybe_log_spectral_preconditioning(self, frame):
+        """Log the spectral basis used during this PPO update, then clear stats."""
+        network = getattr(self.model, "a2c_network", None)
+        drain = getattr(network, "drain_spectral_preconditioning_metrics", None)
+        if not callable(drain):
+            return
+        metrics = drain()
+        if self.writer is None or self.global_rank != 0 or not metrics:
+            return
+        for tag, value in metrics.items():
+            if not str(tag).startswith("spectral_preconditioning/"):
+                continue
+            self.writer.add_scalar(tag, float(value), frame)
+
     def init_tensors(self):
         A2CBase.init_tensors(self)
         self.update_list = ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']
@@ -1645,6 +1681,8 @@ class ContinuousA2CBase(A2CBase):
         
         if self.has_central_value:
             self.train_central_value()
+
+        self._begin_spectral_preconditioning_update()
 
         a_losses = []
         c_losses = []
@@ -1784,6 +1822,8 @@ class ContinuousA2CBase(A2CBase):
             self.diagnostics.mini_epoch(self, mini_ep)
             if self.normalize_input:
                 self.model.running_mean_std.eval() # don't need to update statstics more than one miniepoch
+
+        self._finish_spectral_preconditioning_update()
 
         if self.schedule_type == 'rollout':
             kl_value = rollout_scheduler_kl.item()
@@ -1964,6 +2004,7 @@ class ContinuousA2CBase(A2CBase):
             step_time, play_time, update_time, sum_time, a_losses, c_losses, b_losses, entropies, kls, last_lr, lr_mul, extra_infos = ret_val
             total_time += sum_time
             frame = self.frame // self.num_agents
+            self._maybe_log_spectral_preconditioning(frame)
 
             # cleaning memory to optimize space
             self.dataset.update_values_dict(None)

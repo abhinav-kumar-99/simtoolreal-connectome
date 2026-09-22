@@ -667,24 +667,26 @@ Low-res anatomical (checkpoint-tolerance only, 400 × 225 source / 1280 × 720 c
   --config configs/connectome/evaluation/ppo_fly1952_k2_adaptive_lr_third_bounds_intrinsic_plasticity_100b_checkpoint_lowres.yaml
 ```
 
-The intrinsic-plasticity suite is identical to the one-third-bounds K=2 adapters-only run except `adaptation.learn_dynamics: true`, which trains per-neuron leak, recurrent bias, and intrinsic gain \(a_i=\exp(\log a_i)\) (5,856 dynamics parameters) while keeping connectome edge weights and neuron gains frozen. A matched K=4 all-neuron Gaussian noaux intrinsic-plasticity suite also exists:
+The intrinsic-plasticity suite is identical to the one-third-bounds K=2 adapters-only run except `adaptation.learn_dynamics: true`, which trains per-neuron leak, recurrent bias, and intrinsic gain \(a_i=\exp(\log a_i)\) (5,856 dynamics parameters) while keeping connectome edge weights and neuron gains frozen. The former K=4 all-neuron Gaussian noaux intrinsic-only suite was replaced by a copy of the rank-4 synaptic-only job with spectral gradient preconditioning (`alpha: -0.5`, existing edges only, frozen intrinsic dynamics). That run uses physical GPU 0 after the synaptic-only trainer was stopped:
 
 ```bash
 .venv/bin/python scripts/run_connectome_suite.py \
-  --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_plasticity_100b.yaml
+  --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_lowrank4_spectral_precond_alpha_neg0p5_synaptic_plasticity_100b.yaml
 .venv/bin/python scripts/run_connectome_milestone_evaluation.py \
-  --config configs/connectome/evaluation/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_plasticity_100b_milestones.yaml
+  --config configs/connectome/evaluation/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_lowrank4_spectral_precond_alpha_neg0p5_synaptic_plasticity_100b_milestones.yaml
 ```
 
 The suite YAMLs own physical GPU, seed 42, LR/scheduler rules, batch geometry, LF reuse, entropy scale, Sigma-3 policy and the 100B budget. The intrinsic suite is fresh (`checkpoint.mode: none`) and binds GPU 1, while the non-plastic K=2 control remains on GPU 0. The suite script composes the resolved configuration, supervises training, and verifies the terminal checkpoint. The watcher waits for 250M-frame inference checkpoints, resolves checkpoint-time tolerance, and launches `run_connectome_evaluation.py`; that helper generates case YAMLs consumed by `dextoolbench/eval_worker_isaacgym.py`.
 
 Every future `run_connectome_suite.py` case also registers its own suite-qualified
-`summaries/` directory under
-`train_dir/connectome/adaptation_100b_gains_update_timing`, the persistent root
-served by TensorBoard port 6008. The default is automatic; a YAML suite can set
+`summaries/` directory under `train_dir/tensorboard_6008`, the logdir of the
+TensorBoard process on port 6008 (`--reload` picks up new symlinks without a
+restart). The default is that root; a YAML suite can set
 `training.tensorboard_log_root` only when a different aggregation root is
-intentionally required. Registration rejects an occupied name pointing at a
-different run rather than mixing metrics.
+intentionally required. The spectral-preconditioned signed-LoRA suite sets it
+explicitly. Registration rejects an occupied name pointing at a different run
+rather than mixing metrics. The visible run name is
+`00_<suite>_<profile>_seed42`.
 
 The one-third-bounds K=2 control is PID 610456 in tmux `connectome-k2-adaptive-third-bounds`, with watcher PID 610177 on GPU 0. The intrinsic-plasticity replacement is PID 1907621 in `connectome-k2-intrinsic-plasticity`, with watcher PID 1909557 in `connectome-k2-intrinsic-plasticity-eval` on GPU 1. Its first observed training report at epoch 17/frame 3,145,728 was finite (115,741 total FPS); this is launch health, not learning evidence. The watcher starts with no completed milestones and awaits the first 250M-frame inference checkpoint.
 
@@ -699,7 +701,7 @@ On 2026-09-21 the prior exponential-gain low-rank jobs were stopped and archived
   --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_lowrank4_synaptic_plasticity_100b.yaml
 ```
 
-Matching milestone watchers use the sibling `configs/connectome/evaluation/..._milestones.yaml` files. Synaptic-only keeps `learn_dynamics: false` on GPU 0; intrinsic+synaptic uses `learn_dynamics: true` on GPU 1.
+Matching milestone watchers use the sibling `configs/connectome/evaluation/..._milestones.yaml` files. The synaptic-only trainer on GPU 0 was stopped so the spectral-preconditioned signed LoRA job (`alpha: -0.5`) could take that GPU. The spectral suite trains both signed LoRA and intrinsic dynamics (`learn_dynamics: true`). The separate intrinsic-plus-synaptic job without spectral preconditioning keeps GPU 1. The spectral factorization is float32. The live suite uses the short experiment name `00_spectral_r4_a-0p5_k4_seed42` so periodic checkpoint basenames stay under 255 bytes. It is a fresh start (`checkpoint.mode: none`) on GPU 0.
 
 The legacy Isaac Gym stack uses Python 3.8 via `.venv`. Focused connectome unit tests default to `env_isaaclab`. A local ignored virtual environment can still reuse the installed `diffusion` conda environment while supplying the two missing mesh packages:
 
