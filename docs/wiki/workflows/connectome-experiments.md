@@ -722,7 +722,18 @@ On 2026-09-21 the prior exponential-gain low-rank jobs were stopped and archived
   --config configs/connectome/suites/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_lowrank4_synaptic_plasticity_100b.yaml
 ```
 
-Matching milestone watchers use the sibling `configs/connectome/evaluation/..._milestones.yaml` files. The synaptic-only trainer on GPU 0 was stopped so the spectral-preconditioned signed LoRA job (`alpha: -0.5`) could take that GPU. The spectral suite trains both signed LoRA and intrinsic dynamics (`learn_dynamics: true`). The separate intrinsic-plus-synaptic job without spectral preconditioning keeps GPU 1. The spectral factorization is float32. The live suite uses the short experiment name `00_spectral_r4_a-0p5_k4_seed42` so periodic checkpoint basenames stay under 255 bytes. It is a fresh start (`checkpoint.mode: none`) on GPU 0.
+Matching milestone watchers use the sibling `configs/connectome/evaluation/..._milestones.yaml` files. The synaptic-only trainer on GPU 0 was stopped so the spectral-preconditioned signed LoRA job (`alpha: -0.5`) could take that GPU. The spectral suite trains both signed LoRA and intrinsic dynamics (`learn_dynamics: true`). The spectral factorization is float32. The live spectral suite uses the short experiment name `00_spectral_r4_a-0p5_k4_seed42` so periodic checkpoint basenames stay under 255 bytes. It is a fresh start (`checkpoint.mode: none`) on GPU 0.
+
+The GPU-1 intrinsic-plus-synaptic job without spectral preconditioning was stopped on 2026-09-22 at epoch 32,189 / frame 6,328,418,304. Its output tree remains at `train_dir/connectome/adaptation_100b_gains_update_timing/ppo_1952_4update_gaussian_lf_entropy1x_sigma3_all_neuron_readout_noaux_intrinsic_lowrank4_synaptic_plasticity_100b`. GPU 1 now runs a fresh `latent_probabilistic` 100B job with the same expected-operator spectral contract (`enabled`, `alpha: -0.5`, floor ratio `0.001`, refresh every PPO update):
+
+```bash
+.venv/bin/python -u scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/prob_r4_a-0p5_100b.yaml
+.venv/bin/python -u scripts/run_connectome_milestone_evaluation.py \
+  --config configs/connectome/evaluation/prob_r4_a-0p5_100b_milestones.yaml
+```
+
+The replacement uses rank 4, group size 1, a 33,720-nonedge candidate budget, adjacency error rate `.001`, target information `1.0` nat/neuron, and experiment `00_prob_r4_a-0p5_k4_seed42`. It is a fresh start (`checkpoint.mode: none`) on physical GPU 1, with summaries registered under `train_dir/tensorboard_6008`.
 
 The legacy Isaac Gym stack uses Python 3.8 via `.venv`. Focused connectome unit tests default to `env_isaaclab`. A local ignored virtual environment can still reuse the installed `diffusion` conda environment while supplying the two missing mesh packages:
 

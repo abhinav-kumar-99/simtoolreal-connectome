@@ -94,3 +94,7 @@ The support doubled from 33,720 to 67,440 edges, matching the expected main cost
 - PPO accumulation and configuration suite: 40 tests passed; one unrelated pre-existing evaluation-contract assertion expects three cases while the YAML currently contains five.
 
 The sampled training path deliberately requires tanh plus `operator_backend: triton_fused`; the dense PyTorch implementation is a tiny-graph correctness oracle, not a second production backend. Sampled and MAP inference are supported; expected topology is diagnostic-only.
+
+## Live 100B run
+
+On 2026-09-22 the non-spectral intrinsic-plus-signed-LoRA trainer on physical GPU 1 was replaced by `configs/connectome/suites/prob_r4_a-0p5_100b.yaml`. The new job uses `latent_probabilistic` rank 4 and the same spectral preconditioning as the live GPU-0 signed-LoRA job: enabled, `alpha: -0.5`, floor ratio `0.001`, refresh every PPO update. Training geometry matches the replaced 12,288-environment, leader-follower, 100B contract. The experiment name is `00_prob_r4_a-0p5_k4_seed42`. Epoch 2 reported finite totals at 60,377 FPS; that is launch health, not learning evidence. The GPU-0 spectral trainer was left running.

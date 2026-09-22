@@ -30,12 +30,12 @@ Related: [Overview](overview.md), [Log](log.md)
 
 - [Anatomical activation videos](workflows/anatomical-activity-videos.md) — Actual compact-circuit skeletons, enlarged CNS overview, cropped HD robot footage, population labels/bars, 4× FPS, low-res K=2 third-bounds watchers, and YAML usage. Last updated 2026-09-20.
 
-- [Experiment workflow](workflows/connectome-experiments.md) — Current continuations, probabilistic-plasticity gate/benchmark, spectral signed LoRA, fixed-reservoir suites, milestone videos, and staged handoffs. Last updated 2026-09-22.
+- [Experiment workflow](workflows/connectome-experiments.md) — Current continuations, GPU-1 probabilistic 100B run, spectral signed LoRA, fixed-reservoir suites, milestone videos, and staged handoffs. Last updated 2026-09-22.
 - [Eligibility training](workflows/eligibility-training.md) — Online trainer, policy-gradient/TD distinction, input-adapter learning alternatives, YAML/video contracts, early gain audit, and stopped-run status. Last updated 2026-09-14.
 
 ## Analyses
 
-- [Unified probabilistic plasticity](analyses/probabilistic-plasticity.md) — Unified neuron latent state, sampled candidate topology, PPO seed conditioning, information dual, DDP/SVD behavior, tests, and matched RTX 4090 benchmark. Last updated 2026-09-22.
+- [Unified probabilistic plasticity](analyses/probabilistic-plasticity.md) — Unified neuron latent state, sampled candidate topology, information dual, tests, benchmark, and the live GPU-1 100B run. Last updated 2026-09-22.
 - [Spectral preconditioning at 266M](analyses/spectral-preconditioning-266m.md) — Live alpha=-0.5 run changes LoRA gradients every update, while the effective spectrum stays anatomical. Last updated 2026-09-21.
 - [Fly cycles and input routing](analyses/fly-cycles-and-input-routing.md) — Exact directed reachability, current all-neuron shortcut, four-cycle boundary, and input-routing alternatives. Last updated 2026-09-19.
 - [Parameter-matched LSTM baseline](analyses/lstm-baseline.md) — The 323-unit coefficient match (735,748 fly vs 733,790 LSTM after intrinsic gain), exact sparsity-control boundary, official 1,024-unit history, diagnosed scheduler cancellation, and resumed LF rollout-KL training. Last updated 2026-09-20.
