@@ -2,7 +2,7 @@
 
 Experiments are owned by YAML contracts and proceed through data, profile, smoke, and full-training gates.
 
-Last updated: 2026-09-21
+Last updated: 2026-09-22
 
 Related: [Overview](../overview.md), [Actor](../concepts/connectome-actor.md), [Adaptation](../concepts/connectome-adaptation.md)
 
@@ -689,6 +689,27 @@ rather than mixing metrics. The visible run name is
 `00_<suite>_<profile>_seed42`.
 
 The one-third-bounds K=2 control is PID 610456 in tmux `connectome-k2-adaptive-third-bounds`, with watcher PID 610177 on GPU 0. The intrinsic-plasticity replacement is PID 1907621 in `connectome-k2-intrinsic-plasticity`, with watcher PID 1909557 in `connectome-k2-intrinsic-plasticity-eval` on GPU 1. Its first observed training report at epoch 17/frame 3,145,728 was finite (115,741 total FPS); this is launch health, not learning evidence. The watcher starts with no completed milestones and awaits the first 250M-frame inference checkpoint.
+
+### Unified probabilistic plasticity gate and benchmark
+
+The isolated `latent_probabilistic` mode has a two-update, 384-environment 1,952-cell integration contract:
+
+```bash
+.venv/bin/python scripts/run_connectome_suite.py \
+  --config configs/connectome/suites/probabilistic_plasticity_1952_smoke.yaml
+```
+
+It uses rank 4, one topology sample per environment, a 33,720-nonedge candidate budget, adjacency error rate `.001`, target information `1.0` nat/neuron, dual rate `.001`, four neural updates, and expected-operator spectral preconditioning with alpha `-.5`. The candidate budget is computational support, not biological sparsity. The suite writes to a distinct output tree with `on_existing: fail`; do not launch it while its configured GPU is occupied.
+
+Run the matched kernel/PPO benchmark separately:
+
+```bash
+conda run --no-capture-output -n env_isaaclab \
+  python scripts/profile_connectome_actors.py \
+  --config configs/connectome/profiling/probabilistic_plasticity.yaml
+```
+
+The profile compares signed LoRA, fully independent sampled topology, and topology groups of 32. It records recurrent forward, forward+backward, synthetic PPO optimizer throughput, candidate refresh time, support size, and peak GPU memory in `profiles/connectome/probabilistic_plasticity.json`. The checked run retained group size 1 because group 32 was not faster. See the [implementation and benchmark analysis](../analyses/probabilistic-plasticity.md).
 
 ### Historical K=4 noaux signed-relative LoRA plasticity (GPU 0 / GPU 1)
 

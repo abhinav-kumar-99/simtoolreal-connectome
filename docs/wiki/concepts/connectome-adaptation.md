@@ -2,9 +2,9 @@
 
 The default actor learns robot adapters and heads; recurrent weight adaptation and learned neuron dynamics are independent choices.
 
-Last updated: 2026-09-21
+Last updated: 2026-09-22
 
-Related: [Actor](connectome-actor.md), [Backend analysis](../analyses/sparse-backends.md), [Workflow](../workflows/connectome-experiments.md)
+Related: [Actor](connectome-actor.md), [Backend analysis](../analyses/sparse-backends.md), [Probabilistic plasticity](../analyses/probabilistic-plasticity.md), [Workflow](../workflows/connectome-experiments.md)
 
 ## Configuration and semantics
 
@@ -34,8 +34,9 @@ All modes train input adapters, motor action and actor-value heads, SAPG embeddi
 | `low_rank`, rank 4 | 34,480 | 127,036 | Factorized signed relative edge modulation |
 | `low_rank`, rank 8 | 68,960 | 161,516 | Factorized signed relative edge modulation |
 | `edgewise` | 118,920 | 211,476 | Independent edge magnitudes |
+| `latent_probabilistic`, rank \(r\) | \(N(3+4r)+1\) | graph-dependent | Unified intrinsic, efficacy, and topology state plus `log_tau` |
 
-These are alternative weight parameterizations. Low-rank/edgewise do not add trainable neuron gains. All keep the anatomical graph and direction of every edge. Neuron-gain and edgewise modes keep extraction-derived signs; signed relative low-rank may weaken through zero and flip signs. The extraction sign convention is a model assumption, not a claim that anatomy fully determines synaptic physiology.
+These are alternative weight parameterizations. Low-rank/edgewise do not add trainable neuron gains. The four legacy modes keep the anatomical graph and direction of every edge. `latent_probabilistic` instead samples edge existence on a shared candidate supergraph while retaining the anatomical graph as its prior. Neuron-gain and edgewise modes keep extraction-derived signs; signed relative low-rank and conditional probabilistic efficacy may weaken through zero and flip signs. The extraction sign convention is a model assumption, not a claim that anatomy fully determines synaptic physiology.
 
 Low-rank scores are \(\Delta_{ij}=\mathrm{sum}(U[i]\odot V[j])/\sqrt{r}\), evaluated only at existing edges. Effective weights use signed relative LoRA:
 
@@ -55,9 +56,35 @@ L_{\mathrm{syn}}=\lambda_{\mathrm{syn}}\frac{1}{E}\sum_{e=1}^{E}\Delta_e^2
 
 to the continuous PPO/SAPG loss when `weight_mode: low_rank`. Here \(\Delta\) is the **relative synaptic change**, not a log-fold gain. TensorBoard `losses/synaptic_plasticity_reg` logs the unscaled mean \(\Delta^2\) (pre-\(\lambda_{\mathrm{syn}}\)); update-level `adaptation/synaptic_delta_*` / `adaptation/synaptic_relative_scale_*` stats are also recorded. Synaptic-only experiments use `weight_mode: low_rank` with `learn_dynamics: false` (trainable `U,V`; frozen intrinsic \(a,\lambda,b\) and neuron gains).
 
+### Unified probabilistic plasticity
+
+`weight_mode: latent_probabilistic` is isolated from all legacy parameterizations. It stores one zero-initialized `plasticity_state[N, 3+4r]` with intrinsic, efficacy-post/pre, and topology-post/pre blocks, plus an Adam-trained scalar `log_tau`. Fixed random post anchors break bilinear symmetry; the pre blocks start at zero, so continuous intrinsic values and conditional edge weights exactly match the baseline at initialization.
+
+Intrinsic values are read directly:
+\[
+a_i=a_i^0e^{z_i^a},\quad
+\operatorname{logit}\lambda_i^{control}=\operatorname{logit}\lambda_i^0+z_i^\lambda,\quad
+b_i=b_i^0+s_i^bz_i^b.
+\]
+The existing control-to-substep leak conversion is then applied once. \(s_i^b\), nonedge efficacy scales, and zero-degree fallbacks are all derived from baseline recurrent-weight RMS values.
+
+For \(j\to i\), conditional efficacy and topology are:
+\[
+\mu_{ij}=W^0_{ij}+S_{ij}\frac{(U_i^W)^TV_j^W}{\sqrt r},\qquad
+\operatorname{logit}\pi_{ij}=\operatorname{logit}\pi^0_{ij}
++\frac{(U_i^A)^TV_j^A}{\sqrt r}.
+\]
+Observed edges use \(S=W^0\), recovering signed relative LoRA. Nonedges use the geometric mean of measured incoming/outgoing RMS scales. The runtime circuit samples \(A_{ij}\sim Bernoulli(\pi_{ij})\) independently per environment and uses \(W_{ij}=A_{ij}\mu_{ij}\).
+
+The prepared MaleCNS artifacts contain no calibrated edge-existence probability. `topology_prior_error_rate` therefore gives prior probability \(1-\epsilon_A\) to observed edges and \(\epsilon_A\) to allowed nonedges. It is adjacency uncertainty, not a pruning threshold. Candidate nonedges are selected by weighted Gumbel-top-k only as a compute cache; candidate membership is never edge existence.
+
+PPO stores one compact topology seed per environment trajectory. Triton regenerates hard gates from `(topology_seed, canonical_edge_id)` with no timestep in the key and applies the intended straight-through sigmoid gradient. No edge-by-environment mask or per-environment CSR graph is stored.
+
+The regularizer is one information measure \(I_z+I_A\), divided by neuron count. \(I_z\) is the exact Gaussian KL with learned \(\tau=\exp(\texttt{log_tau})\); \(I_A\) is Bernoulli posterior-to-adjacency-prior KL. A non-Adam dual multiplier tracks `target_information_nats_per_neuron`; no separate intrinsic, synaptic, sparsity, birth, death, or sign-flip coefficient is used. See the [implementation and benchmark analysis](../analyses/probabilistic-plasticity.md).
+
 ### Spectral monitoring
 
-Diagnostic-only spectrum of the effective CSR operator \(W^{\mathrm{eff}}\) (same values as `effective_values()` / SpMM), not the tanh Jacobian. Active only when synaptic edge weights are trainable (`low_rank` or `edgewise`); ignored for `adapters_only` and intrinsic-only runs even if enabled. Config under `params.network.connectome`:
+Diagnostic-only spectrum of the effective CSR operator \(W^{\mathrm{eff}}\) (same values as `effective_values()` / SpMM), not the tanh Jacobian. Active when synaptic edge weights are trainable (`low_rank`, `edgewise`, or `latent_probabilistic`); ignored for `adapters_only` and intrinsic-only runs even if enabled. The probabilistic mode analyzes the expected supported operator \(\pi\mu\), never one sampled graph. Config under `params.network.connectome`:
 
 ```yaml
 spectral_monitoring:
@@ -70,7 +97,7 @@ Default interval is every 100 epochs. Metrics are written exclusively under `spe
 
 ### Spectral gradient preconditioning
 
-Optional optimization geometry for signed LoRA only. It does not change \(\Delta\), \(W^{\mathrm{eff}}\), the plasticity loss, or the trainable parameters. `edge_u` and `edge_v` remain the Adam parameters. Adam moments are not reset or rotated when the basis refreshes.
+Optional optimization geometry for signed LoRA and unified probabilistic pairwise blocks. It does not change the forward decoder, information/plasticity loss, or trainable parameters. Adam moments are not reset or rotated when the basis refreshes.
 
 ```yaml
 spectral_preconditioning:
@@ -87,7 +114,7 @@ Once per completed PPO/SAPG update (rollout collection plus all optimization epo
 \tilde G_V = Q \widehat M Q^\top G_V.
 \]
 
-`alpha = 0` or `enabled: false` leaves gradients unchanged. Inactive unless `weight_mode` is `low_rank`. Defaults are off. Update-level TensorBoard tags live under `spectral_preconditioning/` (spectrum, multipliers, and LoRA gradient cosine / norm ratio). No additional spectral loss is added.
+`alpha = 0` or `enabled: false` leaves gradients unchanged. Active only for `low_rank` or `latent_probabilistic`. In the probabilistic mode, the factorized operator is the current expected supported operator \(\bar W=\pi\mu\); `P` acts on both post blocks, `Q` on both pre blocks, and the three intrinsic columns plus `log_tau` remain raw. Defaults are off. Update-level TensorBoard tags live under `spectral_preconditioning/`. No additional spectral loss is added.
 
 On the 33,720-edge MaleCNS matrix, `sigma_max` is 3.643 and 1,361 of 1,952 singular values exceed `1e-3 * sigma_max`. A partial SVD at the current floor therefore keeps about 70% of the modes, so it does not replace the dense float32 factorization. The remaining speed knob that preserves the formula is `refresh_every_ppo_updates`: the float32 SVD is roughly 0.6 s inside a 3.3 s epoch. bfloat16 SVD is unsupported on the RTX 4090.
 
