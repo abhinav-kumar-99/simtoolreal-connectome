@@ -19,8 +19,17 @@ except ImportError as exc:
 
 
 @triton.jit
+def _wang_hash_u32_triton(x):
+    x = (x ^ 61) ^ (x >> 16)
+    x = x + (x << 3)
+    x = x ^ (x >> 4)
+    x = x * 0x27D4EB2D
+    return x ^ (x >> 15)
+
+
+@triton.jit
 def _topology_uniform(SEEDS, canonical, batch_lane, B: tl.constexpr):
-    """Wang-hash U(0,1) keyed only by int64 seed and canonical edge ID."""
+    """Keyed counter U(0,1) from int64 seed and canonical edge ID."""
     seed = tl.load(
         SEEDS + batch_lane,
         mask=(batch_lane >= 0) & (batch_lane < B),
@@ -29,12 +38,13 @@ def _topology_uniform(SEEDS, canonical, batch_lane, B: tl.constexpr):
     low = seed.to(tl.uint64).to(tl.uint32)
     high = (seed.to(tl.uint64) >> 32).to(tl.uint32)
     rotated = (high << 16) | (high >> 16)
-    x = canonical.to(tl.uint32) ^ low ^ rotated ^ 0x9E3779B9
-    x = (x ^ 61) ^ (x >> 16)
-    x = x + (x << 3)
-    x = x ^ (x >> 4)
-    x = x * 0x27D4EB2D
-    x = x ^ (x >> 15)
+    edge_component = _wang_hash_u32_triton(
+        canonical.to(tl.uint32) ^ 0xA511E9B3
+    )
+    low_component = _wang_hash_u32_triton(low ^ 0x63D83595)
+    high_component = _wang_hash_u32_triton(rotated ^ 0xB5297A4D)
+    mixed = edge_component + low_component * 0x27D4EB2D
+    x = _wang_hash_u32_triton(mixed ^ high_component)
     return (x.to(tl.float32) + 0.5) * 2.3283064365386963e-10
 
 

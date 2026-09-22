@@ -510,7 +510,7 @@ class A2CBase(BaseAlgorithm):
                 res_dict['values'] = value
         return res_dict
 
-    def get_values(self, obs, rnn_states):
+    def get_values(self, obs, rnn_states, topology_seeds=None):
         with torch.no_grad():
             if self.has_central_value:
                 states = obs['states']
@@ -531,8 +531,13 @@ class A2CBase(BaseAlgorithm):
                     'obs' : processed_obs,
                     'rnn_states' : rnn_states
                 }
-                if getattr(self, 'current_topology_seeds', None) is not None:
-                    input_dict['topology_seed'] = self.current_topology_seeds
+                selected_topology_seeds = (
+                    topology_seeds
+                    if topology_seeds is not None
+                    else getattr(self, 'current_topology_seeds', None)
+                )
+                if selected_topology_seeds is not None:
+                    input_dict['topology_seed'] = selected_topology_seeds
                 result = self.model(input_dict)
                 value = result['values']
             return value
@@ -1169,6 +1174,10 @@ class A2CBase(BaseAlgorithm):
             'last_dones' : fdones,
             'rnn_states' : rnn_state_buffer if self.is_rnn else None,
             'last_rnn_states' : self.rnn_states,
+            'topology_seeds': self.experience_buffer.tensor_dict.get(
+                'topology_seed', None
+            ),
+            'last_topology_seeds': self.current_topology_seeds,
             'mb_intr_rewards' : mb_intr_rewards if self.intr_reward_model is not None else None,
             'mb_extr_rewards' : mb_rewards,
         }
@@ -1227,6 +1236,8 @@ class A2CBase(BaseAlgorithm):
             last_rnn_states = extras['last_rnn_states']
             mb_states = extras['states']
             mb_rnn_states = extras['rnn_states']
+            mb_topology_seeds = extras.get('topology_seeds')
+            last_topology_seeds = extras.get('last_topology_seeds')
             
             mb_obs[:,:, -self.intr_reward_coef_embd.shape[-1]:] = torch.roll(self.intr_reward_coef_embd, self.intr_coef_block_size*r_k, dims=0)
             last_obs_and_states['obs'][:,-self.intr_reward_coef_embd.shape[-1]:] = torch.roll(self.intr_reward_coef_embd, self.intr_coef_block_size*r_k, dims=0)
@@ -1235,15 +1246,29 @@ class A2CBase(BaseAlgorithm):
 
             flattened_mb_obs = mb_obs.reshape(-1, *mb_obs.shape[2:])
             flattened_mb_states = mb_states.reshape(-1, *mb_states.shape[2:]) if mb_states is not None else None
+            flattened_topology_seeds = (
+                mb_topology_seeds.reshape(-1)
+                if mb_topology_seeds is not None
+                else None
+            )
             
             mb_values = []
             for i in range((flattened_mb_obs.shape[0] + 8191) // 8192):
                 mb_values.append(self.get_values({
                     'obs': flattened_mb_obs[i*8192:(i+1)*8192], 
                     'states': flattened_mb_states[i*8192:(i+1)*8192] if mb_states is not None else None
-                    }, rnn_states=[s[:, i*8192:(i+1)*8192] for s in flattened_rnn_states] if flattened_rnn_states is not None else None))
+                    }, rnn_states=[s[:, i*8192:(i+1)*8192] for s in flattened_rnn_states] if flattened_rnn_states is not None else None,
+                    topology_seeds=(
+                        flattened_topology_seeds[i*8192:(i+1)*8192]
+                        if flattened_topology_seeds is not None
+                        else None
+                    )))
             mb_values = torch.cat(mb_values, dim=0)
-            last_values = self.get_values(last_obs_and_states, last_rnn_states)
+            last_values = self.get_values(
+                last_obs_and_states,
+                last_rnn_states,
+                topology_seeds=last_topology_seeds,
+            )
             
             mb_values = mb_values.reshape(*mb_obs.shape[:2], *mb_values.shape[1:])
             mb_values = torch.cat([mb_values, last_values.unsqueeze(0)], dim=0)
@@ -1612,11 +1637,13 @@ class ContinuousA2CBase(A2CBase):
                 continue
             self.writer.add_scalar(name, float(value), frame)
 
-    def _maybe_log_probabilistic_plasticity(self, frame):
+    def _maybe_log_probabilistic_plasticity(self, epoch_num, frame):
         if self.writer is None or self.global_rank != 0:
             return
         network = self._probabilistic_connectome_network()
         if network is None or not network.plasticity_monitoring_enabled:
+            return
+        if not network.should_run_plasticity_monitoring(epoch_num):
             return
         compute = getattr(
             network, "compute_probabilistic_plasticity_diagnostics", None
@@ -2287,7 +2314,7 @@ class ContinuousA2CBase(A2CBase):
 
                 self._maybe_log_spectral_diagnostics(epoch_num, frame)
                 self._maybe_log_plasticity_diagnostics(epoch_num, frame)
-                self._maybe_log_probabilistic_plasticity(frame)
+                self._maybe_log_probabilistic_plasticity(epoch_num, frame)
 
                 if self.has_soft_aug:
                     self.writer.add_scalar('losses/aug_loss', np.mean(aug_losses), frame)

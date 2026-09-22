@@ -254,6 +254,11 @@ def test_stateless_sampling_reproducibility_and_grouping(
         stateless_uniform(seed_a, edge_ids),
         stateless_uniform(seed_a, edge_ids),
     )
+    assert stateless_uniform(
+        torch.tensor([11]), torch.tensor([0])
+    ).item() != stateless_uniform(
+        torch.tensor([12]), torch.tensor([7])
+    ).item()
 
     independent = _build(probabilistic_artifact, group_size=1)
     independent.configure_probabilistic_runtime(42)
@@ -264,6 +269,14 @@ def test_stateless_sampling_reproducibility_and_grouping(
     assert not torch.equal(
         independent_seeds, rank_one.new_topology_seeds(6, global_rank=1)
     )
+    rank_two = _build(probabilistic_artifact, group_size=1)
+    rank_two.configure_probabilistic_runtime(42)
+    rank_two_seed = rank_two.new_topology_seeds(1, global_rank=2)[0]
+    later_rank_zero = _build(probabilistic_artifact, group_size=1)
+    later_rank_zero.configure_probabilistic_runtime(42)
+    later_rank_zero.probabilistic_topology_seed_counter.fill_(1)
+    later_seed = later_rank_zero.new_topology_seeds(4, global_rank=0)[3]
+    assert rank_two_seed != later_seed
 
     grouped = _build(probabilistic_artifact, group_size=2)
     grouped.configure_probabilistic_runtime(42)
@@ -598,6 +611,113 @@ def test_leader_follower_duplication_preserves_source_topology_ids():
     assert torch.equal(filtered[: len(original)], original)
     # The added leader/follower block retains the source block's circuit IDs.
     assert torch.equal(filtered[len(original) :], original[:6])
+
+
+def test_get_values_uses_explicit_flattened_topology_ids():
+    from rl_games.common.a2c_common import A2CBase
+
+    class RecordingModel:
+        def __init__(self):
+            self.received = None
+
+        def eval(self):
+            return None
+
+        def __call__(self, batch):
+            self.received = batch["topology_seed"].clone()
+            return {"values": torch.zeros(len(batch["obs"]), 1)}
+
+    harness = A2CBase.__new__(A2CBase)
+    harness.has_central_value = False
+    harness.model = RecordingModel()
+    harness.current_topology_seeds = torch.tensor([1, 2])
+    flattened = torch.arange(12, dtype=torch.int64) + 100
+    values = A2CBase.get_values(
+        harness,
+        {"obs": torch.zeros(12, 3)},
+        rnn_states=None,
+        topology_seeds=flattened,
+    )
+    assert values.shape == (12, 1)
+    assert torch.equal(harness.model.received, flattened)
+
+
+def test_lf_value_replay_uses_matching_time_flattened_topology_ids():
+    from rl_games.common.a2c_common import ContinuousA2CBase
+
+    class RecordingModel:
+        def __init__(self):
+            self.received = []
+
+        def eval(self):
+            return None
+
+        def __call__(self, batch):
+            self.received.append(batch["topology_seed"].clone())
+            return {"values": torch.zeros(len(batch["obs"]), 1)}
+
+    harness = ContinuousA2CBase.__new__(ContinuousA2CBase)
+    harness.num_actors = 4
+    harness.intr_coef_block_size = 2
+    harness.intr_reward_coef_embd = torch.tensor(
+        [[50.0], [50.0], [0.0], [0.0]]
+    )
+    harness.intr_reward_coef = torch.zeros(4)
+    harness.horizon_length = 2
+    harness.config = {"off_policy_ratio": 1.0}
+    harness.multi_gpu = False
+    harness.use_others_experience = "lf"
+    harness.gamma = 0.99
+    harness.has_central_value = False
+    harness.model = RecordingModel()
+    harness.current_topology_seeds = torch.tensor([10, 11, 20, 21])
+
+    raw_topology = torch.tensor(
+        [[10, 11, 20, 21], [10, 11, 20, 21]], dtype=torch.int64
+    )
+    flat_topology = swap_and_flatten01(raw_topology)
+    observations = torch.zeros(2, 4, 2)
+    observations[:, :, -1] = harness.intr_reward_coef_embd[:, 0]
+    batch = {
+        "played_frames": 8,
+        "step_time": 0.0,
+        "obses": swap_and_flatten01(observations),
+        "values": torch.zeros(8, 1),
+        "returns": torch.zeros(8, 1),
+        "actions": torch.zeros(8, 1),
+        "neglogpacs": torch.zeros(8),
+        "mus": torch.zeros(8, 1),
+        "sigmas": torch.ones(8, 1),
+        "dones": torch.zeros(8, dtype=torch.uint8),
+        "topology_seed": flat_topology,
+        "rnn_states": [torch.zeros(1, 4, 3)],
+    }
+    extras = {
+        "rewards": torch.zeros(2, 4, 1),
+        "obs": observations.clone(),
+        "last_obs": {"obs": observations[-1].clone()},
+        "states": None,
+        "dones": torch.zeros(2, 4),
+        "last_dones": torch.zeros(4),
+        "rnn_states": [torch.zeros(2, 1, 4, 3)],
+        "last_rnn_states": [torch.zeros(1, 4, 3)],
+        "topology_seeds": raw_topology,
+        "last_topology_seeds": raw_topology[-1],
+        "mb_intr_rewards": None,
+    }
+    augmented = ContinuousA2CBase.augment_batch_for_mixed_expl(
+        harness, batch, extras, repeat_idxs=[0, 1]
+    )
+    assert torch.equal(augmented["topology_seed"][:8], flat_topology)
+    assert torch.equal(
+        augmented["topology_seed"][8:], flat_topology[:4]
+    )
+    assert torch.equal(
+        harness.model.received[0], raw_topology.reshape(-1)
+    )
+    assert torch.equal(
+        harness.model.received[1], raw_topology[-1]
+    )
 
 
 def _probabilistic_ddp_worker(

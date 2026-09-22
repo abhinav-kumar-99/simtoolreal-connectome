@@ -225,7 +225,7 @@ def _wang_hash_u32(values: torch.Tensor) -> torch.Tensor:
 def stateless_uniform(
     topology_seeds: torch.Tensor, canonical_edge_ids: torch.Tensor
 ) -> torch.Tensor:
-    """Counter-based U(0,1), shaped ``[edges, samples]`` for references only."""
+    """Keyed counter U(0,1), shaped ``[edges, samples]`` for references only."""
     seeds = topology_seeds.to(dtype=torch.int64).reshape(1, -1)
     edge_ids = canonical_edge_ids.to(
         device=seeds.device, dtype=torch.int64
@@ -237,10 +237,16 @@ def stateless_uniform(
         | torch.bitwise_right_shift(high, 16),
         0xFFFFFFFF,
     )
-    mixed = torch.bitwise_xor(
-        torch.bitwise_xor(edge_ids, low), rotated ^ 0x9E3779B9
+    # Hash counter and key independently before combining them. A direct XOR
+    # aliases many distinct (seed, edge) pairs.
+    edge_component = _wang_hash_u32(edge_ids ^ 0xA511E9B3)
+    low_component = _wang_hash_u32(low ^ 0x63D83595)
+    high_component = _wang_hash_u32(rotated ^ 0xB5297A4D)
+    mixed = torch.bitwise_and(
+        edge_component + low_component * 0x27D4EB2D,
+        0xFFFFFFFF,
     )
-    hashed = _wang_hash_u32(mixed)
+    hashed = _wang_hash_u32(mixed ^ high_component)
     return (hashed.to(dtype=torch.float64) + 0.5) / float(2**32)
 
 

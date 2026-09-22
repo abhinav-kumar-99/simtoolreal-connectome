@@ -1771,12 +1771,26 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             )
             counter = int(self.probabilistic_topology_seed_counter.item())
             base = int(self.probabilistic_base_seed.item())
-            seeds = (
-                local_groups
-                + int(global_rank) * 1_000_000_007
-                + counter * 2_000_000_011
-                + base
-            ).remainder(2**63 - 1)
+            if int(global_rank) < 0 or int(global_rank) >= 2**8:
+                raise ValueError("global_rank must fit in 8 bits")
+            if counter < 0 or counter >= 2**31:
+                raise RuntimeError("topology seed counter exhausted its 31-bit field")
+            if int(local_groups.max().item()) >= 2**16:
+                raise ValueError(
+                    "topology sample group index must fit in 16 bits"
+                )
+            # Collision-free within one run: [counter:31][rank:8][group:16].
+            packed = (
+                (counter << 24)
+                | (int(global_rank) << 16)
+                | local_groups
+            )
+            # A fixed run-specific XOR is bijective and changes the PRNG key
+            # without introducing cross-counter/rank/group collisions.
+            base_key = (
+                base * 0x5DEECE66D + 0xB
+            ) & ((1 << 63) - 1)
+            seeds = torch.bitwise_xor(packed, base_key)
             self.probabilistic_topology_seed_counter.add_(1)
             return seeds
 
