@@ -1,0 +1,35 @@
+defaults:
+  - SimToolRealConnectomeSAPG
+  - _self_
+
+params:
+  network:
+    connectome:
+      adaptation:
+        weight_mode: latent_probabilistic
+        # Intrinsic, efficacy, and topology all live in one 3+4r state.
+        learn_dynamics: true
+        rank: 4
+        probabilistic:
+          # Uncertainty in observed adjacency, not a pruning threshold.
+          topology_prior_error_rate: 0.001
+          # Null derives the compute budget from the anatomical edge count.
+          candidate_nonedge_budget: null
+          topology_sample_group_size: 1
+          target_information_nats_per_neuron: 1.0
+          dual_lr: 0.001
+          inference_topology_mode: sampled
+      spectral_monitoring:
+        enabled: true
+        interval: 100
+        top_k: 8
+      spectral_preconditioning:
+        enabled: true
+        alpha: -0.5
+        singular_value_floor_ratio: 1.0e-3
+        refresh_every_ppo_updates: 1
+      plasticity_monitoring:
+        enabled: true
+        interval: 1
+  config:
+    name: ${resolve_default:SimToolRealConnectomeProbabilisticSAPG,${....experiment}}

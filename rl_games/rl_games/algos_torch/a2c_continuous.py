@@ -38,6 +38,12 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
         self.model.to(self.ppo_device)
         self.states = None
         self.init_rnn_from_model(self.model)
+        connectome_network = getattr(self.model, 'a2c_network', None)
+        configure_probabilistic = getattr(
+            connectome_network, 'configure_probabilistic_runtime', None
+        )
+        if callable(configure_probabilistic):
+            configure_probabilistic(self.base_seed)
         self.last_lr = float(self.last_lr)
         self.bound_loss_type = self.config.get('bound_loss_type', 'bound') # 'regularisation' or 'bound'
         self.optimizer = optim.Adam(self.model.parameters(), float(self.last_lr), eps=1e-08, weight_decay=self.weight_decay)
@@ -170,6 +176,8 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
         }
         if self.uses_cached_reservoir_features:
             batch_dict['reservoir_features'] = input_dict['reservoir_features']
+        if self.uses_probabilistic_plasticity:
+            batch_dict['topology_seed'] = input_dict['topology_seed']
 
         rnn_masks = None
         if self.is_rnn:
@@ -181,6 +189,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
                 batch_dict['dones'] = input_dict['dones']            
 
         synaptic_extras = {}
+        information_extras = {}
         with torch.cuda.amp.autocast(enabled=self.mixed_precision):
             res_dict = self.model(batch_dict)
             action_log_probs = res_dict['prev_neglogp']
@@ -237,6 +246,33 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
                     # Pre-scaling mean(Δ²); λ * this is what enters the loss.
                     synaptic_extras['synaptic_plasticity_reg'] = mean_sq.detach()
                     synaptic_extras.update(synaptic_stats)
+
+            information_fn = getattr(
+                network, 'probabilistic_information_estimate', None
+            )
+            if (
+                getattr(network, 'probabilistic_plasticity_active', False)
+                and callable(information_fn)
+            ):
+                with torch.autocast(
+                    device_type=obs_batch.device.type, enabled=False
+                ):
+                    latent_information, topology_information, total_information = (
+                        information_fn()
+                    )
+                    information_per_neuron = (
+                        total_information / float(network.neuron_count)
+                    )
+                    dual_weight = network.information_dual_weight().detach()
+                    loss = loss + dual_weight * information_per_neuron
+                information_extras = {
+                    'information_latent_nats': latent_information.detach(),
+                    'information_topology_nats': topology_information.detach(),
+                    'information_total_nats': total_information.detach(),
+                    'information_nats_per_neuron': information_per_neuron.detach(),
+                    'information_dual_weight': dual_weight,
+                    'information_tau': torch.exp(network.log_tau.detach()),
+                }
 
             if zero_grad:
                 if self.multi_gpu:
@@ -311,6 +347,7 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
         extras["scheduler_kl_sum"] = scheduler_kl_sum
         extras["scheduler_kl_count"] = scheduler_kl_count
         extras.update(synaptic_extras)
+        extras.update(information_extras)
         if self.expl_type.startswith('mixed_expl'):
             bl_ids = self.intr_reward_coef_embd[::self.intr_coef_block_size, 0].reshape(-1,1)
             bl_idxs = torch.argmax((obs_batch[:,-self.intr_reward_coef_embd.shape[1]] == bl_ids).float(), dim=0)

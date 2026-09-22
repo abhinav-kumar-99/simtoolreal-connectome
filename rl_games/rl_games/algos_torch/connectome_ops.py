@@ -11,14 +11,26 @@ import torch
 
 
 class Graph:
-    def __init__(self, crow, col):
+    def __init__(self, crow, col, canonical_edge_ids=None):
         self.crow, self.col = crow, col
         self.n = crow.numel() - 1
         self.rows = torch.repeat_interleave(
             torch.arange(self.n, device=col.device), crow[1:] - crow[:-1]
         )
+        if canonical_edge_ids is None:
+            canonical_edge_ids = torch.arange(
+                col.numel(), device=col.device, dtype=torch.long
+            )
+        if canonical_edge_ids.shape != col.shape:
+            raise ValueError("canonical_edge_ids must match the CSR edge shape")
+        self.canonical_edge_ids = canonical_edge_ids.to(
+            device=col.device, dtype=torch.long
+        ).contiguous()
         self.permutation = torch.argsort(col * self.n + self.rows, stable=True)
         self.tcol = self.rows[self.permutation].contiguous()
+        self.tcanonical_edge_ids = self.canonical_edge_ids[
+            self.permutation
+        ].contiguous()
         counts = torch.bincount(col, minlength=self.n)
         self.tcrow = torch.cat((counts.new_zeros(1), counts.cumsum(0)))
         self.plans = {}

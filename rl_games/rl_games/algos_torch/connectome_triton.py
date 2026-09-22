@@ -19,6 +19,26 @@ except ImportError as exc:
 
 
 @triton.jit
+def _topology_uniform(SEEDS, canonical, batch_lane, B: tl.constexpr):
+    """Wang-hash U(0,1) keyed only by int64 seed and canonical edge ID."""
+    seed = tl.load(
+        SEEDS + batch_lane,
+        mask=(batch_lane >= 0) & (batch_lane < B),
+        other=0,
+    )
+    low = seed.to(tl.uint64).to(tl.uint32)
+    high = (seed.to(tl.uint64) >> 32).to(tl.uint32)
+    rotated = (high << 16) | (high >> 16)
+    x = canonical.to(tl.uint32) ^ low ^ rotated ^ 0x9E3779B9
+    x = (x ^ 61) ^ (x >> 16)
+    x = x + (x << 3)
+    x = x ^ (x >> 4)
+    x = x * 0x27D4EB2D
+    x = x ^ (x >> 15)
+    return (x.to(tl.float32) + 0.5) * 2.3283064365386963e-10
+
+
+@triton.jit
 def _sparse_step(
     CROW,
     COL,
@@ -74,6 +94,84 @@ def _sparse_step(
         z = 2.0 / (1.0 + tl.exp(2.0 * -pre)) - 1.0
         leak = tl.load(LEAK + row)
         h0 = tl.load(H + row * B + b, b < B, 0)
+        out = (1.0 - leak) * h0 + leak * z
+        if SAVE_BACKWARD:
+            tl.store(REC + row * B + b, acc, b < B)
+            tl.store(Z + row * B + b, z, b < B)
+            tl.store(PRE_DRIVE + row * B + b, pre_drive, b < B)
+    else:
+        out = acc
+    tl.store(OUT + row * B + b, out, b < B)
+
+
+@triton.jit
+def _gated_sparse_step(
+    CROW,
+    COL,
+    CANONICAL_EDGE,
+    VAL,
+    LOGIT,
+    TOPOLOGY_SEED,
+    H,
+    GI,
+    GO,
+    LEAK,
+    A,
+    BIAS,
+    S,
+    D,
+    SMAP,
+    DMAP,
+    OUT,
+    REC,
+    Z,
+    PRE_DRIVE,
+    B: tl.constexpr,
+    BETA: tl.constexpr,
+    FUSED: tl.constexpr,
+    KB: tl.constexpr = 32,
+    EB: tl.constexpr = 32,
+    SAVE_BACKWARD: tl.constexpr = True,
+):
+    row = tl.program_id(0)
+    b = tl.program_id(1) * KB + tl.arange(0, KB)
+    e = tl.arange(0, EB)
+    start = tl.load(CROW + row)
+    end = tl.load(CROW + row + 1)
+    acc = tl.full((KB,), 0, tl.float32)
+    for first in range(start, end, EB):
+        edge = first + e
+        valid_edge = edge < end
+        src = tl.load(COL + edge, valid_edge, 0)
+        canonical = tl.load(CANONICAL_EDGE + edge, valid_edge, 0)
+        value = tl.load(VAL + edge, valid_edge, 0.0)
+        logit = tl.load(LOGIT + edge, valid_edge, 0.0)
+        probability = 1.0 / (1.0 + tl.exp(-logit))
+        uniform = _topology_uniform(
+            TOPOLOGY_SEED, canonical[:, None], b[None, :], B
+        )
+        gate = (uniform < probability[:, None]).to(tl.float32)
+        h = tl.load(
+            H + src[:, None] * B + b[None, :],
+            valid_edge[:, None] & (b[None, :] < B),
+            0.0,
+        )
+        weighted = value[:, None] * gate
+        if FUSED:
+            gain = tl.load(GO + src, valid_edge, 0.0)
+            weighted = weighted * gain[:, None]
+        acc += tl.sum(weighted * h, axis=0)
+    if FUSED:
+        si = tl.load(SMAP + row)
+        di = tl.load(DMAP + row)
+        drive = tl.load(S + si * B + b, (si >= 0) & (b < B), 0.0)
+        drive += tl.load(D + di * B + b, (di >= 0) & (b < B), 0.0)
+        pre_drive = BETA * tl.load(GI + row) * acc + drive
+        a = tl.load(A + row)
+        pre = a * pre_drive + tl.load(BIAS + row)
+        z = 2.0 / (1.0 + tl.exp(-2.0 * pre)) - 1.0
+        leak = tl.load(LEAK + row)
+        h0 = tl.load(H + row * B + b, b < B, 0.0)
         out = (1.0 - leak) * h0 + leak * z
         if SAVE_BACKWARD:
             tl.store(REC + row * B + b, acc, b < B)
@@ -225,6 +323,44 @@ def _edge_backward(
     h = tl.load(H + src * B + b, b < B, 0)
     value = tl.sum(d * h, 0) * tl.load(GO + src)
     tl.store(PARTS + edge * TILES + tile, value)
+
+
+@triton.jit
+def _gated_edge_backward(
+    ROWS,
+    COL,
+    CANONICAL_EDGE,
+    VAL,
+    LOGIT,
+    TOPOLOGY_SEED,
+    DR,
+    H,
+    GO,
+    VALUE_PARTS,
+    LOGIT_PARTS,
+    B: tl.constexpr,
+    TILES: tl.constexpr,
+    BLOCK: tl.constexpr = 256,
+):
+    edge = tl.program_id(0)
+    tile = tl.program_id(1)
+    b = tile * BLOCK + tl.arange(0, BLOCK)
+    dst = tl.load(ROWS + edge)
+    src = tl.load(COL + edge)
+    canonical = tl.load(CANONICAL_EDGE + edge)
+    logit = tl.load(LOGIT + edge)
+    probability = 1.0 / (1.0 + tl.exp(-logit))
+    uniform = _topology_uniform(TOPOLOGY_SEED, canonical, b, B)
+    gate = (uniform < probability).to(tl.float32)
+    d = tl.load(DR + dst * B + b, b < B, 0.0)
+    h = tl.load(H + src * B + b, b < B, 0.0)
+    base = d * h * tl.load(GO + src)
+    value = tl.load(VAL + edge)
+    value_grad = tl.sum(base * gate, 0)
+    logit_grad = tl.sum(base * value * probability * (1.0 - probability), 0)
+    offset = edge * TILES + tile
+    tl.store(VALUE_PARTS + offset, value_grad)
+    tl.store(LOGIT_PARTS + offset, logit_grad)
 
 
 class _Step(torch.autograd.Function):
@@ -398,6 +534,239 @@ class _Step(torch.autograd.Function):
         )
 
 
+class _GatedStep(torch.autograd.Function):
+    """Fused recurrence with lane-specific hard Bernoulli topology gates."""
+
+    @staticmethod
+    def forward(
+        ctx,
+        values,
+        posterior_logits,
+        topology_seeds,
+        hidden,
+        gi,
+        go,
+        leak,
+        intrinsic,
+        bias,
+        sensory,
+        descending,
+        graph,
+        sensory_indices,
+        descending_indices,
+        beta,
+    ):
+        if not hidden.is_cuda:
+            raise RuntimeError("probabilistic Triton recurrence requires CUDA")
+        if any(
+            tensor.dtype != torch.float32
+            for tensor in (
+                values,
+                posterior_logits,
+                hidden,
+                gi,
+                go,
+                leak,
+                intrinsic,
+                bias,
+                sensory,
+                descending,
+            )
+        ):
+            raise ValueError("probabilistic Triton recurrence requires FP32")
+        if topology_seeds.dtype != torch.int64:
+            raise ValueError("topology seeds must be int64")
+        h, s, d = (x.t().contiguous() for x in (hidden, sensory, descending))
+        topology_seeds = topology_seeds.reshape(-1).contiguous()
+        n, b = h.shape
+        if topology_seeds.numel() != b:
+            raise ValueError(
+                f"expected {b} topology seeds, got {topology_seeds.numel()}"
+            )
+        if values.shape != graph.col.shape or posterior_logits.shape != values.shape:
+            raise ValueError("gated values/logits must match the candidate graph")
+        key = (sensory_indices.data_ptr(), descending_indices.data_ptr())
+        if key not in graph.population_maps:
+            maps = []
+            for indices in (sensory_indices, descending_indices):
+                mapping = torch.full(
+                    (n,), -1, dtype=torch.int64, device=h.device
+                )
+                mapping[indices] = torch.arange(
+                    indices.numel(), device=h.device
+                )
+                maps.append(mapping)
+            graph.population_maps[key] = maps
+        smap, dmap = graph.population_maps[key]
+        out, rec, z, pre_drive = (torch.empty_like(h) for _ in range(4))
+        _gated_sparse_step[(n, triton.cdiv(b, 32))](
+            graph.crow,
+            graph.col,
+            graph.canonical_edge_ids,
+            values,
+            posterior_logits,
+            topology_seeds,
+            h,
+            gi,
+            go,
+            leak,
+            intrinsic,
+            bias,
+            s,
+            d,
+            smap,
+            dmap,
+            out,
+            rec,
+            z,
+            pre_drive,
+            b,
+            beta,
+            True,
+        )
+        ctx.graph, ctx.beta = graph, beta
+        ctx.save_for_backward(
+            values,
+            posterior_logits,
+            topology_seeds,
+            h,
+            gi,
+            go,
+            leak,
+            intrinsic,
+            rec,
+            z,
+            pre_drive,
+            sensory_indices,
+            descending_indices,
+        )
+        return out.t()
+
+    @staticmethod
+    def backward(ctx, grad):
+        (
+            values,
+            posterior_logits,
+            topology_seeds,
+            h,
+            gi,
+            go,
+            leak,
+            intrinsic,
+            rec,
+            z,
+            pre_drive,
+            sensory_indices,
+            descending_indices,
+        ) = ctx.saved_tensors
+        graph = ctx.graph
+        dy = grad.t().contiguous()
+        n, b = h.shape
+        dp, dr, direct = (torch.empty_like(h) for _ in range(3))
+        dgi, dleak, dintrinsic, dbias = (
+            torch.empty_like(gi) for _ in range(4)
+        )
+        _point_backward[(n,)](
+            dy,
+            h,
+            z,
+            rec,
+            pre_drive,
+            gi,
+            leak,
+            intrinsic,
+            dp,
+            dr,
+            direct,
+            dgi,
+            dleak,
+            dintrinsic,
+            dbias,
+            b,
+            ctx.beta,
+            triton.next_power_of_2(b),
+        )
+
+        dh = dgo = None
+        if ctx.needs_input_grad[3] or ctx.needs_input_grad[5]:
+            dscaled = torch.empty_like(h)
+            permutation = graph.permutation
+            _gated_sparse_step[(n, triton.cdiv(b, 32))](
+                graph.tcrow,
+                graph.tcol,
+                graph.tcanonical_edge_ids,
+                values[permutation],
+                posterior_logits[permutation],
+                topology_seeds,
+                dr,
+                gi,
+                go,
+                leak,
+                intrinsic,
+                gi,
+                h,
+                h,
+                graph.rows,
+                graph.rows,
+                dscaled,
+                rec,
+                z,
+                pre_drive,
+                b,
+                ctx.beta,
+                False,
+            )
+            if ctx.needs_input_grad[3]:
+                dh = (direct + dscaled * go[:, None]).t()
+            if ctx.needs_input_grad[5]:
+                dgo = (dscaled * h).sum(1)
+
+        dvalues = dlogits = None
+        if ctx.needs_input_grad[0] or ctx.needs_input_grad[1]:
+            tiles = triton.cdiv(b, 256)
+            value_parts = torch.empty(
+                (values.numel(), tiles), device=h.device, dtype=h.dtype
+            )
+            logit_parts = torch.empty_like(value_parts)
+            _gated_edge_backward[(values.numel(), tiles)](
+                graph.rows,
+                graph.col,
+                graph.canonical_edge_ids,
+                values,
+                posterior_logits,
+                topology_seeds,
+                dr,
+                h,
+                go,
+                value_parts,
+                logit_parts,
+                b,
+                tiles,
+            )
+            if ctx.needs_input_grad[0]:
+                dvalues = value_parts.sum(1)
+            if ctx.needs_input_grad[1]:
+                dlogits = logit_parts.sum(1)
+
+        return (
+            dvalues,
+            dlogits,
+            None,
+            dh,
+            dgi if ctx.needs_input_grad[4] else None,
+            dgo,
+            dleak if ctx.needs_input_grad[6] else None,
+            dintrinsic if ctx.needs_input_grad[7] else None,
+            dbias if ctx.needs_input_grad[8] else None,
+            dp[sensory_indices].t(),
+            dp[descending_indices].t(),
+            None,
+            None,
+            None,
+            None,
+        )
+
+
 class FrozenTanhRunner:
     """Reusable neuron-major buffers for a fixed, inference-only recurrence.
 
@@ -478,6 +847,44 @@ def fused_step(
     with torch.cuda.device(hidden.device) if hidden.is_cuda else nullcontext():
         return _Step.apply(
             values,
+            hidden,
+            gi,
+            go,
+            leak,
+            intrinsic,
+            bias,
+            sensory,
+            descending,
+            graph,
+            sensory_indices,
+            descending_indices,
+            beta,
+        )
+
+
+def fused_gated_step(
+    graph,
+    conditional_values,
+    posterior_logits,
+    topology_seeds,
+    hidden,
+    gi,
+    go,
+    leak,
+    intrinsic,
+    bias,
+    sensory,
+    descending,
+    sensory_indices,
+    descending_indices,
+    beta,
+):
+    """Advance one sampled-topology step with straight-through logit gradients."""
+    with torch.cuda.device(hidden.device) if hidden.is_cuda else nullcontext():
+        return _GatedStep.apply(
+            conditional_values,
+            posterior_logits,
+            topology_seeds,
             hidden,
             gi,
             go,

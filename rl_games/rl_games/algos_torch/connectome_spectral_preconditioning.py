@@ -157,9 +157,11 @@ def compute_spectral_preconditioner(
     right = vh.transpose(0, 1).contiguous()
     multipliers, stats = spectral_multipliers(singular_values, alpha, floor_ratio)
     return {
-        "P": left.to(dtype=dtype),
+        # SVD may return column-major U. Contiguous storage is required for
+        # exact tensor broadcasts across DDP ranks.
+        "P": left.to(dtype=dtype).contiguous(),
         "Q": right.to(dtype=dtype),
-        "multipliers": multipliers.to(dtype=dtype),
-        "singular_values": singular_values.to(dtype=dtype),
+        "multipliers": multipliers.to(dtype=dtype).contiguous(),
+        "singular_values": singular_values.to(dtype=dtype).contiguous(),
         **stats,
     }

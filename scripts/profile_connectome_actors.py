@@ -7,6 +7,7 @@ import argparse
 import gc
 import hashlib
 import json
+import math
 import os
 import platform
 import statistics
@@ -63,7 +64,13 @@ def _profile_case(
     network_params = _compose_network(actor["train_profile"], config["task_profile"])
     if "operator_backend" in actor:
         network_params["connectome"]["operator_backend"] = actor["operator_backend"]
-    for key in ("adaptation", "backend_options"):
+    for key in (
+        "adaptation",
+        "backend_options",
+        "spectral_preconditioning",
+        "spectral_monitoring",
+        "plasticity_monitoring",
+    ):
         if key in actor:
             network_params["connectome"][key] = {
                 **network_params["connectome"].get(key, {}),
@@ -146,6 +153,28 @@ def _profile_case(
         "dones": None if batch == 1 else dones,
         "seq_length": sequence_length,
     }
+    update_boundary_refresh_ms = None
+    if getattr(network, "probabilistic_plasticity_active", False):
+        network.configure_probabilistic_runtime(int(config["seed"]))
+        refresh_started = time.perf_counter()
+        network.refresh_probabilistic_support()
+        if network.spectral_preconditioning_active:
+            network.refresh_spectral_preconditioner()
+        _synchronize(device)
+        update_boundary_refresh_ms = (
+            time.perf_counter() - refresh_started
+        ) * 1000.0
+        sequence_seeds = network.new_topology_seeds(sequence_count, 0)
+        input_dict["topology_seed"] = sequence_seeds.repeat_interleave(
+            sequence_length
+        )
+    elif getattr(network, "spectral_preconditioning_active", False):
+        refresh_started = time.perf_counter()
+        network.refresh_spectral_preconditioner()
+        _synchronize(device)
+        update_boundary_refresh_ms = (
+            time.perf_counter() - refresh_started
+        ) * 1000.0
     use_amp = bool(config["amp"]) and device.type == "cuda"
     optimizer = torch.optim.Adam(
         network.parameters(), lr=float(config.get("optimizer_learning_rate", 1e-4))
@@ -154,20 +183,86 @@ def _profile_case(
     if do_step and not shape["backward"]:
         raise ValueError("optimizer_step requires backward")
 
+    loss_mode = str(config.get("loss_mode", "quadratic"))
+    if loss_mode not in {"quadratic", "ppo"}:
+        raise ValueError("loss_mode must be quadratic or ppo")
+    ppo_data = None
+    if loss_mode == "ppo":
+        with torch.no_grad():
+            initial_mu, initial_logstd, initial_value, _ = network(input_dict)
+            initial_std = initial_logstd.exp()
+            actions = initial_mu + initial_std * torch.randn_like(initial_mu)
+            old_neglogp = (
+                0.5 * ((actions - initial_mu) / initial_std).square()
+                + initial_logstd
+                + 0.5 * math.log(2.0 * math.pi)
+            ).sum(dim=-1)
+            ppo_data = {
+                "actions": actions,
+                "old_neglogp": old_neglogp,
+                "old_value": initial_value,
+                "returns": initial_value + torch.randn_like(initial_value),
+                "advantages": torch.randn(
+                    initial_mu.shape[0], device=device, dtype=torch.float32
+                ),
+            }
+
     def forward_pass() -> torch.Tensor:
         network.zero_grad(set_to_none=True)
         with torch.autocast(device_type=device.type, enabled=use_amp):
             mu, logstd, value, _ = network(input_dict)
-            return (
-                mu.float().square().mean()
-                + logstd.float().square().mean()
-                + value.float().square().mean()
+            if ppo_data is None:
+                return (
+                    mu.float().square().mean()
+                    + logstd.float().square().mean()
+                    + value.float().square().mean()
+                )
+            std = logstd.float().exp()
+            neglogp = (
+                0.5
+                * ((ppo_data["actions"] - mu.float()) / std).square()
+                + logstd.float()
+                + 0.5 * math.log(2.0 * math.pi)
+            ).sum(dim=-1)
+            ratio = torch.exp(ppo_data["old_neglogp"] - neglogp)
+            surrogate = ppo_data["advantages"] * ratio
+            clipped = ppo_data["advantages"] * torch.clamp(
+                ratio, 0.9, 1.1
             )
+            actor_loss = -torch.minimum(surrogate, clipped).mean()
+            value_loss = (
+                value.float() - ppo_data["returns"]
+            ).square().mean()
+            entropy = (
+                logstd.float()
+                + 0.5 * (1.0 + math.log(2.0 * math.pi))
+            ).sum(dim=-1).mean()
+            loss = actor_loss + 0.5 * value_loss - 0.005 * entropy
+            information = getattr(
+                network, "probabilistic_information_estimate", None
+            )
+            if (
+                getattr(network, "probabilistic_plasticity_active", False)
+                and callable(information)
+            ):
+                _latent, _topology, total_information = information()
+                loss = loss + (
+                    network.information_dual_weight().detach()
+                    * total_information
+                    / float(network.neuron_count)
+                )
+            return loss
+
+    def precondition_gradients() -> None:
+        precondition = getattr(network, "precondition_lora_gradients", None)
+        if callable(precondition):
+            precondition()
 
     # Cold pass includes graph planning, extension loading and JIT compilation.
     if shape["backward"]:
         forward_pass().backward()
         if do_step:
+            precondition_gradients()
             optimizer.step()
     else:
         with torch.no_grad():
@@ -178,6 +273,7 @@ def _profile_case(
         if shape["backward"]:
             forward_pass().backward()
             if do_step:
+                precondition_gradients()
                 optimizer.step()
         else:
             with torch.no_grad():
@@ -203,6 +299,7 @@ def _profile_case(
             _synchronize(device)
             backward_finished = time.perf_counter()
             if do_step:
+                precondition_gradients()
                 optimizer.step()
                 _synchronize(device)
             finished = time.perf_counter()
@@ -230,17 +327,38 @@ def _profile_case(
     if hasattr(network, "effective_values"):
         with torch.no_grad():
             weights = network.effective_values()
-            if network.weight_mode == "neuron_gains":
+            if getattr(network, "probabilistic_plasticity_active", False):
+                support = network.probabilistic_support_readout()
+                observed = support["is_original"]
+                ratio = (
+                    support["conditional_values"][observed]
+                    / support["baseline"][observed]
+                )
+            elif network.weight_mode == "neuron_gains":
                 graph = network.backend_graph()
                 weights = (
                     weights
                     * network.incoming_gains()[graph.rows]
                     * network.outgoing_gains()[graph.col]
                 )
-            ratio = weights / network.recurrent_values
+                ratio = weights / network.recurrent_values
+            else:
+                ratio = weights / network.recurrent_values
             # Saturation of tanh, reconstructed from the public leaky step.
             h0 = states[0][0]
-            h1 = network._step(observations[:sequence_count], h0)
+            if getattr(network, "probabilistic_plasticity_active", False):
+                support = network.probabilistic_support_readout()
+                h1 = network._step(
+                    observations[:sequence_count],
+                    h0,
+                    network.backend_graph(),
+                    support["conditional_values"],
+                    topology_logits=support["posterior_logits"],
+                    topology_seeds=sequence_seeds,
+                    topology_mode="sampled",
+                )
+            else:
+                h1 = network._step(observations[:sequence_count], h0)
             activated = (h1 - (1 - network.leaks()) * h0) / network.leaks()
             diagnostics = {
                 "edge_multiplier_min": float(ratio.min()),
@@ -260,6 +378,8 @@ def _profile_case(
         "initial_state_sha256": state_hash.hexdigest(),
         "setup_and_cold_pass_ms": setup_seconds * 1000,
         "optimizer_step": do_step,
+        "loss_mode": loss_mode,
+        "update_boundary_refresh_ms": update_boundary_refresh_ms,
         "median_optimizer_latency_ms": statistics.median(optimizer_latencies) * 1000
         if do_step
         else None,
@@ -289,7 +409,17 @@ def _profile_case(
         if backward_latencies
         else median_total * 1000,
         "throughput_observations_per_second": batch / median_total,
+        "ppo_step_throughput_observations_per_second": (
+            batch / median_total if loss_mode == "ppo" and do_step else None
+        ),
         "peak_gpu_memory_bytes": peak_memory,
+        "candidate_support_edges": (
+            int(network.probabilistic_support_canonical_ids.numel())
+            if getattr(network, "probabilistic_plasticity_active", False)
+            else int(network.edge_count)
+            if hasattr(network, "edge_count")
+            else None
+        ),
     }
 
 

@@ -74,8 +74,14 @@ class PpoPlayerContinuous(BasePlayer):
             'is_train': False,
             'prev_actions': None, 
             'obs' : obs,
-            'rnn_states' : rnn_states
+            'rnn_states' : rnn_states,
         }
+        if getattr(
+            getattr(self.model, 'a2c_network', None),
+            'probabilistic_plasticity_active',
+            False,
+        ):
+            input_dict['topology_inference'] = True
         with torch.no_grad():
             res_dict = self.model(input_dict)
         mu = res_dict['mus']
@@ -109,6 +115,13 @@ class PpoPlayerContinuous(BasePlayer):
         self.loaded_checkpoint = fn
         
     def reset(self):
+        reset_topology = getattr(
+            getattr(self.model, 'a2c_network', None),
+            'reset_probabilistic_inference_topology',
+            None,
+        )
+        if callable(reset_topology):
+            reset_topology()
         self.init_rnn()
 
 

@@ -2,6 +2,7 @@ import numpy as np
 import random
 import gym
 import torch
+from collections.abc import Mapping
 from rl_games.common.segment_tree import SumSegmentTree, MinSegmentTree
 import torch
 
@@ -351,9 +352,24 @@ class ExperienceBuffer:
 
     def _init_from_aux_dict(self, tensor_dict):
         obs_base_shape = self.obs_base_shape
-        for k,v in tensor_dict.items():
+        for k, v in tensor_dict.items():
+            if isinstance(v, Mapping):
+                shape = tuple(v.get("shape", ()))
+                dtype = np.dtype(v.get("dtype", np.float32))
+                if np.issubdtype(dtype, np.integer):
+                    bounds = np.iinfo(dtype)
+                    low, high = bounds.min, bounds.max
+                else:
+                    low, high = -np.inf, np.inf
+                space = gym.spaces.Box(
+                    low=low, high=high, shape=shape, dtype=dtype
+                )
+            else:
+                space = gym.spaces.Box(
+                    low=0, high=1, shape=(v,), dtype=np.float32
+                )
             self.tensor_dict[k] = self._create_tensor_from_space(
-                gym.spaces.Box(low=0, high=1, shape=(v,), dtype=np.float32),
+                space,
                 obs_base_shape,
             )
 

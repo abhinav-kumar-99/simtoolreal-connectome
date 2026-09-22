@@ -1,0 +1,77 @@
+# Two-update integration gate for unified latent probabilistic plasticity.
+schema_version: 1
+name: probabilistic_plasticity_1952_smoke
+stages: [prepare, train]
+output_directory: train_dir/connectome/probabilistic_plasticity_1952_smoke
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+preparation:
+  config: configs/connectome/malecns_1952.yaml
+training:
+  task_profile: SimToolRealLSTMAsymmetric
+  train_profiles:
+    - name: latent_probabilistic_r4
+      train_profile: SimToolRealConnectome1952AdaptersMLPAllNeuronReadoutGaussianSigma3SAPG
+      overrides:
+        train.params.network.connectome.adaptation.weight_mode: latent_probabilistic
+        train.params.network.connectome.adaptation.learn_dynamics: true
+        train.params.network.connectome.adaptation.rank: 4
+        ++train.params.network.connectome.adaptation.probabilistic.topology_prior_error_rate: 0.001
+        ++train.params.network.connectome.adaptation.probabilistic.candidate_nonedge_budget: 33720
+        ++train.params.network.connectome.adaptation.probabilistic.topology_sample_group_size: 1
+        ++train.params.network.connectome.adaptation.probabilistic.target_information_nats_per_neuron: 1.0
+        ++train.params.network.connectome.adaptation.probabilistic.dual_lr: 0.001
+        ++train.params.network.connectome.adaptation.probabilistic.inference_topology_mode: sampled
+        train.params.network.connectome.spectral_monitoring.enabled: true
+        train.params.network.connectome.plasticity_monitoring.enabled: true
+        train.params.network.connectome.plasticity_monitoring.interval: 1
+        train.params.network.connectome.spectral_preconditioning.enabled: true
+        train.params.network.connectome.spectral_preconditioning.alpha: -0.5
+        train.params.network.connectome.spectral_preconditioning.singular_value_floor_ratio: 0.001
+        train.params.network.connectome.spectral_preconditioning.refresh_every_ppo_updates: 1
+  seeds: [42]
+  gpu_assignments: [0]
+  max_parallel: 1
+  num_envs: 384
+  sapg_block_size: 64
+  epochs: 2
+  max_frames: 12288
+  minibatch_size: 1536
+  central_critic_minibatch_size: 1536
+  rollout_accumulation_steps: 1
+  actor_microbatch_size: 1536
+  central_critic_microbatch_size: 1536
+  inference_checkpoint_interval_frames: 6144
+  save_frequency: 1
+  save_best_after: 0
+  on_existing: fail
+  checkpoint: {mode: none, path: ''}
+  wandb:
+    enabled: false
+    project: simtoolreal-connectome
+    entity: ''
+    group: probabilistic-plasticity-1952-smoke
+    tags: [malecns, latent-probabilistic, rank-4, sampled-topology, triton]
+  overrides:
+    train.params.config.use_others_experience: none
+    train.params.config.off_policy_ratio: 1.0
+    ++train.params.config.use_experimental_cv: false
+    ++train.params.network.connectome.dynamics.neural_updates: 4
+    ++task.env.useSparseReward: false
+    task.env.objectScaleNoiseMultiplierRange: [0.9, 1.1]
+    task.env.forceConsecutiveNearGoalSteps: true
+    train.params.config.expl_reward_coef_scale: 0.005
+    task.env.forceScale: 2.0
+    task.env.forceProbRange: [0.001, 0.1]
+    task.env.forceDecay: 0.99
+    task.env.forceDecayInterval: 0.08
+    task.env.forceOnlyWhenLifted: true
+    task.env.torqueScale: 0.0
+    task.env.linVelImpulseScale: 0.0
+    task.env.angVelImpulseScale: 0.0
+    task.env.goodResetBoundary: 0
+    train.params.config.good_reset_boundary: 0

@@ -89,6 +89,7 @@ def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
         "SimToolRealConnectomeRandomSAPG": "connectome_actor_critic",
         "SimToolRealConnectomeGainsSAPG": "connectome_actor_critic",
         "SimToolRealConnectomeLowRankSAPG": "connectome_actor_critic",
+        "SimToolRealConnectomeProbabilisticSAPG": "connectome_actor_critic",
         "SimToolRealConnectomeEdgewiseSAPG": "connectome_actor_critic",
         "SimToolRealConnectomeGainsDynamicsSAPG": "connectome_actor_critic",
         "SimToolRealConnectomeMLPSAPG": "connectome_actor_critic",
@@ -123,7 +124,8 @@ def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
                     config.train.params.network.connectome.operator_backend
                     == "triton_fused"
                 )
-                adaptation = config.train.params.network.connectome.adaptation
+                connectome = config.train.params.network.connectome
+                adaptation = connectome.adaptation
                 projections = (
                     config.train.params.network.connectome.interface_projections
                 )
@@ -144,6 +146,75 @@ def test_all_actor_profiles_compose_with_sapg_and_asymmetric_critic() -> None:
                 }:
                     assert adaptation.weight_mode == "neuron_gains"
                     assert adaptation.learn_dynamics is True
+                if profile == "SimToolRealConnectomeProbabilisticSAPG":
+                    assert adaptation.weight_mode == "latent_probabilistic"
+                    assert adaptation.learn_dynamics is True
+                    assert adaptation.rank == 4
+                    assert (
+                        adaptation.probabilistic.topology_prior_error_rate
+                        == 0.001
+                    )
+                    assert (
+                        adaptation.probabilistic.candidate_nonedge_budget
+                        is None
+                    )
+                    assert (
+                        adaptation.probabilistic.topology_sample_group_size
+                        == 1
+                    )
+                    assert (
+                        adaptation.probabilistic.target_information_nats_per_neuron
+                        == 1.0
+                    )
+                    assert adaptation.probabilistic.dual_lr == 0.001
+                    assert (
+                        connectome.spectral_preconditioning.enabled is True
+                    )
+                    assert connectome.spectral_preconditioning.alpha == -0.5
+
+
+def test_probabilistic_plasticity_smoke_contract_composes() -> None:
+    from scripts.run_connectome_suite import _compose_resolved, _training_overrides
+
+    root = Path(__file__).resolve().parents[2]
+    suite = yaml.safe_load(
+        (
+            root
+            / "configs/connectome/suites/probabilistic_plasticity_1952_smoke.yaml"
+        ).read_text()
+    )
+    training = suite["training"]
+    entry = training["train_profiles"][0]
+    case_training = dict(training)
+    case_training["overrides"] = {
+        **training.get("overrides", {}),
+        **entry.get("overrides", {}),
+    }
+    config = _compose_resolved(
+        _training_overrides(
+            case_training,
+            entry["train_profile"],
+            42,
+            entry["name"],
+            root / suite["output_directory"],
+        )
+    )
+    connectome = config.train.params.network.connectome
+    probabilistic = connectome.adaptation.probabilistic
+    assert connectome.expected.neurons == 1952
+    assert connectome.expected.edges == 33720
+    assert connectome.operator_backend == "triton_fused"
+    assert connectome.adaptation.weight_mode == "latent_probabilistic"
+    assert connectome.adaptation.rank == 4
+    assert probabilistic.topology_prior_error_rate == 0.001
+    assert probabilistic.candidate_nonedge_budget == 33720
+    assert probabilistic.topology_sample_group_size == 1
+    assert probabilistic.target_information_nats_per_neuron == 1.0
+    assert probabilistic.dual_lr == 0.001
+    assert connectome.spectral_preconditioning.enabled is True
+    assert connectome.spectral_preconditioning.alpha == -0.5
+    assert config.task.env.numEnvs == 384
+    assert config.train.params.config.max_epochs == 2
 
 
 def test_compact_profiles_compose_with_explicit_adaptation_modes() -> None:

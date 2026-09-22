@@ -1,0 +1,93 @@
+schema_version: 2
+seed: 17
+device: auto
+amp: true
+loss_mode: ppo
+optimizer_learning_rate: 0.0001
+runtime_environment:
+  CC: /usr/bin/gcc
+  CXX: /usr/bin/g++
+  MAX_JOBS: '1'
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+task_profile: SimToolRealLSTMAsymmetric
+policy_observations: 140
+actions: 29
+sapg_embedding_size: 32
+sapg_coefficient_ids: [50, 40, 30, 20, 10, 0]
+warmup_iterations: 3
+measure_iterations: 5
+repetitions: 2
+output_path: profiles/connectome/probabilistic_plasticity.json
+
+actors:
+  - name: signed_lora_r4_triton
+    train_profile: SimToolRealConnectome1952AdaptersMLPAllNeuronReadoutGaussianSigma3SAPG
+    operator_backend: triton_fused
+    adaptation:
+      weight_mode: low_rank
+      learn_dynamics: true
+      rank: 4
+      synaptic_plasticity_reg: 0.0
+    spectral_preconditioning:
+      enabled: false
+      alpha: 0.0
+      singular_value_floor_ratio: 0.001
+      refresh_every_ppo_updates: 1
+
+  - name: latent_probabilistic_r4_group1
+    train_profile: SimToolRealConnectome1952AdaptersMLPAllNeuronReadoutGaussianSigma3SAPG
+    operator_backend: triton_fused
+    adaptation:
+      weight_mode: latent_probabilistic
+      learn_dynamics: true
+      rank: 4
+      synaptic_plasticity_reg: 0.0
+      probabilistic:
+        topology_prior_error_rate: 0.001
+        candidate_nonedge_budget: 33720
+        topology_sample_group_size: 1
+        target_information_nats_per_neuron: 1.0
+        dual_lr: 0.001
+        inference_topology_mode: sampled
+    spectral_preconditioning:
+      enabled: false
+      alpha: 0.0
+      singular_value_floor_ratio: 0.001
+      refresh_every_ppo_updates: 1
+
+  - name: latent_probabilistic_r4_group32
+    train_profile: SimToolRealConnectome1952AdaptersMLPAllNeuronReadoutGaussianSigma3SAPG
+    operator_backend: triton_fused
+    adaptation:
+      weight_mode: latent_probabilistic
+      learn_dynamics: true
+      rank: 4
+      synaptic_plasticity_reg: 0.0
+      probabilistic:
+        topology_prior_error_rate: 0.001
+        candidate_nonedge_budget: 33720
+        topology_sample_group_size: 32
+        target_information_nats_per_neuron: 1.0
+        dual_lr: 0.001
+        inference_topology_mode: sampled
+    spectral_preconditioning:
+      enabled: false
+      alpha: 0.0
+      singular_value_floor_ratio: 0.001
+      refresh_every_ppo_updates: 1
+
+shapes:
+  - name: recurrent_forward_384
+    num_sequences: 384
+    sequence_length: 1
+    backward: false
+  - name: forward_backward_64x16
+    num_sequences: 64
+    sequence_length: 16
+    backward: true
+  - name: ppo_step_64x16
+    num_sequences: 64
+    sequence_length: 16
+    backward: true
+    optimizer_step: true

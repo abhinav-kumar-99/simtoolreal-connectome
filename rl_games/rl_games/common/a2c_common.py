@@ -75,6 +75,7 @@ class A2CBase(BaseAlgorithm):
     def __init__(self, base_name, params):
 
         self.config = config = params['config']
+        self.base_seed = int(params.get('seed', 0) or 0)
 
         self.population_based_training = config.get('population_based_training', False)
 
@@ -494,6 +495,8 @@ class A2CBase(BaseAlgorithm):
             'obs' : processed_obs,
             'rnn_states' : rnn_states
         }
+        if getattr(self, 'current_topology_seeds', None) is not None:
+            input_dict['topology_seed'] = self.current_topology_seeds
 
         with torch.no_grad():
             res_dict = self.model(input_dict)
@@ -528,6 +531,8 @@ class A2CBase(BaseAlgorithm):
                     'obs' : processed_obs,
                     'rnn_states' : rnn_states
                 }
+                if getattr(self, 'current_topology_seeds', None) is not None:
+                    input_dict['topology_seed'] = self.current_topology_seeds
                 result = self.model(input_dict)
                 value = result['values']
             return value
@@ -551,6 +556,13 @@ class A2CBase(BaseAlgorithm):
         if getattr(self, 'uses_cached_reservoir_features', False):
             auxiliary_tensors = {
                 'reservoir_features': self.model.get_reservoir_feature_count()
+            }
+        if getattr(self, 'uses_probabilistic_plasticity', False):
+            if auxiliary_tensors is None:
+                auxiliary_tensors = {}
+            auxiliary_tensors['topology_seed'] = {
+                'shape': (),
+                'dtype': np.int64,
             }
         self.experience_buffer = ExperienceBuffer(
             self.env_info,
@@ -597,6 +609,12 @@ class A2CBase(BaseAlgorithm):
         # motor features.  Treating that optimizer as recurrent would retain the
         # full fly state for every rollout step and replay the fly during updates.
         self.is_rnn = self.model.is_rnn() and not self.uses_cached_reservoir_features
+        network = getattr(model, 'a2c_network', None)
+        self.uses_probabilistic_plasticity = bool(
+            network is not None
+            and getattr(network, 'probabilistic_plasticity_active', False)
+        )
+        self.current_topology_seeds = None
 
     def cast_obs(self, obs):
         if isinstance(obs, torch.Tensor):
@@ -771,6 +789,8 @@ class A2CBase(BaseAlgorithm):
         state['current_rewards'] = self.current_rewards
         state['current_shaped_rewards'] = self.current_shaped_rewards
         state['current_lengths'] = self.current_lengths
+        if getattr(self, 'uses_probabilistic_plasticity', False):
+            state['current_topology_seeds'] = self.current_topology_seeds
      
         return state
 
@@ -885,7 +905,15 @@ class A2CBase(BaseAlgorithm):
             print(f"self.num_actors = {self.num_actors}, weights['current_rewards'].shape = {weights['current_rewards'].shape if 'current_rewards' in weights else 'not in weights'}")
 
         if restore_environment:
-            for key in ['rnn_states', 'dones', 'obs', 'current_rewards', 'current_shaped_rewards', 'current_lengths']:
+            for key in [
+                'rnn_states',
+                'dones',
+                'obs',
+                'current_rewards',
+                'current_shaped_rewards',
+                'current_lengths',
+                'current_topology_seeds',
+            ]:
                 if key in weights:
                     if not SKIP:
                         setattr(self, key, weights[key])
@@ -1028,6 +1056,14 @@ class A2CBase(BaseAlgorithm):
                 self.rnn_states = res_dict['rnn_states']
             self.experience_buffer.update_data('obses', n, self.obs['obs'])
             self.experience_buffer.update_data('dones', n, self.dones.byte())
+            if self.uses_probabilistic_plasticity:
+                if self.current_topology_seeds is None:
+                    raise RuntimeError(
+                        "probabilistic rollout has no assigned topology seeds"
+                    )
+                self.experience_buffer.update_data(
+                    'topology_seed', n, self.current_topology_seeds
+                )
             if self.uses_cached_reservoir_features:
                 self.experience_buffer.update_data(
                     'reservoir_features', n, res_dict['reservoir_features']
@@ -1576,14 +1612,196 @@ class ContinuousA2CBase(A2CBase):
                 continue
             self.writer.add_scalar(name, float(value), frame)
 
+    def _maybe_log_probabilistic_plasticity(self, frame):
+        if self.writer is None or self.global_rank != 0:
+            return
+        network = self._probabilistic_connectome_network()
+        if network is None or not network.plasticity_monitoring_enabled:
+            return
+        compute = getattr(
+            network, "compute_probabilistic_plasticity_diagnostics", None
+        )
+        if not callable(compute):
+            return
+        for tag, value in compute().items():
+            if str(tag).startswith("probabilistic_plasticity/"):
+                self.writer.add_scalar(tag, float(value), frame)
+
     def _begin_spectral_preconditioning_update(self):
         network = getattr(self.model, "a2c_network", None)
         begin = getattr(network, "begin_spectral_preconditioning_update", None)
         if callable(begin):
             begin()
 
+    def _probabilistic_connectome_network(self):
+        network = getattr(self.model, "a2c_network", None)
+        if network is None or not getattr(
+            network, "probabilistic_plasticity_active", False
+        ):
+            return None
+        return network
+
+    def _select_and_apply_probabilistic_support(self, network):
+        if self.multi_gpu:
+            if self.global_rank == 0:
+                candidates, kl_ids, stats = (
+                    network.propose_probabilistic_support()
+                )
+                stats_tensor = torch.tensor(
+                    [
+                        stats["posterior_mass_fraction"],
+                        stats["turnover_fraction"],
+                    ],
+                    device=self.ppo_device,
+                    dtype=torch.float64,
+                )
+            else:
+                candidates = torch.empty_like(
+                    network.probabilistic_candidate_nonedge_ids
+                )
+                kl_ids = torch.empty_like(
+                    network.probabilistic_kl_nonedge_ids
+                )
+                stats_tensor = torch.empty(
+                    2, device=self.ppo_device, dtype=torch.float64
+                )
+            dist.broadcast(candidates, 0)
+            dist.broadcast(kl_ids, 0)
+            dist.broadcast(stats_tensor, 0)
+            network.apply_probabilistic_support(
+                candidates,
+                kl_ids,
+                posterior_mass_fraction=float(stats_tensor[0].item()),
+                turnover_fraction=float(stats_tensor[1].item()),
+            )
+        else:
+            network.refresh_probabilistic_support()
+
+    def _begin_probabilistic_plasticity_update(self):
+        network = self._probabilistic_connectome_network()
+        if network is None:
+            return
+        if not bool(network.probabilistic_candidate_initialized.item()):
+            self._select_and_apply_probabilistic_support(network)
+        # The first update must have geometry fixed before rollout collection.
+        if (
+            network.spectral_preconditioning_active
+            and network._spectral_precond is None
+        ):
+            self._refresh_probabilistic_spectral_preconditioner(network)
+        self.current_topology_seeds = None
+
+    def _refresh_probabilistic_spectral_preconditioner(self, network):
+        if not network.spectral_preconditioning_active:
+            network._spectral_precond = None
+            return
+        if not self.multi_gpu:
+            network.refresh_spectral_preconditioner()
+            return
+        tensor_keys = ("P", "Q", "multipliers", "singular_values")
+        scalar_keys = (
+            "sigma_max",
+            "sigma_min",
+            "sigma_floor",
+            "multiplier_min",
+            "multiplier_max",
+            "multiplier_mean",
+            "multiplier_std",
+            "alpha",
+        )
+        if self.global_rank == 0:
+            network.refresh_spectral_preconditioner()
+            cache = network._spectral_precond
+            scalar_values = torch.tensor(
+                [float(cache[key]) for key in scalar_keys],
+                device=self.ppo_device,
+                dtype=torch.float64,
+            )
+        else:
+            n = int(network.neuron_count)
+            dtype = network.plasticity_state.dtype
+            device = network.plasticity_state.device
+            cache = {
+                "P": torch.empty((n, n), device=device, dtype=dtype),
+                "Q": torch.empty((n, n), device=device, dtype=dtype),
+                "multipliers": torch.empty(n, device=device, dtype=dtype),
+                "singular_values": torch.empty(n, device=device, dtype=dtype),
+            }
+            scalar_values = torch.empty(
+                len(scalar_keys),
+                device=self.ppo_device,
+                dtype=torch.float64,
+            )
+        for key in tensor_keys:
+            dist.broadcast(cache[key], 0)
+        dist.broadcast(scalar_values, 0)
+        for index, key in enumerate(scalar_keys):
+            cache[key] = float(scalar_values[index].item())
+        network._spectral_precond = cache
+
+    def _assign_probabilistic_rollout_topologies(self):
+        network = self._probabilistic_connectome_network()
+        if network is None:
+            self.current_topology_seeds = None
+            return
+        self.current_topology_seeds = network.new_topology_seeds(
+            self.num_actors * self.num_agents,
+            self.global_rank,
+        )
+
+    def _finish_probabilistic_plasticity_update(self):
+        network = self._probabilistic_connectome_network()
+        if network is None:
+            return
+        with torch.no_grad():
+            latent, topology, total = network.probabilistic_full_information()
+            information_per_neuron = total / float(network.neuron_count)
+            if self.multi_gpu:
+                for value in (latent, topology, total, information_per_neuron):
+                    dist.all_reduce(value, op=dist.ReduceOp.SUM)
+                    value.div_(self.world_size)
+            if self.global_rank == 0:
+                network.update_information_dual(
+                    float(information_per_neuron.item())
+                )
+            if self.multi_gpu:
+                dist.broadcast(network.information_dual_log_weight, 0)
+            network._probabilistic_last_metrics = {
+                "probabilistic_plasticity/information/latent_nats": float(
+                    latent.item()
+                ),
+                "probabilistic_plasticity/information/topology_nats": float(
+                    topology.item()
+                ),
+                "probabilistic_plasticity/information/total_nats": float(
+                    total.item()
+                ),
+                "probabilistic_plasticity/information/nats_per_neuron": float(
+                    information_per_neuron.item()
+                ),
+                "probabilistic_plasticity/information/target_nats_per_neuron": float(
+                    network.target_information_nats_per_neuron
+                ),
+                "probabilistic_plasticity/information/dual_weight": float(
+                    network.information_dual_weight().item()
+                ),
+                "probabilistic_plasticity/information/tau": float(
+                    torch.exp(network.log_tau).item()
+                ),
+            }
+            self._select_and_apply_probabilistic_support(network)
+            network.probabilistic_update_counter.add_(1)
+
     def _finish_spectral_preconditioning_update(self):
         network = getattr(self.model, "a2c_network", None)
+        if (
+            network is not None
+            and getattr(network, "probabilistic_plasticity_active", False)
+            and getattr(network, "spectral_preconditioning_active", False)
+        ):
+            # Candidate support has just refreshed; geometry must match it.
+            self._refresh_probabilistic_spectral_preconditioner(network)
+            return
         finish = getattr(network, "finish_spectral_preconditioning_update", None)
         if callable(finish):
             finish(getattr(self, "epoch_num", 0))
@@ -1608,11 +1826,14 @@ class ContinuousA2CBase(A2CBase):
         self.tensor_list = self.update_list + ['obses', 'states', 'dones']
         if self.uses_cached_reservoir_features:
             self.tensor_list.append('reservoir_features')
+        if self.uses_probabilistic_plasticity:
+            self.tensor_list.append('topology_seed')
 
     def train_epoch(self):
         super().train_epoch()
 
         self.set_eval()
+        self._begin_probabilistic_plasticity_update()
         play_time_start = time.time()
         with torch.no_grad():
             rollout_batches = []
@@ -1636,6 +1857,7 @@ class ContinuousA2CBase(A2CBase):
                 if self.multi_gpu:
                     dist.broadcast_object_list(repeat_idxs, 0)
             for _ in range(self.rollout_accumulation_steps):
+                self._assign_probabilistic_rollout_topologies()
                 orig_batch_dict, ps_extras = self.play_steps()
                 if (
                     self.expl_type.startswith('mixed_expl')
@@ -1823,6 +2045,7 @@ class ContinuousA2CBase(A2CBase):
             if self.normalize_input:
                 self.model.running_mean_std.eval() # don't need to update statstics more than one miniepoch
 
+        self._finish_probabilistic_plasticity_update()
         self._finish_spectral_preconditioning_update()
 
         if self.schedule_type == 'rollout':
@@ -1961,6 +2184,8 @@ class ContinuousA2CBase(A2CBase):
         dataset_dict['off_policy_mask'] = batch_dict.get('off_policy_mask', None)
         if self.uses_cached_reservoir_features:
             dataset_dict['reservoir_features'] = batch_dict['reservoir_features']
+        if self.uses_probabilistic_plasticity:
+            dataset_dict['topology_seed'] = batch_dict['topology_seed']
 
         self.dataset.update_values_dict(dataset_dict)
 
@@ -2062,6 +2287,7 @@ class ContinuousA2CBase(A2CBase):
 
                 self._maybe_log_spectral_diagnostics(epoch_num, frame)
                 self._maybe_log_plasticity_diagnostics(epoch_num, frame)
+                self._maybe_log_probabilistic_plasticity(frame)
 
                 if self.has_soft_aug:
                     self.writer.add_scalar('losses/aug_loss', np.mean(aug_losses), frame)

@@ -332,13 +332,20 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 "neuron_gains",
                 "low_rank",
                 "edgewise",
+                "latent_probabilistic",
             }:
                 raise ValueError(f"Unknown adaptation weight_mode: {self.weight_mode}")
+            self.probabilistic_plasticity_active = (
+                self.weight_mode == "latent_probabilistic"
+            )
             self.learn_dynamics = adaptation.get(
                 "learn_dynamics", legacy == "neuron_gains"
             )
             if not isinstance(self.learn_dynamics, bool):
                 raise TypeError("learn_dynamics must be a YAML boolean")
+            if self.probabilistic_plasticity_active:
+                # Intrinsic coordinates are mandatory parts of the unified state.
+                self.learn_dynamics = True
             self.adaptation_rank = adaptation.get("rank", 4)
             if isinstance(self.adaptation_rank, bool) or not isinstance(
                 self.adaptation_rank, int
@@ -371,6 +378,98 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 raise ValueError(
                     "synaptic_plasticity_reg must be finite and non-negative"
                 )
+            if (
+                self.probabilistic_plasticity_active
+                and self.synaptic_plasticity_reg != 0.0
+            ):
+                raise ValueError(
+                    "latent_probabilistic replaces synaptic_plasticity_reg with "
+                    "the unified information objective"
+                )
+            probabilistic = adaptation.get("probabilistic", {}) or {}
+            if not isinstance(probabilistic, Mapping):
+                raise TypeError("adaptation.probabilistic must be a YAML mapping")
+            if probabilistic and not self.probabilistic_plasticity_active:
+                raise ValueError(
+                    "adaptation.probabilistic is only valid with "
+                    "weight_mode: latent_probabilistic"
+                )
+            allowed_probabilistic = {
+                "topology_prior_error_rate",
+                "candidate_nonedge_budget",
+                "topology_sample_group_size",
+                "target_information_nats_per_neuron",
+                "dual_lr",
+                "inference_topology_mode",
+            }
+            unknown_probabilistic = set(probabilistic) - allowed_probabilistic
+            if unknown_probabilistic:
+                raise ValueError(
+                    "Unknown probabilistic plasticity settings: "
+                    f"{sorted(unknown_probabilistic)}"
+                )
+            self.topology_prior_error_rate = float(
+                probabilistic.get("topology_prior_error_rate", 1.0e-3)
+            )
+            if not (
+                math.isfinite(self.topology_prior_error_rate)
+                and 0.0 < self.topology_prior_error_rate < 0.5
+            ):
+                raise ValueError(
+                    "topology_prior_error_rate must be finite and in (0, 0.5)"
+                )
+            self._candidate_nonedge_budget_config = probabilistic.get(
+                "candidate_nonedge_budget"
+            )
+            if (
+                self._candidate_nonedge_budget_config is not None
+                and (
+                    isinstance(self._candidate_nonedge_budget_config, bool)
+                    or not isinstance(self._candidate_nonedge_budget_config, int)
+                    or self._candidate_nonedge_budget_config < 1
+                )
+            ):
+                raise ValueError(
+                    "candidate_nonedge_budget must be null or a positive integer"
+                )
+            self.topology_sample_group_size = probabilistic.get(
+                "topology_sample_group_size", 1
+            )
+            if (
+                isinstance(self.topology_sample_group_size, bool)
+                or not isinstance(self.topology_sample_group_size, int)
+                or self.topology_sample_group_size < 1
+            ):
+                raise ValueError(
+                    "topology_sample_group_size must be a positive integer"
+                )
+            self.target_information_nats_per_neuron = float(
+                probabilistic.get("target_information_nats_per_neuron", 1.0)
+            )
+            if (
+                not math.isfinite(self.target_information_nats_per_neuron)
+                or self.target_information_nats_per_neuron < 0.0
+            ):
+                raise ValueError(
+                    "target_information_nats_per_neuron must be finite and "
+                    "non-negative"
+                )
+            self.information_dual_lr = float(probabilistic.get("dual_lr", 1.0e-3))
+            if not (
+                math.isfinite(self.information_dual_lr)
+                and self.information_dual_lr > 0.0
+            ):
+                raise ValueError("dual_lr must be finite and positive")
+            self.inference_topology_mode = str(
+                probabilistic.get("inference_topology_mode", "sampled")
+            ).lower()
+            if self.inference_topology_mode not in {"sampled", "map"}:
+                raise ValueError(
+                    "inference_topology_mode must be sampled or map; expected "
+                    "topology is diagnostics-only"
+                )
+            self._information_dual_log_min = -30.0
+            self._information_dual_log_max = 30.0
             # |1+Δ| below this counts as a numerical zero-crossing for diagnostics.
             self.synaptic_zero_crossing_tol = 1.0e-3
             spectral = connectome.get("spectral_monitoring", {}) or {}
@@ -429,6 +528,16 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     "spectral_preconditioning.refresh_every_ppo_updates must be >= 1"
                 )
             self.spectral_preconditioning_refresh_every = int(refresh_every)
+            if (
+                self.probabilistic_plasticity_active
+                and self.spectral_preconditioning_enabled
+                and self.spectral_preconditioning_refresh_every != 1
+            ):
+                raise ValueError(
+                    "latent_probabilistic refreshes candidate support every PPO "
+                    "update, so enabled spectral preconditioning requires "
+                    "refresh_every_ppo_updates: 1"
+                )
             self._spectral_precond = None
             self._spectral_precond_for_log = None
             self._spectral_precond_step_stats = []
@@ -865,6 +974,14 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 raise ValueError(
                     "Connectome recurrent activation must be tanh or lif"
                 )
+            if self.probabilistic_plasticity_active and (
+                self.operator_backend != "triton_fused"
+                or self.dynamics_activation != "tanh"
+            ):
+                raise ValueError(
+                    "latent_probabilistic sampled recurrence requires "
+                    "operator_backend: triton_fused and tanh dynamics"
+                )
             if self.dynamics_activation == "lif":
                 if not self.cache_reservoir_features:
                     raise ValueError(
@@ -931,24 +1048,45 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             initial_leak = float(dynamics["initial_leak"])
             if not 0.0 < initial_leak < 1.0:
                 raise ValueError("initial_leak must be strictly between zero and one")
-            self.leak_raw = nn.Parameter(
-                torch.full(
-                    (self.neuron_count,),
-                    math.log(initial_leak / (1.0 - initial_leak)),
-                    dtype=torch.float32,
+            initial_leak_logit = math.log(initial_leak / (1.0 - initial_leak))
+            initial_bias = float(dynamics["initial_bias"])
+            if self.probabilistic_plasticity_active:
+                # Fixed baselines. Unified intrinsic changes come only from z.
+                self.register_buffer(
+                    "leak_raw",
+                    torch.full(
+                        (self.neuron_count,),
+                        initial_leak_logit,
+                        dtype=torch.float32,
+                    ),
                 )
-            )
-            self.recurrent_bias = nn.Parameter(
-                torch.full(
-                    (self.neuron_count,),
-                    float(dynamics["initial_bias"]),
-                    dtype=torch.float32,
+                self.register_buffer(
+                    "recurrent_bias",
+                    torch.full(
+                        (self.neuron_count,), initial_bias, dtype=torch.float32
+                    ),
                 )
-            )
-            # log_a = 0 => a = 1, matching the previous tanh dynamics at init.
-            self.log_intrinsic_gain = nn.Parameter(
-                torch.zeros(self.neuron_count, dtype=torch.float32)
-            )
+                self.register_buffer(
+                    "log_intrinsic_gain",
+                    torch.zeros(self.neuron_count, dtype=torch.float32),
+                )
+            else:
+                self.leak_raw = nn.Parameter(
+                    torch.full(
+                        (self.neuron_count,),
+                        initial_leak_logit,
+                        dtype=torch.float32,
+                    )
+                )
+                self.recurrent_bias = nn.Parameter(
+                    torch.full(
+                        (self.neuron_count,), initial_bias, dtype=torch.float32
+                    )
+                )
+                # log_a = 0 => a = 1, matching the previous tanh dynamics at init.
+                self.log_intrinsic_gain = nn.Parameter(
+                    torch.zeros(self.neuron_count, dtype=torch.float32)
+                )
             # Detached baselines for intrinsic-plasticity diagnostics (actual
             # forward substep leak, not the control-interval leak when K>1).
             with torch.no_grad():
@@ -1086,12 +1224,13 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self._initialize_linear_layers()
             for parameter in (self.incoming_gain_raw, self.outgoing_gain_raw):
                 parameter.requires_grad_(self.weight_mode == "neuron_gains")
-            for parameter in (
-                self.leak_raw,
-                self.recurrent_bias,
-                self.log_intrinsic_gain,
-            ):
-                parameter.requires_grad_(self.learn_dynamics)
+            if not self.probabilistic_plasticity_active:
+                for parameter in (
+                    self.leak_raw,
+                    self.recurrent_bias,
+                    self.log_intrinsic_gain,
+                ):
+                    parameter.requires_grad_(self.learn_dynamics)
             if self.weight_mode == "low_rank":
                 self.edge_u = nn.Parameter(
                     torch.empty(self.neuron_count, self.adaptation_rank)
@@ -1102,11 +1241,544 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 nn.init.normal_(self.edge_u, std=0.1)
             elif self.weight_mode == "edgewise":
                 self.edge_raw = nn.Parameter(torch.zeros(self.edge_count))
+            elif self.probabilistic_plasticity_active:
+                self._initialize_probabilistic_plasticity()
 
         @property
         def synaptic_weights_trainable(self) -> bool:
             """True when anatomical edge weights are adapted (not neuron gains)."""
-            return self.weight_mode in {"low_rank", "edgewise"}
+            return self.weight_mode in {
+                "low_rank",
+                "edgewise",
+                "latent_probabilistic",
+            }
+
+        def _initialize_probabilistic_plasticity(self) -> None:
+            from rl_games.algos_torch.connectome_probabilistic_plasticity import (
+                allowed_nonedge_ids,
+                build_support_csr,
+                canonical_pair_ids,
+                csr_rows,
+                derive_recurrent_scales,
+                latent_slices,
+                support_baselines_and_scales,
+            )
+
+            self._latent_slices = latent_slices(self.adaptation_rank)
+            self.plasticity_state = nn.Parameter(
+                torch.zeros(
+                    self.neuron_count,
+                    self._latent_slices.width,
+                    dtype=torch.float32,
+                )
+            )
+            self.log_tau = nn.Parameter(torch.zeros((), dtype=torch.float32))
+            synaptic_anchor = torch.empty(
+                self.neuron_count, self.adaptation_rank, dtype=torch.float32
+            )
+            topology_anchor = torch.empty_like(synaptic_anchor)
+            nn.init.normal_(synaptic_anchor, std=0.1)
+            nn.init.normal_(topology_anchor, std=0.1)
+            self.register_buffer("synaptic_post_anchor", synaptic_anchor)
+            self.register_buffer("topology_post_anchor", topology_anchor)
+
+            scales = derive_recurrent_scales(
+                self.crow_indices,
+                self.col_indices,
+                self.recurrent_values,
+                self.neuron_count,
+            )
+            self.register_buffer(
+                "probabilistic_global_weight_rms", scales["global_rms"]
+            )
+            self.register_buffer(
+                "probabilistic_in_weight_rms", scales["in_rms"]
+            )
+            self.register_buffer(
+                "probabilistic_out_weight_rms", scales["out_rms"]
+            )
+            self.register_buffer(
+                "probabilistic_bias_scale", scales["bias_scale"]
+            )
+
+            original_rows = csr_rows(self.crow_indices)
+            original_ids = canonical_pair_ids(
+                original_rows, self.col_indices, self.neuron_count
+            )
+            self.register_buffer(
+                "probabilistic_original_edge_ids", original_ids.contiguous()
+            )
+            allowed_ids = allowed_nonedge_ids(
+                self.neuron_count, original_ids, device=original_ids.device
+            )
+            requested_budget = self._candidate_nonedge_budget_config
+            self.candidate_nonedge_budget = min(
+                self.edge_count if requested_budget is None else int(requested_budget),
+                int(allowed_ids.numel()),
+            )
+            self.topology_kl_nonedge_budget = self.candidate_nonedge_budget
+            candidate_ids = allowed_ids[: self.candidate_nonedge_budget].clone()
+            if self.topology_kl_nonedge_budget:
+                kl_ids = allowed_ids[-self.topology_kl_nonedge_budget :].clone()
+            else:
+                kl_ids = allowed_ids.new_empty(0)
+            support_crow, support_col, support_ids = build_support_csr(
+                original_ids, candidate_ids, self.neuron_count
+            )
+            support_base, support_scale, support_observed = (
+                support_baselines_and_scales(
+                    support_ids,
+                    original_ids,
+                    self.recurrent_values,
+                    self.probabilistic_in_weight_rms,
+                    self.probabilistic_out_weight_rms,
+                    self.neuron_count,
+                )
+            )
+            prior_magnitude = math.log(
+                (1.0 - self.topology_prior_error_rate)
+                / self.topology_prior_error_rate
+            )
+            support_prior_logits = torch.where(
+                support_observed,
+                support_base.new_full((), prior_magnitude),
+                support_base.new_full((), -prior_magnitude),
+            )
+            self.register_buffer(
+                "probabilistic_candidate_nonedge_ids", candidate_ids
+            )
+            self.register_buffer("probabilistic_kl_nonedge_ids", kl_ids)
+            self.register_buffer("probabilistic_support_crow", support_crow)
+            self.register_buffer("probabilistic_support_col", support_col)
+            self.register_buffer(
+                "probabilistic_support_canonical_ids", support_ids
+            )
+            self.register_buffer(
+                "probabilistic_support_baseline", support_base
+            )
+            self.register_buffer("probabilistic_support_scale", support_scale)
+            self.register_buffer(
+                "probabilistic_support_is_original", support_observed
+            )
+            self.register_buffer(
+                "probabilistic_support_prior_logits", support_prior_logits
+            )
+            self.register_buffer(
+                "information_dual_log_weight",
+                torch.zeros((), dtype=torch.float32),
+            )
+            self.register_buffer(
+                "probabilistic_base_seed", torch.zeros((), dtype=torch.long)
+            )
+            self.register_buffer(
+                "probabilistic_update_counter", torch.zeros((), dtype=torch.long)
+            )
+            self.register_buffer(
+                "probabilistic_candidate_refresh_counter",
+                torch.zeros((), dtype=torch.long),
+            )
+            self.register_buffer(
+                "probabilistic_topology_seed_counter",
+                torch.zeros((), dtype=torch.long),
+            )
+            self.register_buffer(
+                "probabilistic_candidate_initialized",
+                torch.zeros((), dtype=torch.bool),
+            )
+            self.register_buffer(
+                "probabilistic_candidate_mass_fraction",
+                torch.zeros((), dtype=torch.float32),
+            )
+            self.register_buffer(
+                "probabilistic_candidate_turnover_fraction",
+                torch.zeros((), dtype=torch.float32),
+            )
+            self._allowed_nonedge_ids_cache = None
+            self._probabilistic_last_metrics = {}
+            self._probabilistic_eval_seeds = None
+
+        def _probabilistic_allowed_nonedge_ids(self) -> torch.Tensor:
+            if self._allowed_nonedge_ids_cache is None:
+                from rl_games.algos_torch.connectome_probabilistic_plasticity import (
+                    allowed_nonedge_ids,
+                )
+
+                self._allowed_nonedge_ids_cache = allowed_nonedge_ids(
+                    self.neuron_count,
+                    self.probabilistic_original_edge_ids,
+                    device=self.recurrent_values.device,
+                )
+            return self._allowed_nonedge_ids_cache
+
+        def configure_probabilistic_runtime(self, base_seed: int) -> None:
+            if not self.probabilistic_plasticity_active:
+                return
+            if isinstance(base_seed, bool) or not isinstance(base_seed, int):
+                raise TypeError("probabilistic runtime base seed must be an integer")
+            self.probabilistic_base_seed.fill_(int(base_seed))
+
+        def _probabilistic_latent_heads(
+            self,
+        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+            slices = self._latent_slices
+            state = self.plasticity_state
+            synaptic_post = (
+                self.synaptic_post_anchor + state[:, slices.synaptic_post]
+            )
+            synaptic_pre = state[:, slices.synaptic_pre]
+            topology_post = (
+                self.topology_post_anchor + state[:, slices.topology_post]
+            )
+            topology_pre = state[:, slices.topology_pre]
+            return synaptic_post, synaptic_pre, topology_post, topology_pre
+
+        def probabilistic_pair_readout(
+            self, canonical_ids: torch.Tensor
+        ) -> dict[str, torch.Tensor]:
+            from rl_games.algos_torch.connectome_probabilistic_plasticity import (
+                pairwise_score,
+                support_baselines_and_scales,
+            )
+
+            ids = canonical_ids.to(
+                device=self.recurrent_values.device, dtype=torch.long
+            )
+            syn_post, syn_pre, top_post, top_pre = (
+                self._probabilistic_latent_heads()
+            )
+            synaptic_score = pairwise_score(
+                syn_post, syn_pre, ids, self.neuron_count
+            )
+            topology_score = pairwise_score(
+                top_post, top_pre, ids, self.neuron_count
+            )
+            baseline, scale, observed = support_baselines_and_scales(
+                ids,
+                self.probabilistic_original_edge_ids,
+                self.recurrent_values,
+                self.probabilistic_in_weight_rms,
+                self.probabilistic_out_weight_rms,
+                self.neuron_count,
+            )
+            prior_magnitude = math.log(
+                (1.0 - self.topology_prior_error_rate)
+                / self.topology_prior_error_rate
+            )
+            prior_logits = torch.where(
+                observed,
+                baseline.new_full((), prior_magnitude),
+                baseline.new_full((), -prior_magnitude),
+            )
+            conditional = baseline + scale * synaptic_score
+            posterior_logits = prior_logits + topology_score
+            return {
+                "baseline": baseline,
+                "scale": scale,
+                "is_original": observed,
+                "synaptic_score": synaptic_score,
+                "topology_score": topology_score,
+                "conditional_values": conditional,
+                "prior_logits": prior_logits,
+                "posterior_logits": posterior_logits,
+            }
+
+        def probabilistic_support_readout(self) -> dict[str, torch.Tensor]:
+            from rl_games.algos_torch.connectome_probabilistic_plasticity import (
+                pairwise_score,
+            )
+
+            syn_post, syn_pre, top_post, top_pre = (
+                self._probabilistic_latent_heads()
+            )
+            ids = self.probabilistic_support_canonical_ids
+            synaptic_score = pairwise_score(
+                syn_post, syn_pre, ids, self.neuron_count
+            )
+            topology_score = pairwise_score(
+                top_post, top_pre, ids, self.neuron_count
+            )
+            conditional = (
+                self.probabilistic_support_baseline
+                + self.probabilistic_support_scale * synaptic_score
+            )
+            posterior_logits = (
+                self.probabilistic_support_prior_logits + topology_score
+            )
+            return {
+                "baseline": self.probabilistic_support_baseline,
+                "scale": self.probabilistic_support_scale,
+                "is_original": self.probabilistic_support_is_original,
+                "synaptic_score": synaptic_score,
+                "topology_score": topology_score,
+                "conditional_values": conditional,
+                "prior_logits": self.probabilistic_support_prior_logits,
+                "posterior_logits": posterior_logits,
+            }
+
+        def probabilistic_expected_values(self) -> torch.Tensor:
+            readout = self.probabilistic_support_readout()
+            return (
+                torch.sigmoid(readout["posterior_logits"])
+                * readout["conditional_values"]
+            )
+
+        @torch.no_grad()
+        def propose_probabilistic_support(
+            self,
+        ) -> tuple[torch.Tensor, torch.Tensor, dict[str, float]]:
+            from rl_games.algos_torch.connectome_probabilistic_plasticity import (
+                uniform_sample_without_replacement,
+                weighted_sample_without_replacement,
+            )
+
+            allowed = self._probabilistic_allowed_nonedge_ids()
+            _syn_post, _syn_pre, topology_post, topology_pre = (
+                self._probabilistic_latent_heads()
+            )
+            scores = topology_post.matmul(topology_pre.transpose(0, 1))
+            scores = scores / math.sqrt(self.adaptation_rank)
+            nonedge_scores = scores.reshape(-1)[allowed]
+            prior_logit = math.log(
+                self.topology_prior_error_rate
+                / (1.0 - self.topology_prior_error_rate)
+            )
+            probabilities = torch.sigmoid(nonedge_scores + prior_logit)
+            counter = int(self.probabilistic_candidate_refresh_counter.item())
+            seed = (
+                int(self.probabilistic_base_seed.item())
+                + 1_000_003 * counter
+                + 17_389
+            ) % (2**63 - 1)
+            generator = torch.Generator(device=allowed.device)
+            generator.manual_seed(seed)
+            candidates = weighted_sample_without_replacement(
+                allowed,
+                probabilities,
+                self.candidate_nonedge_budget,
+                generator=generator,
+            )
+            kl_generator = torch.Generator(device=allowed.device)
+            kl_generator.manual_seed((seed + 97_531) % (2**63 - 1))
+            kl_ids = uniform_sample_without_replacement(
+                allowed,
+                self.topology_kl_nonedge_budget,
+                generator=kl_generator,
+            )
+            candidate_positions = torch.searchsorted(allowed, candidates)
+            represented = probabilities[candidate_positions].sum()
+            total = probabilities.sum()
+            mass_fraction = (
+                float((represented / total).item())
+                if float(total.item()) > 0.0
+                else 1.0
+            )
+            old = self.probabilistic_candidate_nonedge_ids
+            retained = torch.isin(candidates, old).sum()
+            turnover = 0.0
+            if bool(self.probabilistic_candidate_initialized.item()) and candidates.numel():
+                turnover = (
+                    1.0
+                    - float(retained.item()) / float(candidates.numel())
+                )
+            return candidates, kl_ids, {
+                "posterior_mass_fraction": mass_fraction,
+                "turnover_fraction": turnover,
+            }
+
+        @torch.no_grad()
+        def apply_probabilistic_support(
+            self,
+            candidate_ids: torch.Tensor,
+            kl_nonedge_ids: torch.Tensor,
+            *,
+            posterior_mass_fraction: float | None = None,
+            turnover_fraction: float | None = None,
+        ) -> None:
+            from rl_games.algos_torch.connectome_probabilistic_plasticity import (
+                build_support_csr,
+                support_baselines_and_scales,
+            )
+
+            candidates = torch.sort(
+                candidate_ids.to(
+                    device=self.recurrent_values.device, dtype=torch.long
+                )
+            ).values
+            kl_ids = torch.sort(
+                kl_nonedge_ids.to(
+                    device=self.recurrent_values.device, dtype=torch.long
+                )
+            ).values
+            if candidates.numel() != self.candidate_nonedge_budget:
+                raise ValueError("candidate support has the wrong nonedge budget")
+            if kl_ids.numel() != self.topology_kl_nonedge_budget:
+                raise ValueError("topology-KL sample has the wrong nonedge budget")
+            allowed = self._probabilistic_allowed_nonedge_ids()
+            if (
+                torch.unique(candidates).numel() != candidates.numel()
+                or torch.unique(kl_ids).numel() != kl_ids.numel()
+                or not bool(torch.isin(candidates, allowed).all())
+                or not bool(torch.isin(kl_ids, allowed).all())
+            ):
+                raise ValueError(
+                    "candidate and topology-KL IDs must be unique allowed nonedges"
+                )
+            crow, col, support_ids = build_support_csr(
+                self.probabilistic_original_edge_ids,
+                candidates,
+                self.neuron_count,
+            )
+            baseline, scale, observed = support_baselines_and_scales(
+                support_ids,
+                self.probabilistic_original_edge_ids,
+                self.recurrent_values,
+                self.probabilistic_in_weight_rms,
+                self.probabilistic_out_weight_rms,
+                self.neuron_count,
+            )
+            prior_magnitude = math.log(
+                (1.0 - self.topology_prior_error_rate)
+                / self.topology_prior_error_rate
+            )
+            prior_logits = torch.where(
+                observed,
+                baseline.new_full((), prior_magnitude),
+                baseline.new_full((), -prior_magnitude),
+            )
+            for target, source in (
+                (self.probabilistic_candidate_nonedge_ids, candidates),
+                (self.probabilistic_kl_nonedge_ids, kl_ids),
+                (self.probabilistic_support_crow, crow),
+                (self.probabilistic_support_col, col),
+                (self.probabilistic_support_canonical_ids, support_ids),
+                (self.probabilistic_support_baseline, baseline),
+                (self.probabilistic_support_scale, scale),
+                (self.probabilistic_support_is_original, observed),
+                (self.probabilistic_support_prior_logits, prior_logits),
+            ):
+                target.copy_(source)
+            if posterior_mass_fraction is not None:
+                self.probabilistic_candidate_mass_fraction.fill_(
+                    float(posterior_mass_fraction)
+                )
+            if turnover_fraction is not None:
+                self.probabilistic_candidate_turnover_fraction.fill_(
+                    float(turnover_fraction)
+                )
+            self.probabilistic_candidate_refresh_counter.add_(1)
+            self.probabilistic_candidate_initialized.fill_(True)
+            self._backend_graph = None
+            self._cached_recurrent_operator = None
+            self._spectral_baseline = None
+            self._spectral_precond = None
+
+        @torch.no_grad()
+        def refresh_probabilistic_support(self) -> None:
+            if not self.probabilistic_plasticity_active:
+                return
+            candidates, kl_ids, stats = self.propose_probabilistic_support()
+            self.apply_probabilistic_support(
+                candidates,
+                kl_ids,
+                posterior_mass_fraction=stats["posterior_mass_fraction"],
+                turnover_fraction=stats["turnover_fraction"],
+            )
+
+        def probabilistic_information_estimate(
+            self,
+        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            from rl_games.algos_torch.connectome_probabilistic_plasticity import (
+                bernoulli_kl_from_logits,
+                gaussian_information,
+            )
+
+            latent = gaussian_information(self.plasticity_state, self.log_tau)
+            original = self.probabilistic_pair_readout(
+                self.probabilistic_original_edge_ids
+            )
+            topology = bernoulli_kl_from_logits(
+                original["posterior_logits"], original["prior_logits"]
+            ).sum()
+            sampled_ids = self.probabilistic_kl_nonedge_ids
+            if sampled_ids.numel():
+                sampled = self.probabilistic_pair_readout(sampled_ids)
+                sampled_kl = bernoulli_kl_from_logits(
+                    sampled["posterior_logits"], sampled["prior_logits"]
+                ).sum()
+                total_nonedges = self._probabilistic_allowed_nonedge_ids().numel()
+                topology = topology + sampled_kl * (
+                    float(total_nonedges) / float(sampled_ids.numel())
+                )
+            return latent, topology, latent + topology
+
+        @torch.no_grad()
+        def probabilistic_full_information(
+            self, chunk_size: int = 262_144
+        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            from rl_games.algos_torch.connectome_probabilistic_plasticity import (
+                bernoulli_kl_from_logits,
+                gaussian_information,
+            )
+
+            latent = gaussian_information(self.plasticity_state, self.log_tau)
+            original = self.probabilistic_pair_readout(
+                self.probabilistic_original_edge_ids
+            )
+            topology = bernoulli_kl_from_logits(
+                original["posterior_logits"], original["prior_logits"]
+            ).sum()
+            allowed = self._probabilistic_allowed_nonedge_ids()
+            for start in range(0, allowed.numel(), int(chunk_size)):
+                readout = self.probabilistic_pair_readout(
+                    allowed[start : start + int(chunk_size)]
+                )
+                topology = topology + bernoulli_kl_from_logits(
+                    readout["posterior_logits"], readout["prior_logits"]
+                ).sum()
+            return latent, topology, latent + topology
+
+        def information_dual_weight(self) -> torch.Tensor:
+            return torch.exp(self.information_dual_log_weight)
+
+        @torch.no_grad()
+        def update_information_dual(self, information_nats_per_neuron: float) -> None:
+            error = (
+                float(information_nats_per_neuron)
+                - self.target_information_nats_per_neuron
+            )
+            self.information_dual_log_weight.add_(
+                self.information_dual_lr * error
+            ).clamp_(
+                min=self._information_dual_log_min,
+                max=self._information_dual_log_max,
+            )
+
+        @torch.no_grad()
+        def new_topology_seeds(
+            self, sample_count: int, global_rank: int
+        ) -> torch.Tensor:
+            if sample_count < 1:
+                raise ValueError("sample_count must be positive")
+            group_size = self.topology_sample_group_size
+            local_groups = torch.div(
+                torch.arange(
+                    sample_count,
+                    device=self.recurrent_values.device,
+                    dtype=torch.long,
+                ),
+                group_size,
+                rounding_mode="floor",
+            )
+            counter = int(self.probabilistic_topology_seed_counter.item())
+            base = int(self.probabilistic_base_seed.item())
+            seeds = (
+                local_groups
+                + int(global_rank) * 1_000_000_007
+                + counter * 2_000_000_011
+                + base
+            ).remainder(2**63 - 1)
+            self.probabilistic_topology_seed_counter.add_(1)
+            return seeds
 
         def should_run_spectral_monitoring(self, epoch_num: int) -> bool:
             if not self.spectral_monitoring_enabled:
@@ -1130,10 +1802,10 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
 
         @property
         def spectral_preconditioning_active(self) -> bool:
-            """True only for signed LoRA with a non-identity spectral exponent."""
+            """True for pairwise latent plasticity with a non-identity exponent."""
             return (
                 self.spectral_preconditioning_enabled
-                and self.weight_mode == "low_rank"
+                and self.weight_mode in {"low_rank", "latent_probabilistic"}
                 and self.spectral_preconditioning_alpha != 0.0
             )
 
@@ -1147,14 +1819,24 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 compute_spectral_preconditioner,
             )
 
+            if self.probabilistic_plasticity_active:
+                crow = self.probabilistic_support_crow
+                col = self.probabilistic_support_col
+                values = self.probabilistic_expected_values().detach()
+                dtype = self.plasticity_state.dtype
+            else:
+                crow = self.crow_indices
+                col = self.col_indices
+                values = self.effective_values().detach()
+                dtype = self.edge_u.dtype
             self._spectral_precond = compute_spectral_preconditioner(
-                self.crow_indices,
-                self.col_indices,
-                self.effective_values().detach(),
+                crow,
+                col,
+                values,
                 self.neuron_count,
                 alpha=self.spectral_preconditioning_alpha,
                 floor_ratio=self.spectral_preconditioning_floor_ratio,
-                dtype=self.edge_u.dtype,
+                dtype=dtype,
             )
 
         def begin_spectral_preconditioning_update(self) -> None:
@@ -1174,7 +1856,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 self.refresh_spectral_preconditioner()
 
         def precondition_lora_gradients(self) -> None:
-            """Replace ``edge_u`` / ``edge_v`` grads only. Adam state is untouched."""
+            """Precondition only pairwise latent gradients; Adam state is untouched."""
             if not self.spectral_preconditioning_active:
                 return
             if self._spectral_precond is None:
@@ -1189,14 +1871,59 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
 
             stats = {}
             with torch.no_grad():
-                if self.edge_u.grad is not None:
+                if (
+                    self.probabilistic_plasticity_active
+                    and self.plasticity_state.grad is not None
+                ):
+                    grad = self.plasticity_state.grad
+                    slices = self._latent_slices
+                    post_slices = (
+                        slices.synaptic_post,
+                        slices.topology_post,
+                    )
+                    pre_slices = (
+                        slices.synaptic_pre,
+                        slices.topology_pre,
+                    )
+                    raw_post = torch.cat(
+                        [grad[:, block].detach().clone() for block in post_slices],
+                        dim=1,
+                    )
+                    raw_pre = torch.cat(
+                        [grad[:, block].detach().clone() for block in pre_slices],
+                        dim=1,
+                    )
+                    tilde_post = apply_spectral_preconditioner(
+                        raw_post, cache["P"], cache["multipliers"]
+                    )
+                    tilde_pre = apply_spectral_preconditioner(
+                        raw_pre, cache["Q"], cache["multipliers"]
+                    )
+                    width = self.adaptation_rank
+                    for index, block in enumerate(post_slices):
+                        grad[:, block].copy_(
+                            tilde_post[:, index * width : (index + 1) * width]
+                        )
+                    for index, block in enumerate(pre_slices):
+                        grad[:, block].copy_(
+                            tilde_pre[:, index * width : (index + 1) * width]
+                        )
+                    stats.update(
+                        gradient_change_stats(
+                            "post", raw_post, tilde_post
+                        )
+                    )
+                    stats.update(
+                        gradient_change_stats("pre", raw_pre, tilde_pre)
+                    )
+                elif self.weight_mode == "low_rank" and self.edge_u.grad is not None:
                     raw_u = self.edge_u.grad.detach().clone()
                     tilde_u = apply_spectral_preconditioner(
                         raw_u, cache["P"], cache["multipliers"]
                     )
                     self.edge_u.grad.copy_(tilde_u)
                     stats.update(gradient_change_stats("u", raw_u, tilde_u))
-                if self.edge_v.grad is not None:
+                if self.weight_mode == "low_rank" and self.edge_v.grad is not None:
                     raw_v = self.edge_v.grad.detach().clone()
                     tilde_v = apply_spectral_preconditioner(
                         raw_v, cache["Q"], cache["multipliers"]
@@ -1239,6 +1966,10 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 "v_gradient_cosine",
                 "u_gradient_norm_ratio",
                 "v_gradient_norm_ratio",
+                "post_gradient_cosine",
+                "pre_gradient_cosine",
+                "post_gradient_norm_ratio",
+                "pre_gradient_norm_ratio",
             )
             for key in keys:
                 values = [step[key] for step in steps if key in step]
@@ -1252,7 +1983,16 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             if self._backend_graph is None:
                 from rl_games.algos_torch.connectome_ops import Graph
 
-                self._backend_graph = Graph(self.crow_indices, self.col_indices)
+                if self.probabilistic_plasticity_active:
+                    self._backend_graph = Graph(
+                        self.probabilistic_support_crow,
+                        self.probabilistic_support_col,
+                        self.probabilistic_support_canonical_ids,
+                    )
+                else:
+                    self._backend_graph = Graph(
+                        self.crow_indices, self.col_indices
+                    )
             return self._backend_graph
 
         @staticmethod
@@ -1304,6 +2044,10 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             return score / math.sqrt(self.adaptation_rank)
 
         def effective_values(self):
+            if self.probabilistic_plasticity_active:
+                return self.probabilistic_support_readout()[
+                    "conditional_values"
+                ]
             if self.weight_mode == "low_rank":
                 # Signed relative LoRA on existing edges:
                 # W_eff = W0 * (1 + Delta). Unconstrained Delta may weaken
@@ -1368,16 +2112,27 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 spectral_metrics,
             )
 
-            crow = self.crow_indices.detach().cpu().numpy()
-            col = self.col_indices.detach().cpu().numpy()
+            baseline_crow = self.crow_indices.detach().cpu().numpy()
+            baseline_col = self.col_indices.detach().cpu().numpy()
             baseline_values = self.recurrent_values.detach().cpu().numpy()
-            effective = self.effective_values().detach()
+            if self.probabilistic_plasticity_active:
+                crow = self.probabilistic_support_crow.detach().cpu().numpy()
+                col = self.probabilistic_support_col.detach().cpu().numpy()
+                effective = self.probabilistic_expected_values().detach()
+            else:
+                crow = baseline_crow
+                col = baseline_col
+                effective = self.effective_values().detach()
             effective_values = effective.cpu().numpy()
             top_k = self.spectral_monitoring_top_k
 
             if self._spectral_baseline is None:
                 self._spectral_baseline = spectral_metrics(
-                    crow, col, baseline_values, self.neuron_count, top_k
+                    baseline_crow,
+                    baseline_col,
+                    baseline_values,
+                    self.neuron_count,
+                    top_k,
                 )
             baseline = self._spectral_baseline
             current = spectral_metrics(
@@ -1407,7 +2162,19 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             tags["spectral/change/spectral_radius_ratio"] = float(rho_ratio)
             tags["spectral/change/max_singular_value_ratio"] = float(sigma_ratio)
 
-            if self.weight_mode == "low_rank":
+            if self.probabilistic_plasticity_active:
+                readout = self.probabilistic_support_readout()
+                delta = (
+                    readout["conditional_values"] - readout["baseline"]
+                ).detach()
+                base_abs = readout["baseline"].abs()
+                scale = torch.where(
+                    base_abs > 0,
+                    readout["conditional_values"].detach()
+                    / readout["baseline"],
+                    torch.ones_like(delta),
+                )
+            elif self.weight_mode == "low_rank":
                 delta = self.low_rank_delta().detach()
                 scale = 1.0 + delta
             else:
@@ -1507,7 +2274,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 return {}
             lam = self.substep_leaks().detach()
             a = self.intrinsic_gains().detach()
-            b = self.recurrent_bias.detach()
+            b = self.recurrent_biases().detach()
             lam0 = self._intrinsic_lambda0_substep
             a0 = self._intrinsic_a0
             b0 = self._intrinsic_b0
@@ -1621,6 +2388,222 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 tags.update(self.compute_intrinsic_plasticity_diagnostics())
             return tags
 
+        @torch.no_grad()
+        def compute_probabilistic_plasticity_diagnostics(self) -> dict:
+            if not self.probabilistic_plasticity_active:
+                return {}
+            from rl_games.algos_torch.connectome_probabilistic_plasticity import (
+                hard_bernoulli_gates,
+            )
+
+            tags = dict(self._probabilistic_last_metrics)
+            if not tags:
+                latent, topology, total = self.probabilistic_full_information()
+                tags.update(
+                    {
+                        "probabilistic_plasticity/information/latent_nats": float(
+                            latent.item()
+                        ),
+                        "probabilistic_plasticity/information/topology_nats": float(
+                            topology.item()
+                        ),
+                        "probabilistic_plasticity/information/total_nats": float(
+                            total.item()
+                        ),
+                        "probabilistic_plasticity/information/nats_per_neuron": float(
+                            (total / self.neuron_count).item()
+                        ),
+                        "probabilistic_plasticity/information/target_nats_per_neuron": float(
+                            self.target_information_nats_per_neuron
+                        ),
+                        "probabilistic_plasticity/information/dual_weight": float(
+                            self.information_dual_weight().item()
+                        ),
+                        "probabilistic_plasticity/information/tau": float(
+                            torch.exp(self.log_tau).item()
+                        ),
+                    }
+                )
+
+            original = self.probabilistic_pair_readout(
+                self.probabilistic_original_edge_ids
+            )
+            original_probability = torch.sigmoid(
+                original["posterior_logits"]
+            ).float()
+            allowed = self._probabilistic_allowed_nonedge_ids()
+            _syn_post, _syn_pre, topology_post, topology_pre = (
+                self._probabilistic_latent_heads()
+            )
+            topology_scores = topology_post.matmul(topology_pre.transpose(0, 1))
+            topology_scores.div_(math.sqrt(self.adaptation_rank))
+            nonedge_probability = torch.sigmoid(
+                topology_scores.reshape(-1)[allowed]
+                + math.log(
+                    self.topology_prior_error_rate
+                    / (1.0 - self.topology_prior_error_rate)
+                )
+            ).float()
+
+            def quantile(values: torch.Tensor, q: float) -> float:
+                return float(torch.quantile(values, q).item())
+
+            tags.update(
+                {
+                    "probabilistic_plasticity/topology/original_edge_probability_mean": float(
+                        original_probability.mean().item()
+                    ),
+                    "probabilistic_plasticity/topology/nonedge_probability_mean": float(
+                        nonedge_probability.mean().item()
+                    ),
+                    "probabilistic_plasticity/topology/original_edge_probability_p05": quantile(
+                        original_probability, 0.05
+                    ),
+                    "probabilistic_plasticity/topology/original_edge_probability_p50": quantile(
+                        original_probability, 0.50
+                    ),
+                    "probabilistic_plasticity/topology/original_edge_probability_p95": quantile(
+                        original_probability, 0.95
+                    ),
+                    "probabilistic_plasticity/topology/nonedge_probability_p95": quantile(
+                        nonedge_probability, 0.95
+                    ),
+                }
+            )
+
+            support = self.probabilistic_support_readout()
+            diagnostic_sample_count = 128
+            diagnostic_seeds = (
+                torch.arange(
+                    diagnostic_sample_count,
+                    device=self.recurrent_values.device,
+                    dtype=torch.long,
+                )
+                + int(self.probabilistic_base_seed.item())
+                + int(self.probabilistic_update_counter.item()) * 104_729
+            )
+            edge_counts = torch.zeros(
+                diagnostic_sample_count,
+                device=self.recurrent_values.device,
+                dtype=torch.float32,
+            )
+            removed_counts = torch.zeros_like(edge_counts)
+            new_counts = torch.zeros_like(edge_counts)
+            edge_chunk = 4096
+            for start in range(
+                0, self.probabilistic_support_canonical_ids.numel(), edge_chunk
+            ):
+                stop = start + edge_chunk
+                gates = hard_bernoulli_gates(
+                    support["posterior_logits"][start:stop],
+                    diagnostic_seeds,
+                    self.probabilistic_support_canonical_ids[start:stop],
+                )
+                observed = self.probabilistic_support_is_original[
+                    start:stop
+                ].unsqueeze(1)
+                edge_counts.add_(gates.sum(0))
+                removed_counts.add_(((1.0 - gates) * observed).sum(0))
+                new_counts.add_(gates.masked_fill(observed, 0.0).sum(0))
+            tags.update(
+                {
+                    "probabilistic_plasticity/topology/sample_edge_count_mean": float(
+                        edge_counts.mean().item()
+                    ),
+                    "probabilistic_plasticity/topology/sample_edge_count_std": float(
+                        edge_counts.std(unbiased=False).item()
+                    ),
+                    "probabilistic_plasticity/topology/sample_removed_original_edges_mean": float(
+                        removed_counts.mean().item()
+                    ),
+                    "probabilistic_plasticity/topology/sample_new_edges_mean": float(
+                        new_counts.mean().item()
+                    ),
+                }
+            )
+
+            mass_fraction = float(
+                self.probabilistic_candidate_mass_fraction.item()
+            )
+            tags.update(
+                {
+                    "probabilistic_plasticity/candidates/nonedge_budget": float(
+                        self.candidate_nonedge_budget
+                    ),
+                    "probabilistic_plasticity/candidates/posterior_mass_fraction": mass_fraction,
+                    "probabilistic_plasticity/candidate_posterior_mass_fraction": mass_fraction,
+                    "probabilistic_plasticity/candidates/turnover_fraction": float(
+                        self.probabilistic_candidate_turnover_fraction.item()
+                    ),
+                }
+            )
+
+            conditional = support["conditional_values"]
+            baseline = support["baseline"]
+            observed = support["is_original"]
+            nonedge = ~observed
+            original_delta = conditional[observed] - baseline[observed]
+            comparable = observed & (baseline != 0.0) & (conditional != 0.0)
+            sign_flips = comparable & (
+                torch.sign(baseline) != torch.sign(conditional)
+            )
+            new_weights = conditional[nonedge]
+
+            def rms(values: torch.Tensor) -> float:
+                if values.numel() == 0:
+                    return 0.0
+                return float(values.square().mean().sqrt().item())
+
+            tags.update(
+                {
+                    "probabilistic_plasticity/synapse/conditional_weight_rms": rms(
+                        conditional
+                    ),
+                    "probabilistic_plasticity/synapse/original_edge_delta_rms": rms(
+                        original_delta
+                    ),
+                    "probabilistic_plasticity/synapse/original_sign_flip_fraction": float(
+                        sign_flips.float().sum().item()
+                        / max(int(observed.sum().item()), 1)
+                    ),
+                    "probabilistic_plasticity/synapse/new_edge_weight_rms": rms(
+                        new_weights
+                    ),
+                }
+            )
+
+            state = self.plasticity_state
+            slices = self._latent_slices
+            synaptic_state = torch.cat(
+                (
+                    state[:, slices.synaptic_post],
+                    state[:, slices.synaptic_pre],
+                ),
+                dim=1,
+            )
+            topology_state = torch.cat(
+                (
+                    state[:, slices.topology_post],
+                    state[:, slices.topology_pre],
+                ),
+                dim=1,
+            )
+            tags.update(
+                {
+                    "probabilistic_plasticity/latent/rms": rms(state),
+                    "probabilistic_plasticity/latent/intrinsic_rms": rms(
+                        state[:, slices.intrinsic]
+                    ),
+                    "probabilistic_plasticity/latent/synaptic_rms": rms(
+                        synaptic_state
+                    ),
+                    "probabilistic_plasticity/latent/topology_rms": rms(
+                        topology_state
+                    ),
+                }
+            )
+            return tags
+
         def _load_from_state_dict(
             self,
             state_dict,
@@ -1638,6 +2621,10 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             self._spectral_precond = None
             self._spectral_precond_for_log = None
             self._spectral_precond_step_stats = []
+            if self.probabilistic_plasticity_active:
+                self._allowed_nonedge_ids_cache = None
+                self._probabilistic_eval_seeds = None
+                self._probabilistic_last_metrics = {}
             # Older checkpoints predate intrinsic gain; default a_i = 1.
             key = prefix + "log_intrinsic_gain"
             if key not in state_dict:
@@ -1692,18 +2679,37 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             return torch.exp(log_gain)
 
         def leaks(self) -> torch.Tensor:
-            return torch.sigmoid(self.leak_raw)
+            logits = self.leak_raw
+            if self.probabilistic_plasticity_active:
+                logits = logits + self.plasticity_state[:, 1]
+            return torch.sigmoid(logits)
 
         def intrinsic_gains(self) -> torch.Tensor:
-            return torch.exp(self.log_intrinsic_gain)
+            log_gain = self.log_intrinsic_gain
+            if self.probabilistic_plasticity_active:
+                log_gain = log_gain + self.plasticity_state[:, 0]
+            return torch.exp(log_gain)
+
+        def recurrent_biases(self) -> torch.Tensor:
+            if self.probabilistic_plasticity_active:
+                return (
+                    self.recurrent_bias
+                    + self.probabilistic_bias_scale
+                    * self.plasticity_state[:, 2]
+                )
+            return self.recurrent_bias
 
         def substep_leaks(self) -> torch.Tensor:
             if self.neural_updates == 1:
                 return self.leaks()
             # Preserve passive retention over one control interval. Stable even
             # for learned leak logits, without detaching their gradients.
+            control_logits = self.leak_raw
+            if self.probabilistic_plasticity_active:
+                control_logits = control_logits + self.plasticity_state[:, 1]
             return -torch.expm1(
-                torch.nn.functional.logsigmoid(-self.leak_raw) / self.neural_updates
+                torch.nn.functional.logsigmoid(-control_logits)
+                / self.neural_updates
             )
 
         def _apply(self, fn, recurse: bool = True):
@@ -1712,6 +2718,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             # device or dtype moves, and is deliberately absent from checkpoints.
             self._cached_recurrent_operator = None
             self._backend_graph = None
+            if self.probabilistic_plasticity_active:
+                self._allowed_nonedge_ids_cache = None
+                self._probabilistic_eval_seeds = None
             return super()._apply(fn, recurse)
 
         def _native_csr_matrix(self, values=None) -> torch.Tensor:
@@ -1807,6 +2816,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
             values=None,
             refractory: torch.Tensor | None = None,
             spikes: torch.Tensor | None = None,
+            topology_logits: torch.Tensor | None = None,
+            topology_seeds: torch.Tensor | None = None,
+            topology_mode: str | None = None,
         ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
             if hidden.device.type == "cuda":
                 if hasattr(torch, "amp") and hasattr(torch.amp, "autocast"):
@@ -1881,7 +2893,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                                 spikes,
                                 incoming,
                                 outgoing,
-                                self.recurrent_bias,
+                                self.recurrent_biases(),
                                 sensory_drive,
                                 descending_drive,
                                 self.sensory_indices,
@@ -1909,7 +2921,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                             current = (
                                 self.recurrent_gain * incoming * recurrent
                                 + self.input_current_scale * drive
-                                + self.recurrent_bias
+                                + self.recurrent_biases()
                             )
                             remaining_refractory = torch.clamp_min(
                                 refractory - self.lif_timestep_ms, 0.0
@@ -1954,7 +2966,7 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                         if runner is None or runner.h.shape != hidden.t().shape or runner.h.device != hidden.device:
                             runner = FrozenTanhRunner(
                                 graph, step_values, hidden, incoming, outgoing, leak,
-                                self.intrinsic_gains(), self.recurrent_bias,
+                                self.intrinsic_gains(), self.recurrent_biases(),
                                 sensory_drive, descending_drive,
                                 self.sensory_indices, self.descending_indices,
                                 self.recurrent_gain, self.neural_updates,
@@ -1963,10 +2975,73 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                             self._frozen_tanh_runner = runner
                         return runner(hidden, sensory_drive, descending_drive)
                     intrinsic = self.intrinsic_gains()
+                    if self.probabilistic_plasticity_active:
+                        if topology_logits is None:
+                            raise ValueError(
+                                "latent_probabilistic recurrence requires "
+                                "topology logits"
+                            )
+                        if topology_mode == "map":
+                            if torch.is_grad_enabled():
+                                raise RuntimeError(
+                                    "MAP topology is inference-only"
+                                )
+                            map_values = step_values * (
+                                topology_logits > 0.0
+                            ).to(dtype=step_values.dtype)
+                            for _ in range(self.neural_updates):
+                                hidden = fused_step(
+                                    graph,
+                                    map_values,
+                                    hidden,
+                                    incoming,
+                                    outgoing,
+                                    leak,
+                                    intrinsic,
+                                    self.recurrent_biases(),
+                                    sensory_drive,
+                                    descending_drive,
+                                    self.sensory_indices,
+                                    self.descending_indices,
+                                    self.recurrent_gain,
+                                )
+                                if observer is not None:
+                                    observer(hidden)
+                            return hidden
+                        if topology_mode != "sampled" or topology_seeds is None:
+                            raise ValueError(
+                                "sampled topology recurrence requires compact "
+                                "per-sequence topology seeds"
+                            )
+                        from rl_games.algos_torch.connectome_triton import (
+                            fused_gated_step,
+                        )
+
+                        for _ in range(self.neural_updates):
+                            hidden = fused_gated_step(
+                                graph,
+                                step_values,
+                                topology_logits,
+                                topology_seeds,
+                                hidden,
+                                incoming,
+                                outgoing,
+                                leak,
+                                intrinsic,
+                                self.recurrent_biases(),
+                                sensory_drive,
+                                descending_drive,
+                                self.sensory_indices,
+                                self.descending_indices,
+                                self.recurrent_gain,
+                            )
+                            if observer is not None:
+                                observer(hidden)
+                        return hidden
                     for _ in range(self.neural_updates):
                         hidden = fused_step(
                             graph, step_values, hidden, incoming, outgoing, leak,
-                            intrinsic, self.recurrent_bias, sensory_drive,
+                            intrinsic, self.recurrent_biases(), sensory_drive,
                             descending_drive, self.sensory_indices,
                             self.descending_indices, self.recurrent_gain,
                         )
@@ -1982,7 +3057,9 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     drive_term = (
                         self.recurrent_gain * incoming * recurrent + drive
                     )
-                    preactivation = intrinsic * drive_term + self.recurrent_bias
+                    preactivation = (
+                        intrinsic * drive_term + self.recurrent_biases()
+                    )
                     hidden = (1.0 - leak) * hidden + leak * torch.tanh(preactivation)
                     if observer is not None:
                         observer(hidden)
@@ -2003,6 +3080,8 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     f"got {observations.shape[1]}"
                 )
             cached_features = obs_dict.get("reservoir_features")
+            topology_seeds = None
+            topology_mode = None
             if cached_features is not None:
                 if not self.cache_reservoir_features:
                     raise ValueError(
@@ -2027,6 +3106,40 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                 sequence = observations.reshape(
                     sequence_count, sequence_length, -1
                 ).transpose(0, 1)
+                if self.probabilistic_plasticity_active:
+                    supplied_seeds = obs_dict.get("topology_seed")
+                    if supplied_seeds is not None:
+                        seed_matrix = supplied_seeds.to(
+                            device=observations.device, dtype=torch.long
+                        ).reshape(sequence_count, sequence_length)
+                        if not bool(
+                            (seed_matrix == seed_matrix[:, :1]).all()
+                        ):
+                            raise ValueError(
+                                "topology seed must remain constant throughout "
+                                "each recurrent sequence"
+                            )
+                        topology_seeds = seed_matrix[:, 0].contiguous()
+                        topology_mode = "sampled"
+                    else:
+                        if not bool(
+                            obs_dict.get("topology_inference", False)
+                        ):
+                            raise ValueError(
+                                "latent_probabilistic policy calls must provide "
+                                "rollout-conditioned topology_seed"
+                            )
+                        topology_mode = self.inference_topology_mode
+                        if topology_mode == "sampled":
+                            if (
+                                self._probabilistic_eval_seeds is None
+                                or self._probabilistic_eval_seeds.numel()
+                                != sequence_count
+                            ):
+                                self._probabilistic_eval_seeds = (
+                                    self.new_topology_seeds(sequence_count, 0)
+                                )
+                            topology_seeds = self._probabilistic_eval_seeds
 
                 states = obs_dict.get("rnn_states")
                 if self.dynamics_activation == "lif":
@@ -2071,7 +3184,13 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
 
                 def run_reservoir() -> torch.Tensor:
                     outputs = []
-                    values = self.effective_values()
+                    topology_logits = None
+                    if self.probabilistic_plasticity_active:
+                        support_readout = self.probabilistic_support_readout()
+                        values = support_readout["conditional_values"]
+                        topology_logits = support_readout["posterior_logits"]
+                    else:
+                        values = self.effective_values()
                     operator = self.recurrent_matrix(values)
                     nonlocal hidden, refractory, spikes
                     for step, step_observations in enumerate(sequence):
@@ -2095,7 +3214,13 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                             outputs.append(motor_rates)
                         else:
                             hidden = self._step(
-                                step_observations, hidden, operator, values
+                                step_observations,
+                                hidden,
+                                operator,
+                                values,
+                                topology_logits=topology_logits,
+                                topology_seeds=topology_seeds,
+                                topology_mode=topology_mode,
                             )
                             outputs.append(hidden)
                     return torch.stack(outputs).transpose(0, 1).reshape(
@@ -2151,6 +3276,10 @@ class ConnectomeBuilder(network_builder.NetworkBuilder):
                     self.max_log_sigma - sigma + self.max_sigma_offset
                 )
             return mu, sigma, value, returned_states
+
+        def reset_probabilistic_inference_topology(self) -> None:
+            if self.probabilistic_plasticity_active:
+                self._probabilistic_eval_seeds = None
 
         def uses_cached_reservoir_features(self) -> bool:
             return self.cache_reservoir_features
